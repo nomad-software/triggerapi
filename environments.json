@@ -1,0 +1,20 @@
+{
+  "active": 0,
+  "environments": [
+    {
+      "name": "Test 1",
+      "variables": [
+        {
+          "key": "host",
+          "value": "https://bored-api.appbrewery.com/random",
+          "enabled": true
+        },
+        {
+          "key": "param",
+          "value": "foo",
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}

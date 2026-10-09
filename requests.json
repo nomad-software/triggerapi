@@ -1,0 +1,41 @@
+{
+  "folders": [
+    {
+      "name": "Test 1",
+      "requests": [
+        {
+          "name": "Test request 1",
+          "method": "GET",
+          "url": "{{host}}",
+          "params": [
+            {
+              "key": "test",
+              "value": "1",
+              "enabled": true
+            }
+          ],
+          "auth": {
+            "type": "none"
+          },
+          "bodyType": "none"
+        },
+        {
+          "name": "Test request 2",
+          "method": "GET",
+          "url": "{{host}}",
+          "params": [
+            {
+              "key": "test",
+              "value": "{{param}}",
+              "enabled": true
+            }
+          ],
+          "auth": {
+            "type": "none"
+          },
+          "bodyType": "none"
+        }
+      ]
+    }
+  ]
+}
