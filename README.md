@@ -4,28 +4,63 @@ A desktop client for making REST API and gRPC calls. It is written
 in Go with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
 bindings.
 
+![TriggerAPI showing a REST request and its JSON response](docs/screenshot.png)
+
+## Features
+
+**REST**
+
 - Send requests with any common HTTP method, query params, headers, basic or
   bearer authorization, and a JSON, text, XML or form body.
-- Show any REST request as a `curl` command, with the environment's variables
+- Params are shown in the URL and kept in step with it both ways. Params,
+  headers and form fields can each be switched off without being removed.
+- Show any request as a `curl` command, with the environment's variables
   filled in, to copy and run in a terminal, or run it from TriggerAPI with the
   installed `curl` and see the response as usual.
-- Call gRPC methods, sending the message as JSON with metadata and basic or
-  bearer authorization. The methods of a server are discovered using gRPC
-  server reflection, so no protobuf files are needed.
-- Save the body of a response to a file.
+
+**gRPC**
+
+- Call unary and server-streaming methods, sending the message as JSON with
+  metadata and basic or bearer authorization.
+- The methods of a server are discovered using gRPC server reflection, so no
+  protobuf files are needed, and an example message can be filled in for the
+  method chosen.
+
+**Responses**
+
+- The status, time, size and protocol of a response are shown beneath it,
+  with failures in red, and its headers in a tab of their own.
 - JSON bodies, messages and responses are syntax highlighted, and their
   objects and arrays can be folded.
+- Save the body of a response to a file. JSON is saved formatted.
+
+**Organising requests**
+
+- Keep separate sets of environments and requests in workspaces, and switch
+  between them.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically, and
   can be searched by name.
 - Pin requests to keep them open in tabs, which are reopened the next time
   TriggerAPI is run.
+- Duplicate a workspace, an environment, a request, or a folder with
+  everything in it.
 - Import an OpenAPI 3 or Swagger 2 document, as JSON or YAML, or a Postman
   collection, to create a folder of requests.
-- Keep separate sets of environments and requests in workspaces, and switch
-  between them.
+
+**Environments**
+
 - Define environments of variables and use them anywhere in a request as
   `{{name}}` placeholders. Environments exported from Postman can be imported.
+- Placeholders are coloured where they are used, differently if the selected
+  environment does not define them, and what the URL resolves to is shown
+  beneath it.
+
+**Settings**
+
+- Choose the font used for request and response bodies, the colours JSON is
+  highlighted in, and the folder the workspaces are kept in. The size and
+  layout of the window are remembered.
 
 ## Requirements
 
