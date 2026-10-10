@@ -12,6 +12,7 @@ import (
 
 	"github.com/nomad-software/postie/internal/collection"
 	"github.com/nomad-software/postie/internal/openapi"
+	"github.com/nomad-software/postie/internal/postman"
 	"github.com/nomad-software/postie/internal/rest"
 )
 
@@ -35,18 +36,18 @@ type requestTree struct {
 	// path is the file the store is saved to. Nothing is saved if it is empty.
 	path     string
 	updating bool
-	// collapsed holds the folders that were closed when the tree was last
-	// drawn again.
-	collapsed map[*collection.Folder]bool
 
 	// confirm asks the user a yes/no question.
 	confirm func(question string) bool
 	// create returns the request to add, or false if the user decided
 	// against adding one.
 	create func() (*collection.Request, bool)
-	// chooseFile asks the user for an OpenAPI document to import. It reports
+	// chooseSource asks the user what kind of file to import. It reports
+	// false if they decide against importing.
+	chooseSource func() (importSource, bool)
+	// chooseFile asks the user for a file of a kind to import. It reports
 	// false if they decide against choosing one.
-	chooseFile func() (string, bool)
+	chooseFile func(source importSource) (string, bool)
 	// warn tells the user of a problem.
 	warn func(message string)
 	// onOpen is called when a request is selected.
@@ -71,8 +72,12 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 		return collection.NewREST("New Request", rest.Request{Method: http.MethodGet}), true
 	}
 
-	t.chooseFile = func() (string, bool) {
-		path := qt.QFileDialog_GetOpenFileName4(t.root, "Import OpenAPI Document", "", "OpenAPI documents (*.json *.yaml *.yml);;All files (*)")
+	t.chooseSource = func() (importSource, bool) {
+		return newImportDialog(t.root).ask()
+	}
+	t.chooseFile = func(source importSource) (string, bool) {
+		kind := importSources[source]
+		path := qt.QFileDialog_GetOpenFileName4(t.root, "Import "+kind.label, "", kind.filter+";;All files (*)")
 		return path, path != ""
 	}
 	t.warn = func(message string) {
@@ -88,7 +93,7 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	addRequest := qt.NewQPushButton3("Add Request")
 	addRequest.OnClicked(t.addRequest)
 	importButton := qt.NewQPushButton3("Import")
-	importButton.SetToolTip("Create a folder of requests from an OpenAPI document")
+	importButton.SetToolTip("Create a folder of requests from an OpenAPI document or a Postman collection")
 	importButton.OnClicked(t.importDocument)
 	edit := qt.NewQPushButton3("Edit")
 	edit.OnClicked(t.open)
@@ -164,6 +169,10 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 		super(event)
 	})
 
+	// Whether a folder is open or closed is kept with it.
+	t.tree.OnItemExpanded(func(item *qt.QTreeWidgetItem) { t.setCollapsed(item, false) })
+	t.tree.OnItemCollapsed(func(item *qt.QTreeWidgetItem) { t.setCollapsed(item, true) })
+
 	t.tree.OnCurrentItemChanged(func(*qt.QTreeWidgetItem, *qt.QTreeWidgetItem) {
 		if !t.updating {
 			t.open()
@@ -206,12 +215,11 @@ func (t *requestTree) load(store *collection.Store, path string) {
 	t.store = store
 	t.path = path
 
-	t.collapsed = map[*collection.Folder]bool{}
 	t.draw(nil)
 }
 
-// draw fills the tree from the store. Every folder is open except those in
-// collapsed. The item of selected, a folder or a request, is made the
+// draw fills the tree from the store, with each folder open or closed as the
+// store records. The item of selected, a folder or a request, is made the
 // current one if it is given.
 func (t *requestTree) draw(selected any) {
 	defer func(prev bool) { t.updating = prev }(t.updating)
@@ -237,7 +245,7 @@ func (t *requestTree) draw(selected any) {
 		for _, r := range folder.Requests {
 			note(t.newItem(item, -1, r.Name, r.Type), r)
 		}
-		item.SetExpanded(!t.collapsed[folder])
+		item.SetExpanded(!folder.Collapsed)
 	}
 
 	for _, f := range t.store.Folders {
@@ -266,8 +274,6 @@ func (t *requestTree) sort() {
 		return
 	}
 
-	// The tree still shows the order from before.
-	t.rememberIn(before)
 	t.draw(selected)
 }
 
@@ -289,49 +295,6 @@ func (t *requestTree) order() []any {
 		walk(f)
 	}
 	return all
-}
-
-// rememberIn notes which folders are closed, as remember does, for a tree
-// that shows the folders and requests in the given order, which is no longer
-// that of the store.
-func (t *requestTree) rememberIn(order []any) {
-	clear(t.collapsed)
-
-	// The items of the tree are in the same order, read from the top down.
-	i := 0
-	var walk func(item *qt.QTreeWidgetItem)
-	walk = func(item *qt.QTreeWidgetItem) {
-		of := order[i]
-		i++
-		if folder, ok := of.(*collection.Folder); ok && !item.IsExpanded() {
-			t.collapsed[folder] = true
-		}
-		for child := range item.ChildCount() {
-			walk(item.Child(child))
-		}
-	}
-	for top := range t.tree.TopLevelItemCount() {
-		walk(t.tree.TopLevelItem(top))
-	}
-}
-
-// remember notes which folders are closed, so they can be drawn that way
-// again. It must be called while the tree still matches the store.
-func (t *requestTree) remember() {
-	clear(t.collapsed)
-
-	var walk func(item *qt.QTreeWidgetItem, folder *collection.Folder)
-	walk = func(item *qt.QTreeWidgetItem, folder *collection.Folder) {
-		if !item.IsExpanded() {
-			t.collapsed[folder] = true
-		}
-		for i, sub := range folder.Folders {
-			walk(item.Child(i), sub)
-		}
-	}
-	for i, f := range t.store.Folders {
-		walk(t.tree.TopLevelItem(i), f)
-	}
 }
 
 // dropPosition is where something dragged was let go, relative to an item.
@@ -401,8 +364,6 @@ func (t *requestTree) drop(folder *collection.Folder, request *collection.Reques
 		}
 	}
 
-	t.remember()
-
 	var moved any
 	switch {
 	case request != nil:
@@ -419,7 +380,7 @@ func (t *requestTree) drop(folder *collection.Folder, request *collection.Reques
 
 	// What something is dropped into is opened to show it.
 	if to != nil {
-		delete(t.collapsed, to)
+		to.Collapsed = false
 	}
 	// Everything is kept in alphabetical order, so where exactly in a
 	// folder something was dropped makes no difference.
@@ -498,6 +459,18 @@ func (t *requestTree) locate(item *qt.QTreeWidgetItem) (*collection.Folder, *col
 	return folder, nil
 }
 
+// setCollapsed records that the folder of an item was opened or closed by
+// the user.
+func (t *requestTree) setCollapsed(item *qt.QTreeWidgetItem, collapsed bool) {
+	if t.updating {
+		return
+	}
+	if folder, request := t.locate(item); request == nil && folder.Collapsed != collapsed {
+		folder.Collapsed = collapsed
+		t.save()
+	}
+}
+
 // folderItem returns the item of the folder that something is to be added
 // to: the selected folder, or the folder of the selected request. It is nil
 // if nothing is selected.
@@ -535,14 +508,11 @@ func (t *requestTree) open() {
 func (t *requestTree) addFolder() {
 	const name = "New Folder"
 
-	parent := t.folderItem()
-	t.remember()
-
 	var added *collection.Folder
-	if parent != nil {
+	if parent := t.folderItem(); parent != nil {
 		folder, _ := t.locate(parent)
 		added = folder.AddFolder(name)
-		delete(t.collapsed, folder)
+		folder.Collapsed = false
 	} else {
 		added = t.store.AddFolder(name)
 	}
@@ -561,7 +531,6 @@ func (t *requestTree) addRequest() {
 	}
 
 	parent := t.folderItem()
-	t.remember()
 
 	var folder *collection.Folder
 	switch {
@@ -573,7 +542,7 @@ func (t *requestTree) addRequest() {
 		folder = t.store.Folders[len(t.store.Folders)-1]
 	}
 	folder.Add(request)
-	delete(t.collapsed, folder)
+	folder.Collapsed = false
 
 	t.added(request)
 	if t.onOpen != nil {
@@ -593,30 +562,67 @@ func (t *requestTree) added(what any) {
 	}
 }
 
-// importDocument asks for an OpenAPI document and imports it.
+// importSource is a kind of file that requests can be imported from.
+type importSource string
+
+const (
+	importOpenAPI importSource = "openapi"
+	importPostman importSource = "postman"
+)
+
+// importSources describes the kinds of file that can be imported, in the
+// order they are offered.
+var importSources = map[importSource]struct {
+	label  string
+	filter string
+	colour string
+	glyph  func(*qt.QPainter)
+	read   func([]byte) (*collection.Folder, error)
+}{
+	importOpenAPI: {"OpenAPI", "OpenAPI documents (*.json *.yaml *.yml)", "#6ba539", drawDocument, openapi.Import},
+	importPostman: {"Postman", "Postman collections (*.json)", "#ef5b25", drawPlane, postman.Import},
+}
+
+// newImportDialog returns a dialog which asks what kind of file to import.
+func newImportDialog(parent *qt.QWidget) *choiceDialog[importSource] {
+	var choices []choice[importSource]
+	for _, source := range []importSource{importOpenAPI, importPostman} {
+		kind := importSources[source]
+		choices = append(choices, choice[importSource]{source, kind.label, drawIcon(iconSize*2, kind.colour, kind.glyph)})
+	}
+	return newChoiceDialog(parent, "Import", "Choose what to import requests from.", choices)
+}
+
+// importDocument asks what kind of file to import, and for the file, and
+// imports it.
 func (t *requestTree) importDocument() {
-	path, ok := t.chooseFile()
+	source, ok := t.chooseSource()
 	if !ok {
 		return
 	}
-	if err := t.importFile(path); err != nil {
+	path, ok := t.chooseFile(source)
+	if !ok {
+		return
+	}
+	if err := t.importFile(source, path); err != nil {
 		t.warn(fmt.Sprintf("%s could not be imported: %v.", filepath.Base(path), err))
 	}
 }
 
-// importFile adds a folder of requests made from the OpenAPI document at
-// path, at the end of the top level, and selects it.
-func (t *requestTree) importFile(path string) error {
+// importFile adds a folder of requests made from the file at path, which is
+// of the kind given, to the top level, and selects it. The folders inside it
+// start off closed, as there can be a great many.
+func (t *requestTree) importFile(source importSource, path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	folder, err := openapi.Import(data)
+	folder, err := importSources[source].read(data)
 	if err != nil {
 		return err
 	}
+	folder.Collapse()
 
-	t.remember()
 	t.store.Folders = append(t.store.Folders, folder)
 	t.store.Sort()
 	t.draw(folder)

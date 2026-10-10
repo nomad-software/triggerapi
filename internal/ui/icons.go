@@ -75,6 +75,48 @@ func drawFolder(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
+// drawDocument draws a page with a folded corner and lines of text, for a
+// document that describes an API.
+func drawDocument(painter *qt.QPainter) {
+	painter.SetPenWithPen(whitePen())
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	path := qt.NewQPainterPath()
+	// The page, and the fold at its top right corner.
+	path.MoveTo2(38, 28)
+	path.LineTo2(72, 28)
+	path.LineTo2(90, 46)
+	path.LineTo2(90, 100)
+	path.LineTo2(38, 100)
+	path.CloseSubpath()
+	path.MoveTo2(72, 28)
+	path.LineTo2(72, 46)
+	path.LineTo2(90, 46)
+	// The lines of text.
+	path.MoveTo2(51, 64)
+	path.LineTo2(77, 64)
+	path.MoveTo2(51, 82)
+	path.LineTo2(77, 82)
+	painter.DrawPath(path)
+}
+
+// drawPlane draws a paper plane, for something that sends requests.
+func drawPlane(painter *qt.QPainter) {
+	painter.SetPenWithPen(whitePen())
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	path := qt.NewQPainterPath()
+	// The outline of the plane, and the crease along its middle.
+	path.MoveTo2(26, 62)
+	path.LineTo2(102, 30)
+	path.LineTo2(78, 100)
+	path.LineTo2(60, 74)
+	path.CloseSubpath()
+	path.MoveTo2(60, 74)
+	path.LineTo2(102, 30)
+	painter.DrawPath(path)
+}
+
 // The colours of the sidebar tab icons.
 const (
 	environmentsColour = "#8e6fd8"

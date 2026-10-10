@@ -61,9 +61,11 @@ func (r *Request) normalise() {
 // depth. Its folders come before its requests wherever its contents are
 // listed.
 type Folder struct {
-	Name     string     `json:"name"`
-	Folders  []*Folder  `json:"folders,omitempty"`
-	Requests []*Request `json:"requests,omitempty"`
+	Name string `json:"name"`
+	// Collapsed records that the folder is shown closed.
+	Collapsed bool       `json:"collapsed,omitempty"`
+	Folders   []*Folder  `json:"folders,omitempty"`
+	Requests  []*Request `json:"requests,omitempty"`
 }
 
 // Store is the collection of folders that is saved to disk. Folders and
@@ -108,6 +110,15 @@ func (f *Folder) Add(r *Request) *Request {
 // Remove deletes the request at index.
 func (f *Folder) Remove(index int) {
 	f.Requests = slices.Delete(f.Requests, index, index+1)
+}
+
+// Collapse closes every folder inside the folder, at any depth, leaving the
+// folder itself as it is.
+func (f *Folder) Collapse() {
+	for _, sub := range f.Folders {
+		sub.Collapsed = true
+		sub.Collapse()
+	}
 }
 
 // All returns the requests in the folder and in every folder inside it.

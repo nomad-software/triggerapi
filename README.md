@@ -13,8 +13,8 @@ bindings.
   objects and arrays can be folded.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically.
-- Import an OpenAPI 3 or Swagger 2 document, as JSON or YAML, to create a
-  folder of requests for its operations.
+- Import an OpenAPI 3 or Swagger 2 document, as JSON or YAML, or a Postman
+  collection, to create a folder of requests.
 - Define environments of variables and use them anywhere in a request as
   `{{name}}` placeholders.
 

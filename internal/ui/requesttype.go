@@ -38,58 +38,12 @@ func requestTypeIcon(typ collection.Type) *qt.QIcon {
 	return nil
 }
 
-// requestTypeDialog asks what type of request to create, offering each type
-// as an icon with its name beneath.
-type requestTypeDialog struct {
-	*qt.QDialog
-
-	buttons map[collection.Type]*qt.QToolButton
-	// chosen is the type that was picked, if the dialog was accepted.
-	chosen collection.Type
-}
-
-func newRequestTypeDialog(parent *qt.QWidget) *requestTypeDialog {
-	d := &requestTypeDialog{
-		QDialog: qt.NewQDialog(parent),
-		buttons: map[collection.Type]*qt.QToolButton{},
+// newRequestTypeDialog returns a dialog which asks what type of request to
+// create.
+func newRequestTypeDialog(parent *qt.QWidget) *choiceDialog[collection.Type] {
+	choices := make([]choice[collection.Type], len(requestTypes))
+	for i, t := range requestTypes {
+		choices[i] = choice[collection.Type]{t.typ, typeLabels[t.typ], requestTypeIcon(t.typ)}
 	}
-	d.SetWindowTitle("New Request")
-
-	types := qt.NewQHBoxLayout2()
-	for _, t := range requestTypes {
-		button := qt.NewQToolButton2()
-		button.SetToolButtonStyle(qt.ToolButtonTextUnderIcon)
-		button.SetAutoRaise(true)
-		button.SetIcon(requestTypeIcon(t.typ))
-		button.SetIconSize(qt.NewQSize2(iconSize, iconSize))
-		button.SetText(typeLabels[t.typ])
-		button.SetMinimumSize2(iconSize+48, iconSize+56)
-		button.OnClicked(func() {
-			d.chosen = t.typ
-			d.Accept()
-		})
-
-		d.buttons[t.typ] = button
-		types.AddWidget(button.QWidget)
-	}
-
-	cancel := qt.NewQPushButton3("Cancel")
-	cancel.OnClicked(d.Reject)
-
-	bottom := qt.NewQHBoxLayout2()
-	bottom.AddStretch()
-	bottom.AddWidget(cancel.QWidget)
-	bottom.AddStretch()
-
-	layout := qt.NewQVBoxLayout(d.QWidget)
-	// Leave room around the edge of the window and between its parts.
-	layout.SetContentsMargins(112, 24, 112, 24)
-	layout.SetSpacing(18)
-	prompt := qt.NewQLabel3("Choose the type of request to create.")
-	prompt.SetAlignment(qt.AlignCenter)
-	layout.AddWidget(prompt.QWidget)
-	layout.AddLayout(types.QLayout)
-	layout.AddLayout(bottom.QLayout)
-
-	return d
+	return newChoiceDialog(parent, "New Request", "Choose the type of request to create.", choices)
 }

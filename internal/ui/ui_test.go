@@ -2206,14 +2206,24 @@ paths:
 		rt.addRequest()
 		tree.TopLevelItem(0).SetExpanded(false)
 
-		// Deciding against choosing a file does nothing.
-		rt.chooseFile = func() (string, bool) { return "", false }
+		// Deciding against importing, or against choosing a file, does
+		// nothing.
+		rt.chooseSource = func() (importSource, bool) { return "", false }
+		rt.chooseFile = func(importSource) (string, bool) { t.Error("asked for a file"); return "", false }
 		rt.importDocument()
+
+		var asked []importSource
+		rt.chooseSource = func() (importSource, bool) { return importOpenAPI, true }
+		rt.chooseFile = func(source importSource) (string, bool) { asked = append(asked, source); return "", false }
+		rt.importDocument()
+		if !reflect.DeepEqual(asked, []importSource{importOpenAPI}) {
+			t.Errorf("asked for a file of %q", asked)
+		}
 		if tree.TopLevelItemCount() != 1 || len(warned) != 0 {
 			t.Fatalf("imported without a file: %d folders, warned %q", tree.TopLevelItemCount(), warned)
 		}
 
-		rt.chooseFile = func() (string, bool) { return spec, true }
+		rt.chooseFile = func(importSource) (string, bool) { return spec, true }
 		rt.importDocument()
 		if len(warned) != 0 || tree.TopLevelItemCount() != 2 {
 			t.Fatalf("not imported: %d folders, warned %q", tree.TopLevelItemCount(), warned)
@@ -2226,6 +2236,10 @@ paths:
 		}
 		if got, want := treeNames(shop), []string{"orders/", "Health"}; !reflect.DeepEqual(got, want) {
 			t.Errorf("shop = %q, want %q", got, want)
+		}
+		// The folders inside it start off closed.
+		if shop.Child(0).IsExpanded() {
+			t.Error("imported subfolder is open")
 		}
 		if got, want := treeNames(shop.Child(0)), []string{"Create order", "List orders"}; !reflect.DeepEqual(got, want) {
 			t.Errorf("orders = %q, want %q", got, want)
@@ -2243,7 +2257,7 @@ paths:
 
 		// A file that cannot be imported is reported, and adds nothing.
 		for _, path := range []string{bad, filepath.Join(dir, "missing.yaml")} {
-			rt.chooseFile = func() (string, bool) { return path, true }
+			rt.chooseFile = func(importSource) (string, bool) { return path, true }
 			rt.importDocument()
 		}
 		if len(warned) != 2 || !strings.Contains(warned[0], "bad.yaml could not be imported") || !strings.Contains(warned[0], "not an OpenAPI document") || tree.TopLevelItemCount() != 2 {
@@ -2341,4 +2355,154 @@ func TestSidebarOrder(t *testing.T) {
 	if requests.Folders[0].Name != "Apple" || requests.Folders[0].Requests[2].Name != "wipe" {
 		t.Errorf("saved requests = %+v", requests.Folders[0])
 	}
+}
+
+func TestImportPostman(t *testing.T) {
+	files := testFiles(t)
+	dir := filepath.Dir(files.Requests)
+
+	exported := filepath.Join(dir, "hotel.postman_collection.json")
+	os.WriteFile(exported, []byte(`{
+		"info": {"name": "Hotel", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+		"item": [
+			{"name": "Rooms", "item": [
+				{"name": "Deep", "item": [
+					{"name": "Book room", "request": {
+						"method": "POST",
+						"auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{Token}}"}]},
+						"header": [{"key": "x-app-key", "value": "{{AppKey}}"}],
+						"body": {"mode": "raw", "raw": "{\"room\": 1}", "options": {"raw": {"language": "json"}}},
+						"url": {"raw": "{{HostName}}/rooms?dry=1", "query": [{"key": "dry", "value": "1"}, {"key": "debug", "value": "x", "disabled": true}]}
+					}}
+				]}
+			]},
+			{"name": "Ping", "request": {"method": "GET", "url": "{{HostName}}/ping"}}
+		]
+	}`), 0o644)
+	spec := filepath.Join(dir, "spec.json")
+	os.WriteFile(spec, []byte(`{"openapi": "3.0.0", "paths": {"/a": {"get": {}}}}`), 0o644)
+
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+		rt := w.requests
+		tree := rt.tree
+
+		var warned []string
+		rt.warn = func(message string) { warned = append(warned, message) }
+
+		// The file is read as the kind that was chosen.
+		rt.chooseSource = func() (importSource, bool) { return importPostman, true }
+		rt.chooseFile = func(source importSource) (string, bool) {
+			if source != importPostman {
+				t.Errorf("asked for a file of %q", source)
+			}
+			return exported, true
+		}
+		rt.importDocument()
+		if len(warned) != 0 || tree.TopLevelItemCount() != 1 {
+			t.Fatalf("not imported: %d folders, warned %q", tree.TopLevelItemCount(), warned)
+		}
+
+		hotel := treeItem(tree, "Hotel")
+		if got, want := treeNames(hotel), []string{"Rooms/", "Ping"}; !reflect.DeepEqual(got, want) || !hotel.IsExpanded() || hotel.Child(0).IsExpanded() {
+			t.Errorf("hotel = %q, want %q", got, want)
+		}
+
+		// A request deep inside it opens with everything it was given.
+		tree.SetCurrentItem(treeItem(tree, "Hotel", "Rooms", "Deep", "Book room"))
+		got := w.request.request()
+		want := rest.Request{
+			Method:   "POST",
+			URL:      "{{HostName}}/rooms",
+			Params:   []rest.KeyValue{{Key: "dry", Value: "1", Enabled: true}, {Key: "debug", Value: "x"}},
+			Headers:  []rest.KeyValue{{Key: "x-app-key", Value: "{{AppKey}}", Enabled: true}},
+			Auth:     rest.Auth{Type: rest.AuthBearer, Token: "{{Token}}"},
+			BodyType: rest.BodyJSON,
+			Body:     `{"room": 1}`,
+		}
+		if !reflect.DeepEqual(got, want) || w.request.url.Text() != "{{HostName}}/rooms?dry=1" {
+			t.Errorf("request = %+v\nwant %+v", got, want)
+		}
+
+		// A file of the other kind is refused, and adds nothing.
+		rt.chooseFile = func(importSource) (string, bool) { return spec, true }
+		rt.importDocument()
+		if len(warned) != 1 || !strings.Contains(warned[0], "not a Postman collection") || tree.TopLevelItemCount() != 1 {
+			t.Errorf("warned %q", warned)
+		}
+	})
+}
+
+func TestImportDialog(t *testing.T) {
+	mainthread.Wait(func() {
+		w := NewWindow(testFiles(t))
+
+		for source, label := range map[importSource]string{importOpenAPI: "OpenAPI", importPostman: "Postman"} {
+			dialog := newImportDialog(w.QWidget)
+			dialog.Show()
+
+			button := dialog.buttons[source]
+			if button == nil || button.Text() != label {
+				t.Fatalf("no button labelled %q", label)
+			}
+
+			button.Click()
+			if dialog.chosen != source || dialog.Result() != int(qt.QDialog__Accepted) || dialog.IsVisible() {
+				t.Errorf("clicking %s chose %q with result %d", label, dialog.chosen, dialog.Result())
+			}
+		}
+	})
+}
+
+func TestFoldersStayOpenOrClosed(t *testing.T) {
+	files := testFiles(t)
+
+	store := &collection.Store{}
+	a := store.AddFolder("a")
+	a.AddFolder("inner").Add(collection.NewREST("r", rest.Request{Method: "GET"}))
+	store.AddFolder("b")
+	if err := store.Save(files.Requests); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+		tree := w.requests.tree
+
+		// Folders are open until they are closed.
+		if !treeItem(tree, "a").IsExpanded() || !treeItem(tree, "a", "inner").IsExpanded() {
+			t.Error("folders do not start open")
+		}
+		treeItem(tree, "a", "inner").SetExpanded(false)
+		treeItem(tree, "b").SetExpanded(false)
+		treeItem(tree, "b").SetExpanded(true)
+	})
+
+	saved, err := collection.Load(files.Requests)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Folders[0].Collapsed || !saved.Folders[0].Folders[0].Collapsed || saved.Folders[1].Collapsed {
+		t.Errorf("saved %+v, inner %+v", saved.Folders[0], saved.Folders[0].Folders[0])
+	}
+
+	// They are as they were left the next time.
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+		tree := w.requests.tree
+
+		if !treeItem(tree, "a").IsExpanded() || treeItem(tree, "a", "inner").IsExpanded() || !treeItem(tree, "b").IsExpanded() {
+			t.Error("folders were not restored as they were left")
+		}
+
+		// Adding to a closed folder opens it.
+		tree.SetCurrentItem(treeItem(tree, "a", "inner"))
+		w.requests.addRequest()
+		if !treeItem(tree, "a", "inner").IsExpanded() {
+			t.Error("folder not opened for the request added to it")
+		}
+	})
 }

@@ -98,17 +98,19 @@ func newRequestPanel() *requestPanel {
 
 	p.params = newKeyValueTable("Key", "Value")
 	p.params.onChange = p.paramsChanged
+	p.highlight.table(p.params.table)
 	p.auth = newAuthEditor(p.highlight)
 	p.auth.onChange = p.changed
 
 	p.headers = newKeyValueTable("Header", "Value")
 	p.headers.onChange = p.changed
+	p.highlight.table(p.headers.table)
 
 	tabs := qt.NewQTabWidget2()
+	tabs.AddTab(p.newBodyTab(), "Body")
 	tabs.AddTab(p.params.panel(), "Params")
 	tabs.AddTab(p.auth.root, "Authorization")
 	tabs.AddTab(p.headers.panel(), "Headers")
-	tabs.AddTab(p.newBodyTab(), "Body")
 
 	layout := qt.NewQVBoxLayout(p.root)
 	layout.AddWidget(p.header.root)
@@ -133,6 +135,7 @@ func (p *requestPanel) newBodyTab() *qt.QWidget {
 
 	p.bodyForm = newKeyValueTable("Key", "Value")
 	p.bodyForm.onChange = p.changed
+	p.highlight.table(p.bodyForm.table)
 
 	stack := qt.NewQStackedWidget2()
 	stack.AddWidget(newHint("This request does not have a body."))

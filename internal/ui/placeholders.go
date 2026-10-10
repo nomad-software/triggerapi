@@ -58,6 +58,15 @@ type placeholderHighlighter struct {
 
 	edits     []*qt.QLineEdit
 	documents []*qt.QSyntaxHighlighter
+	tables    []*qt.QTableWidget
+
+	// knownColour and unknownColour are the colours of the two formats, for
+	// text that is painted directly. The selected ones are paler, to be
+	// read against the colour of a selected cell.
+	knownColour     *qt.QColor
+	unknownColour   *qt.QColor
+	knownSelected   *qt.QColor
+	unknownSelected *qt.QColor
 }
 
 func newPlaceholderHighlighter() *placeholderHighlighter {
@@ -72,6 +81,11 @@ func newPlaceholderHighlighter() *placeholderHighlighter {
 		known:   format(statusColour(200)),
 		unknown: format(statusColour(400)),
 		json:    newJSONFormats(),
+
+		knownColour:     qt.NewQColor6(statusColour(200)),
+		unknownColour:   qt.NewQColor6(statusColour(400)),
+		knownSelected:   qt.NewQColor6("#b9f6ca"),
+		unknownSelected: qt.NewQColor6("#ffd180"),
 	}
 }
 
@@ -139,4 +153,84 @@ func (h *placeholderHighlighter) refresh() {
 	for _, doc := range h.documents {
 		doc.Rehighlight()
 	}
+	for _, table := range h.tables {
+		table.Viewport().Update()
+	}
+}
+
+// table colours the placeholders in the cells of a table. A cell has no way
+// of colouring part of its text, so the cells that have placeholders in them
+// are drawn without their text, which is then painted over them a piece at a
+// time. A cell is not coloured while it is being edited.
+func (h *placeholderHighlighter) table(table *qt.QTableWidget) {
+	delegate := qt.NewQStyledItemDelegate2(table.QObject)
+
+	// hideText makes the next cell be drawn with no text.
+	hideText := false
+	delegate.OnInitStyleOption(func(super func(*qt.QStyleOptionViewItem, *qt.QModelIndex), option *qt.QStyleOptionViewItem, index *qt.QModelIndex) {
+		super(option, index)
+		if hideText {
+			option.SetText("")
+		}
+	})
+
+	delegate.OnPaint(func(super func(*qt.QPainter, *qt.QStyleOptionViewItem, *qt.QModelIndex), painter *qt.QPainter, option *qt.QStyleOptionViewItem, index *qt.QModelIndex) {
+		text := index.Data().ToString()
+		ranges := placeholderRanges(text, h.expand)
+		if len(ranges) == 0 {
+			super(painter, option, index)
+			return
+		}
+
+		// The background, and the selection if there is one.
+		hideText = true
+		super(painter, option, index)
+		hideText = false
+
+		// The text starts where the style would have put it, and is in the
+		// colour it would have had.
+		rect := option.Rect()
+		margin := table.Style().PixelMetric(qt.QStyle__PM_FocusFrameHMargin, nil, table.QWidget) + 1
+		role := qt.QPalette__Text
+		known, unknown := h.knownColour, h.unknownColour
+		if option.State()&qt.QStyle__State_Selected != 0 {
+			role = qt.QPalette__HighlightedText
+			known, unknown = h.knownSelected, h.unknownSelected
+		}
+		plain := option.Palette().ColorWithCr(role)
+		metrics := option.FontMetrics()
+
+		painter.Save()
+		defer painter.Restore()
+		painter.SetClipRect2(rect.Left()+margin, rect.Top(), rect.Width()-2*margin, rect.Height())
+		painter.SetFont(option.Font())
+
+		// The ranges are counted in UTF-16 code units, as is the text here.
+		units := utf16.Encode([]rune(text))
+		x := rect.Left() + margin
+		draw := func(from, to int, colour *qt.QColor) {
+			if to <= from {
+				return
+			}
+			piece := string(utf16.Decode(units[from:to]))
+			painter.SetPen(colour)
+			painter.DrawText7(x, rect.Top(), rect.Width(), rect.Height(), int(qt.AlignLeft|qt.AlignVCenter), piece)
+			x += metrics.HorizontalAdvance(piece)
+		}
+
+		at := 0
+		for _, r := range ranges {
+			draw(at, r.start, plain)
+			colour := unknown
+			if r.known {
+				colour = known
+			}
+			draw(r.start, r.start+r.length, colour)
+			at = r.start + r.length
+		}
+		draw(at, len(units), plain)
+	})
+
+	table.SetItemDelegate(delegate.QAbstractItemDelegate)
+	h.tables = append(h.tables, table)
 }

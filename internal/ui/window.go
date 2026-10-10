@@ -41,12 +41,7 @@ const reflectTimeout = 15 * time.Second
 // false if they decide against creating one. It is a variable so that tests
 // can answer without a dialog being shown.
 var askRequestType = func(parent *qt.QWidget) (collection.Type, bool) {
-	dialog := newRequestTypeDialog(parent)
-	// A dialog is not destroyed by being closed.
-	defer dialog.DeleteLater()
-
-	accepted := dialog.Exec() == int(qt.QDialog__Accepted)
-	return dialog.chosen, accepted
+	return newRequestTypeDialog(parent).ask()
 }
 
 // aboutText returns the contents of the about box, which carries the notice

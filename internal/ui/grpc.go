@@ -117,6 +117,7 @@ func newGRPCPanel() *grpcPanel {
 
 	p.metadata = newKeyValueTable("Key", "Value")
 	p.metadata.onChange = p.changed
+	p.highlight.table(p.metadata.table)
 
 	p.definition = qt.NewQPlainTextEdit2()
 	p.definition.SetFont(fixed)
