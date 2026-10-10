@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -2703,5 +2704,153 @@ func TestKeyValueOrderAfterEditing(t *testing.T) {
 
 	waitFor(t, "the rows to be put in order", func() bool {
 		return table.pair(0).Key == "b" && table.pair(1) == rest.KeyValue{Key: "c", Value: "1", Enabled: true}
+	})
+}
+
+func TestCurlView(t *testing.T) {
+	files := testFiles(t)
+
+	store := &env.Store{Active: 0, Environments: []env.Environment{
+		{Name: "Local", Variables: []env.Variable{{Key: "host", Value: "https://local.test", Enabled: true}}},
+		{Name: "Staging", Variables: []env.Variable{{Key: "host", Value: "https://staging.test", Enabled: true}}},
+	}}
+	if err := store.Save(files.Environments); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+		p := w.request
+
+		p.load(rest.Request{
+			Method:   "POST",
+			URL:      "{{host}}/users",
+			Params:   []rest.KeyValue{{Key: "dry", Value: "1", Enabled: true}},
+			Headers:  []rest.KeyValue{{Key: "X-Key", Value: "{{missing}}", Enabled: true}},
+			BodyType: rest.BodyJSON,
+			Body:     `{"name": "it's"}`,
+		})
+
+		// The fields are shown until the button is pressed.
+		if p.pages.CurrentIndex() != pageFields || p.curl.IsChecked() {
+			t.Fatal("the command is shown at first")
+		}
+
+		p.curl.Click()
+		want := "curl --location --request POST 'https://local.test/users?dry=1' \\\n" +
+			"  --header 'Content-Type: application/json' \\\n" +
+			"  --header 'X-Key: {{missing}}' \\\n" +
+			"  --data-raw '{\"name\": \"it'\\''s\"}'"
+		if got := p.command.ToPlainText(); p.pages.CurrentIndex() != pageCurl || got != want {
+			t.Errorf("command = %s\nwant %s", got, want)
+		}
+		if !p.command.IsReadOnly() || !p.copy.IsEnabled() {
+			t.Error("the command can be edited, or cannot be copied")
+		}
+
+		// It can be copied.
+		p.copy.Click()
+		if got := qt.QGuiApplication_Clipboard().Text(); got != want {
+			t.Errorf("copied %q", got)
+		}
+
+		// It follows the environment, and the request that is shown.
+		w.environments.list.SetCurrentRow(1)
+		if got := p.command.ToPlainText(); !strings.Contains(got, "https://staging.test/users?dry=1") {
+			t.Errorf("command = %s", got)
+		}
+		p.load(rest.Request{Method: "GET", URL: "{{host}}/ping"})
+		if got := p.command.ToPlainText(); got != "curl --location https://staging.test/ping" {
+			t.Errorf("command = %s", got)
+		}
+
+		// A request that cannot be made is explained, and not copied.
+		p.load(rest.Request{Method: "GET"})
+		if got := p.command.ToPlainText(); !strings.HasPrefix(got, "# ") || !strings.Contains(got, "URL is empty") || p.copy.IsEnabled() {
+			t.Errorf("command = %s", got)
+		}
+
+		// Pressing the button again brings the fields back.
+		p.curl.Click()
+		if p.pages.CurrentIndex() != pageFields {
+			t.Error("the fields did not come back")
+		}
+
+		// So does the Close button beside the command.
+		p.curl.Click()
+		p.closeCurl.Click()
+		if p.pages.CurrentIndex() != pageFields || p.curl.IsChecked() {
+			t.Error("Close did not bring the fields back")
+		}
+
+		// The gRPC page has no such button.
+		if w.grpc.root.IsAncestorOf(p.curl.QWidget) || !p.root.IsAncestorOf(p.curl.QWidget) || w.response.root.IsAncestorOf(p.curl.QWidget) {
+			t.Error("the button is not in the REST request panel alone")
+		}
+	})
+}
+
+func TestExecuteCurl(t *testing.T) {
+	if _, err := exec.LookPath("curl"); err != nil {
+		t.Skip("curl is not installed")
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/missing" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"agent":"` + strings.SplitN(r.UserAgent(), "/", 2)[0] + `","key":"` + r.Header.Get("X-Key") + `"}`))
+	}))
+	defer srv.Close()
+
+	files := testFiles(t)
+	store := &env.Store{Active: 0, Environments: []env.Environment{
+		{Name: "Local", Variables: []env.Variable{{Key: "host", Value: srv.URL, Enabled: true}}},
+	}}
+	if err := store.Save(files.Environments); err != nil {
+		t.Fatal(err)
+	}
+
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(files)
+		w.Show()
+		w.request.load(rest.Request{Method: "GET", URL: "{{host}}/a", Headers: []rest.KeyValue{{Key: "X-Key", Value: "abc", Enabled: true}}})
+		w.request.curl.Click()
+		w.request.execute.Click()
+	})
+
+	// The response to the command is shown as any other is.
+	waitFor(t, "the response", func() bool { return fieldValue(w.response, "Code") != "" })
+	mainthread.Wait(func() {
+		if got := fieldValue(w.response, "Code"); got != "200 OK" || isFailure(w.response) {
+			t.Errorf("code = %q", got)
+		}
+		if got := w.response.body.ToPlainText(); !strings.Contains(got, `"agent": "curl"`) || !strings.Contains(got, `"key": "abc"`) {
+			t.Errorf("body = %s", got)
+		}
+		if fieldValue(w.response, "Protocol") != "HTTP/1.1" || fieldValue(w.response, "Time") == "" || w.request.execute.Text() != "Execute" {
+			t.Errorf("protocol = %q, button %q", fieldValue(w.response, "Protocol"), w.request.execute.Text())
+		}
+
+		w.request.load(rest.Request{Method: "GET", URL: "{{host}}/missing"})
+		w.request.execute.Click()
+	})
+
+	// So is a failure.
+	waitFor(t, "the failure", func() bool { return strings.HasPrefix(fieldValue(w.response, "Code"), "404") })
+	mainthread.Wait(func() {
+		if !isFailure(w.response) {
+			t.Error("a 404 is not shown as a failure")
+		}
+
+		// A request that cannot be made cannot be executed.
+		w.request.load(rest.Request{Method: "GET"})
+		if w.request.execute.IsEnabled() {
+			t.Error("a request without a URL can be executed")
+		}
 	})
 }

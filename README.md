@@ -6,6 +6,9 @@ bindings.
 
 - Send requests with any common HTTP method, query params, headers, basic or
   bearer authorization, and a JSON, text, XML or form body.
+- Show any REST request as a `curl` command, with the environment's variables
+  filled in, to copy and run in a terminal, or run it from Postie with the
+  installed `curl` and see the response as usual.
 - Call gRPC methods, sending the message as JSON with metadata and basic or
   bearer authorization. The methods of a server are discovered using gRPC
   server reflection, so no protobuf files are needed.

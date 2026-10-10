@@ -250,6 +250,8 @@ func NewWindow(files Files) *Window {
 		}
 	}
 
+	w.request.expand = w.expand
+	w.request.setCodeFont(w.config.ResponseFont)
 	w.request.onChange = func() {
 		w.updatePreview()
 		if w.open != nil && w.open.Type == collection.TypeREST {
@@ -259,6 +261,7 @@ func NewWindow(files Files) *Window {
 		}
 	}
 	w.request.send.OnClicked(w.send)
+	w.request.execute.OnClicked(w.executeCurl)
 	w.request.url.OnReturnPressed(w.send)
 
 	w.grpc.onChange = func() {
@@ -478,6 +481,7 @@ func (w *Window) applySettings(s settings.Settings) error {
 
 	w.config.ResponseFont = s.ResponseFont
 	w.response.setBodyFont(s.ResponseFont)
+	w.request.setCodeFont(s.ResponseFont)
 	w.grpcResponse.setBodyFont(s.ResponseFont)
 
 	w.config.JSONColours = s.JSONColours
@@ -730,6 +734,17 @@ func (w *Window) send() {
 
 	w.run(w.request.send, w.response, func(ctx context.Context) (func(), error) {
 		res, err := rest.Send(ctx, w.client, req)
+		return func() { w.response.show(res) }, err
+	})
+}
+
+// executeCurl makes the REST request by running the curl command that is
+// shown for it, or cancels the request in flight.
+func (w *Window) executeCurl() {
+	req := w.request.request().Expand(w.expand)
+
+	w.run(w.request.execute, w.response, func(ctx context.Context) (func(), error) {
+		res, err := rest.RunCurl(ctx, req)
 		return func() { w.response.show(res) }, err
 	})
 }

@@ -117,6 +117,21 @@ func drawPlane(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
+// drawPrompt draws the prompt of a terminal, for a command to run in one.
+func drawPrompt(painter *qt.QPainter) {
+	painter.SetPenWithPen(whitePen())
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	path := qt.NewQPainterPath()
+	// The chevron, and the cursor after it.
+	path.MoveTo2(30, 42)
+	path.LineTo2(56, 64)
+	path.LineTo2(30, 86)
+	path.MoveTo2(66, 88)
+	path.LineTo2(98, 88)
+	painter.DrawPath(path)
+}
+
 // The colours of the sidebar tab icons.
 const (
 	environmentsColour = "#8e6fd8"

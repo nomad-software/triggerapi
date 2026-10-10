@@ -115,9 +115,15 @@ func (p *responsePanel) setJSONColours(colours map[tokenKind]string) {
 // fixed width font is the fallback if the family is not installed, and
 // supplies the size.
 func (p *responsePanel) setBodyFont(family string) {
+	p.body.SetFont(fixedFont(family))
+}
+
+// fixedFont returns the font of a family, falling back to the fixed width
+// font of the system where it is not installed.
+func fixedFont(family string) *qt.QFont {
 	font := qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont)
 	font.SetFamilies(append([]string{family}, font.Families()...))
-	p.body.SetFont(font)
+	return font
 }
 
 // clear empties the panel.

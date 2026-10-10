@@ -273,7 +273,6 @@
     },
     {
       "name": "em-ohip-hotel",
-      "collapsed": true,
       "folders": [
         {
           "name": "entcfg",
@@ -325,7 +324,6 @@
         },
         {
           "name": "hotel",
-          "collapsed": true,
           "requests": [
             {
               "name": "GetHotels",
