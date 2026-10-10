@@ -13,10 +13,9 @@ import (
 type settingsDialog struct {
 	*qt.QDialog
 
-	font         *qt.QFontComboBox
-	environments *qt.QLineEdit
-	requests     *qt.QLineEdit
-	buttons      *qt.QDialogButtonBox
+	font       *qt.QFontComboBox
+	workspaces *qt.QLineEdit
+	buttons    *qt.QDialogButtonBox
 
 	// colours are the JSON colours the user has chosen. One that is empty
 	// is the default, which is what its swatch shows.
@@ -30,17 +29,16 @@ type settingsDialog struct {
 }
 
 // newSettingsDialog creates the dialog showing the current settings. The
-// defaults are the file locations used when the settings do not name one.
+// defaults are the locations used when the settings do not name one.
 func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults Files) *settingsDialog {
 	d := &settingsDialog{
-		QDialog:      qt.NewQDialog(parent),
-		font:         qt.NewQFontComboBox2(),
-		environments: qt.NewQLineEdit2(),
-		requests:     qt.NewQLineEdit2(),
-		buttons:      qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel),
-		defaults:     defaults,
-		colours:      current.JSONColours,
-		swatches:     map[tokenKind]*qt.QPushButton{},
+		QDialog:    qt.NewQDialog(parent),
+		font:       qt.NewQFontComboBox2(),
+		workspaces: qt.NewQLineEdit2(),
+		buttons:    qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel),
+		defaults:   defaults,
+		colours:    current.JSONColours,
+		swatches:   map[tokenKind]*qt.QPushButton{},
 	}
 	d.SetWindowTitle("Settings")
 	d.SetMinimumWidth(560)
@@ -48,20 +46,19 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	d.font.SetCurrentFont(qt.NewQFont2(current.ResponseFont))
 	d.initialFont = d.font.CurrentFont().Family()
 
-	d.environments.SetText(orDefault(current.EnvironmentsFile, defaults.Environments))
-	d.requests.SetText(orDefault(current.RequestsFile, defaults.Requests))
+	d.workspaces.SetText(orDefault(current.WorkspacesDir, defaults.Workspaces))
 
-	note := qt.NewQLabel3("Choosing a file that already exists loads what is in it. " +
-		"Choosing a new file saves the current data there. " +
+	note := qt.NewQLabel3("Each workspace has a folder of its own in this one, holding its environments and requests. " +
+		"Choosing a folder that already has workspaces shows those. " +
+		"Choosing one that has none copies the current workspaces there. " +
 		"A relative path is relative to the directory TriggerAPI is run from.")
 	note.SetWordWrap(true)
 	note.SetEnabled(false)
 
 	form := qt.NewQFormLayout2()
 	form.AddRow3("Response font", d.font.QWidget)
-	form.AddRow4("Environments file", d.fileRow(d.environments, "Environments File"))
-	form.AddRow4("Requests file", d.fileRow(d.requests, "Requests File"))
-	// The note is about the two files above it.
+	form.AddRow4("Workspaces folder", d.folderRow(d.workspaces, "Workspaces Folder"))
+	// The note is about the folder above it.
 	form.AddRowWithWidget(note.QWidget)
 
 	for _, t := range tokenKinds {
@@ -91,21 +88,12 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	return d
 }
 
-// fileRow lays out a path field beside a button to browse for the file.
-func (d *settingsDialog) fileRow(edit *qt.QLineEdit, caption string) *qt.QLayout {
+// folderRow lays out a path field beside a button to browse for the folder.
+func (d *settingsDialog) folderRow(edit *qt.QLineEdit, caption string) *qt.QLayout {
 	browse := qt.NewQPushButton3("Browse…")
 	browse.OnClicked(func() {
-		dialog := qt.NewQFileDialog6(d.QWidget, caption, "", "JSON files (*.json);;All files (*)")
-		defer dialog.DeleteLater()
-
-		// Either an existing file or the name of a new one can be given.
-		dialog.SetFileMode(qt.QFileDialog__AnyFile)
-		dialog.SelectFile(edit.Text())
-
-		if dialog.Exec() == int(qt.QDialog__Accepted) {
-			if files := dialog.SelectedFiles(); len(files) > 0 {
-				edit.SetText(files[0])
-			}
+		if dir := qt.QFileDialog_GetExistingDirectory3(d.QWidget, caption, edit.Text()); dir != "" {
+			edit.SetText(dir)
 		}
 	})
 
@@ -188,8 +176,7 @@ func (d *settingsDialog) settings(base settings.Settings) settings.Settings {
 		}
 		return ""
 	}
-	base.EnvironmentsFile = location(d.environments, d.defaults.Environments)
-	base.RequestsFile = location(d.requests, d.defaults.Requests)
+	base.WorkspacesDir = location(d.workspaces, d.defaults.Workspaces)
 	base.JSONColours = d.colours
 
 	return base

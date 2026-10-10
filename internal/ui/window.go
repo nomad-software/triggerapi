@@ -5,9 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,6 +19,7 @@ import (
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 	"github.com/nomad-software/triggerapi/internal/settings"
+	"github.com/nomad-software/triggerapi/internal/workspace"
 )
 
 // Pages of the main stack.
@@ -75,12 +76,26 @@ func aboutText() string {
 		"</td></tr></table>"
 }
 
-// Files are the paths of the JSON files the program's data is kept in.
+// Files are the places the program's data is kept in.
 type Files struct {
+	// Settings is the path of the JSON file of the settings.
+	Settings string
+	// Workspaces is the folder the workspaces are kept in, unless the
+	// settings name another.
+	Workspaces string
+	// Environments and Requests are the paths of the files the
+	// environments and requests were kept in before there were workspaces.
+	// What is in them is brought into the first workspace.
 	Environments string
 	Requests     string
-	Settings     string
 }
+
+// The tabs of the sidebar, in order.
+const (
+	tabWorkspaces = iota
+	tabEnvironments
+	tabRequests
+)
 
 // Window is the main application window.
 type Window struct {
@@ -92,14 +107,15 @@ type Window struct {
 	about       *qt.QAction
 
 	// files are the default locations of the saved data, and config the
-	// settings in effect, which can move the environments and requests
-	// elsewhere.
+	// settings in effect, which can keep the workspaces elsewhere.
 	files  Files
 	config settings.Settings
 
 	client *http.Client
-	// sidebar has a tab for the environments and one for the requests.
+	// sidebar has a tab for the workspaces, and one each for the
+	// environments and the requests of the workspace in use.
 	sidebar      *qt.QTabWidget
+	workspaces   *workspaceList
 	environments *envList
 	requests     *requestTree
 	// split divides the sidebar from the rest of the window, and splits
@@ -180,25 +196,16 @@ func NewWindow(files Files) *Window {
 		super(event)
 	})
 
-	// A file that could not be read is never saved to, so it is not
-	// overwritten.
-	var failed []error
-
-	envPath, requestsPath := w.environmentsFile(), w.requestsFile()
-
-	envs, err := env.Load(envPath)
+	// The workspace that was last in use is opened, which is the first
+	// there is if this is the first run with workspaces.
+	w.workspaces = newWorkspaceList(w.workspacesDir)
+	w.migrate()
+	name, err := w.workspaces.load(w.config.Workspace)
 	if err != nil {
-		envPath = ""
-		failed = append(failed, err)
+		w.status("The workspaces could not be listed: " + err.Error())
 	}
-	requests, err := collection.Load(requestsPath)
-	if err != nil {
-		requestsPath = ""
-		failed = append(failed, err)
-	}
-	if len(failed) > 0 {
-		w.status("Saved data could not be loaded, changes will not be saved: " + errors.Join(failed...).Error())
-	}
+	w.config.Workspace = name
+	envs, envPath, requests, requestsPath := w.loadWorkspace(name)
 
 	saveFailed := func(err error) {
 		w.status("Changes could not be saved: " + err.Error())
@@ -222,6 +229,9 @@ func NewWindow(files Files) *Window {
 
 	w.editor.onChange = w.environments.update
 	w.editor.close.OnClicked(w.closeEditor)
+
+	w.workspaces.onOpen = w.openWorkspace
+	w.workspaces.onRename = w.renamedWorkspace
 
 	w.requests = newRequestTree(requests, requestsPath)
 	w.requests.onError = saveFailed
@@ -252,6 +262,7 @@ func NewWindow(files Files) *Window {
 
 	w.request.expand = w.expand
 	w.request.setCodeFont(w.config.ResponseFont)
+	w.grpc.setCodeFont(w.config.ResponseFont)
 	w.request.onChange = func() {
 		w.updatePreview()
 		if w.open != nil && w.open.Type == collection.TypeREST {
@@ -324,12 +335,15 @@ func NewWindow(files Files) *Window {
 	w.sidebar = qt.NewQTabWidget2()
 	w.sidebar.SetTabPosition(qt.QTabWidget__West)
 	w.sidebar.SetIconSize(qt.NewQSize2(sidebarIconSize, sidebarIconSize))
+	// The order matches the tab constants.
+	w.sidebar.AddTab2(w.workspaces.root, drawTabIcon(workspacesColour, drawMonitor), "")
 	w.sidebar.AddTab2(w.environments.root, drawTabIcon(environmentsColour, drawGlobe), "")
 	w.sidebar.AddTab2(w.requests.root, drawTabIcon(requestsColour, drawFolder), "")
-	w.sidebar.SetTabToolTip(0, "Environments")
-	w.sidebar.SetTabToolTip(1, "Requests")
+	w.sidebar.SetTabToolTip(tabWorkspaces, "Workspaces")
+	w.sidebar.SetTabToolTip(tabEnvironments, "Environments")
+	w.sidebar.SetTabToolTip(tabRequests, "Requests")
 	// The requests are what is wanted first.
-	w.sidebar.SetCurrentIndex(1)
+	w.sidebar.SetCurrentIndex(tabRequests)
 
 	w.split = qt.NewQSplitter3(qt.Horizontal)
 	w.split.AddWidget(w.sidebar.QWidget)
@@ -387,20 +401,115 @@ func (w *Window) newMenuBar() {
 	})
 }
 
-// environmentsFile returns the path the settings keep the environments at.
-func (w *Window) environmentsFile() string {
-	if w.config.EnvironmentsFile != "" {
-		return w.config.EnvironmentsFile
+// workspacesDir returns the folder the workspaces are kept in.
+func (w *Window) workspacesDir() string {
+	if w.config.WorkspacesDir != "" {
+		return w.config.WorkspacesDir
 	}
-	return w.files.Environments
+	return w.files.Workspaces
 }
 
-// requestsFile returns the path the settings keep the requests at.
-func (w *Window) requestsFile() string {
-	if w.config.RequestsFile != "" {
-		return w.config.RequestsFile
+// migrate makes the first workspace if there are none, and brings into it
+// the environments and requests from before there were workspaces. Their
+// files are copied and left where they were.
+func (w *Window) migrate() {
+	dir := w.workspacesDir()
+	if names, err := workspace.List(dir); err != nil || len(names) > 0 {
+		return
 	}
-	return w.files.Requests
+
+	err := workspace.Create(dir, workspace.Default)
+	if err == nil {
+		err = workspace.Import(dir, workspace.Default,
+			orDefault(w.config.EnvironmentsFile, w.files.Environments),
+			orDefault(w.config.RequestsFile, w.files.Requests))
+	}
+	if err != nil {
+		w.status("The first workspace could not be made: " + err.Error())
+		return
+	}
+	w.config.EnvironmentsFile, w.config.RequestsFile = "", ""
+}
+
+// loadWorkspace reads the environments and requests of a workspace, and
+// returns each with the path it is to be saved to. A file that could not be
+// read is never saved to, so it is not overwritten: its path is empty, as
+// are both if there is no workspace.
+func (w *Window) loadWorkspace(name string) (envs *env.Store, envPath string, requests *collection.Store, requestsPath string) {
+	if name == "" {
+		w.status("There is no workspace, so changes will not be saved.")
+		return &env.Store{Active: -1}, "", &collection.Store{}, ""
+	}
+
+	var failed []error
+	envPath = workspace.Environments(w.workspacesDir(), name)
+	requestsPath = workspace.Requests(w.workspacesDir(), name)
+
+	envs, err := env.Load(envPath)
+	if err != nil {
+		envPath = ""
+		failed = append(failed, err)
+	}
+	requests, err = collection.Load(requestsPath)
+	if err != nil {
+		requestsPath = ""
+		failed = append(failed, err)
+	}
+
+	if len(failed) > 0 {
+		w.status("Saved data could not be loaded, changes will not be saved: " + errors.Join(failed...).Error())
+	} else {
+		w.status("")
+	}
+	return envs, envPath, requests, requestsPath
+}
+
+// openWorkspace makes a workspace the one in use, showing its environments
+// and requests in place of those of the one before.
+func (w *Window) openWorkspace(name string) {
+	envs, envPath, requests, requestsPath := w.loadWorkspace(name)
+	w.config.Workspace = name
+
+	// The open request and the environment being edited belong to the
+	// workspace being left.
+	w.closeEditor()
+	w.show(nil)
+
+	w.environments.load(envs, envPath)
+	w.requests.clearSearch()
+	w.requests.load(requests, requestsPath)
+	w.environmentChanged()
+}
+
+// renamedWorkspace follows the workspace in use to its new name, which is
+// also the name of the folder its files are in.
+func (w *Window) renamedWorkspace(name string) {
+	w.config.Workspace = name
+	if w.environments.path != "" {
+		w.environments.path = workspace.Environments(w.workspacesDir(), name)
+	}
+	if w.requests.path != "" {
+		w.requests.path = workspace.Requests(w.workspacesDir(), name)
+	}
+}
+
+// moveWorkspaces keeps the workspaces in another folder from now on. If
+// there are none in it yet, the ones there are now are copied there.
+func (w *Window) moveWorkspaces(from string) error {
+	to := w.workspacesDir()
+
+	names, err := workspace.List(to)
+	if err != nil {
+		return err
+	}
+	if len(names) == 0 {
+		if err := workspace.CopyAll(from, to); err != nil {
+			return err
+		}
+	}
+
+	w.workspaces.open(w.config.Workspace)
+	return nil
 }
 
 // later runs f once the events already waiting have been handled, by which
@@ -474,34 +583,26 @@ func (w *Window) openSettings() {
 // applySettings puts the settings into effect and saves them. A setting that
 // cannot be applied is left as it was, and reported in the error.
 //
-// Moving the environments or the requests to a file that exists loads what
-// is in it. Moving them to a file that does not exist saves them there.
+// Moving the workspaces to a folder that has some shows those. Moving them
+// to a folder that has none copies the ones there are into it.
 func (w *Window) applySettings(s settings.Settings) error {
 	var failed []error
 
 	w.config.ResponseFont = s.ResponseFont
 	w.response.setBodyFont(s.ResponseFont)
 	w.request.setCodeFont(s.ResponseFont)
+	w.grpc.setCodeFont(s.ResponseFont)
 	w.grpcResponse.setBodyFont(s.ResponseFont)
 
 	w.config.JSONColours = s.JSONColours
 	w.applyJSONColours()
 
-	previous := w.environmentsFile()
-	w.config.EnvironmentsFile = s.EnvironmentsFile
-	if path := w.environmentsFile(); path != previous {
-		if err := w.moveEnvironments(path); err != nil {
-			w.config.EnvironmentsFile = previous
-			failed = append(failed, fmt.Errorf("the environments were not moved to %s: %w", path, err))
-		}
-	}
-
-	previous = w.requestsFile()
-	w.config.RequestsFile = s.RequestsFile
-	if path := w.requestsFile(); path != previous {
-		if err := w.moveRequests(path); err != nil {
-			w.config.RequestsFile = previous
-			failed = append(failed, fmt.Errorf("the requests were not moved to %s: %w", path, err))
+	setting, previous := w.config.WorkspacesDir, w.workspacesDir()
+	w.config.WorkspacesDir = s.WorkspacesDir
+	if dir := w.workspacesDir(); filepath.Clean(dir) != filepath.Clean(previous) {
+		if err := w.moveWorkspaces(previous); err != nil {
+			w.config.WorkspacesDir = setting
+			failed = append(failed, fmt.Errorf("the workspaces were not moved to %s: %w", dir, err))
 		}
 	}
 
@@ -523,54 +624,6 @@ func (w *Window) applyJSONColours() {
 	w.grpc.refreshPlaceholders()
 	w.response.setJSONColours(colours)
 	w.grpcResponse.setJSONColours(colours)
-}
-
-// exists reports if there is a file at path.
-func exists(path string) bool {
-	_, err := os.Stat(path)
-	return !errors.Is(err, fs.ErrNotExist)
-}
-
-// moveEnvironments keeps the environments at path from now on.
-func (w *Window) moveEnvironments(path string) error {
-	if !exists(path) {
-		if err := w.environments.store.Save(path); err != nil {
-			return err
-		}
-		w.environments.path = path
-		return nil
-	}
-
-	store, err := env.Load(path)
-	if err != nil {
-		return err
-	}
-
-	w.closeEditor()
-	w.environments.load(store, path)
-	w.environmentChanged()
-	return nil
-}
-
-// moveRequests keeps the requests at path from now on.
-func (w *Window) moveRequests(path string) error {
-	if !exists(path) {
-		if err := w.requests.store.Save(path); err != nil {
-			return err
-		}
-		w.requests.path = path
-		return nil
-	}
-
-	store, err := collection.Load(path)
-	if err != nil {
-		return err
-	}
-
-	// The open request belongs to the requests being replaced.
-	w.show(nil)
-	w.requests.load(store, path)
-	return nil
 }
 
 // expand substitutes the variables of the active environment into text.

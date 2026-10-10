@@ -8,11 +8,13 @@ import (
 	"github.com/nomad-software/triggerapi/internal/ui"
 )
 
-// The saved data lives in the directory the program is run from.
+// The saved data lives in the directory the program is run from. The
+// environments and requests files are from before there were workspaces.
 var files = ui.Files{
+	Settings:     "settings.json",
+	Workspaces:   "workspaces",
 	Environments: "environments.json",
 	Requests:     "requests.json",
-	Settings:     "settings.json",
 }
 
 func main() {

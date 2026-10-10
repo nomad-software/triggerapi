@@ -45,6 +45,15 @@ func utf16Len(s string) int {
 	return n
 }
 
+// The colours of placeholders, and of what the URL resolves to beneath it. A
+// placeholder that the active environment defines is a lighter shade of the
+// colour of the Send button, and one that it does not is the colour of a
+// failure.
+const (
+	knownColour   = "#ff9d5c"
+	unknownColour = failureColour
+)
+
 // placeholderHighlighter colours the placeholders in line edits and text
 // documents: in the colour of a successful response if the active environment
 // defines them, and in the warning colour if not.
@@ -78,14 +87,14 @@ func newPlaceholderHighlighter() *placeholderHighlighter {
 
 	return &placeholderHighlighter{
 		expand:  func(s string) string { return s },
-		known:   format(statusColour(200)),
-		unknown: format(statusColour(400)),
+		known:   format(knownColour),
+		unknown: format(unknownColour),
 		json:    newJSONFormats(),
 
-		knownColour:     qt.NewQColor6(statusColour(200)),
-		unknownColour:   qt.NewQColor6(statusColour(400)),
-		knownSelected:   qt.NewQColor6("#b9f6ca"),
-		unknownSelected: qt.NewQColor6("#ffd180"),
+		knownColour:     qt.NewQColor6(knownColour),
+		unknownColour:   qt.NewQColor6(unknownColour),
+		knownSelected:   qt.NewQColor6("#ffd8a8"),
+		unknownSelected: qt.NewQColor6("#ffc9c9"),
 	}
 }
 

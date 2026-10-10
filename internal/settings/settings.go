@@ -32,10 +32,16 @@ type Settings struct {
 	// system's fixed width font is used if it is not installed.
 	ResponseFont string `json:"responseFont"`
 
-	// EnvironmentsFile and RequestsFile are the paths of the files the
-	// environments and the requests are kept in. A relative path is relative
-	// to the directory the program is run from. The default location is used
-	// if one is empty.
+	// WorkspacesDir is the folder the workspaces are kept in, each in a
+	// folder of its own. A relative path is relative to the directory the
+	// program is run from. The default location is used if it is empty.
+	WorkspacesDir string `json:"workspacesDir,omitempty"`
+	// Workspace is the name of the workspace in use.
+	Workspace string `json:"workspace,omitempty"`
+
+	// EnvironmentsFile and RequestsFile are where the environments and the
+	// requests were kept before there were workspaces. They are only read,
+	// to bring those into the first workspace, and are then emptied.
 	EnvironmentsFile string `json:"environmentsFile,omitempty"`
 	RequestsFile     string `json:"requestsFile,omitempty"`
 

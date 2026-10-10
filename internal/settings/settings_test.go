@@ -10,7 +10,7 @@ import (
 func TestSaveLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 
-	want := Settings{Width: 900, Height: 600, Maximized: true, SidebarWidth: 310, ResponseHeight: 240, ResponseFont: "Hack", EnvironmentsFile: "/a/e.json", RequestsFile: "r.json", JSONColours: JSONColours{Key: "#A31515", Number: "#098658"}}
+	want := Settings{Width: 900, Height: 600, Maximized: true, SidebarWidth: 310, ResponseHeight: 240, ResponseFont: "Hack", WorkspacesDir: "/a/workspaces", Workspace: "Default", EnvironmentsFile: "/a/e.json", RequestsFile: "r.json", JSONColours: JSONColours{Key: "#A31515", Number: "#098658"}}
 	if err := want.Save(path); err != nil {
 		t.Fatal(err)
 	}

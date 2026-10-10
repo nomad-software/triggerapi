@@ -174,6 +174,11 @@ func (p *grpcPanel) request() rpc.Request {
 	}
 }
 
+// setCodeFont sets the font the message is shown in.
+func (p *grpcPanel) setCodeFont(family string) {
+	p.message.SetFont(fixedFont(family))
+}
+
 // load shows the request in the widgets without calling onChange or onTarget.
 // Its method is the only one that can be chosen until the service definition
 // has been loaded.

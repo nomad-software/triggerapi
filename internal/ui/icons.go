@@ -17,7 +17,12 @@ const glyphSize = 128
 // Icons are drawn like this rather than loaded from files so that the program
 // needs nothing beside its binary.
 func drawIcon(size int, colour string, glyph func(*qt.QPainter)) *qt.QIcon {
-	return qt.NewQIcon2(drawPixmap(size, colour, glyph))
+	pixmap := drawPixmap(size, colour, glyph)
+	icon := qt.NewQIcon2(pixmap)
+	// The icon of a selected item is otherwise tinted with the colour of
+	// the selection.
+	icon.AddPixmap2(pixmap, qt.QIcon__Selected)
+	return icon
 }
 
 // drawPixmap draws the picture of an icon. See drawIcon.
@@ -289,8 +294,24 @@ func drawBin(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
-// The colours of the sidebar tab icons.
+// drawMonitor draws the monitor of a desk, on its stand, for a workspace.
+func drawMonitor(painter *qt.QPainter) {
+	outline(painter)
+	painter.DrawRoundedRect2(22, 28, 84, 54, 6, 6)
+
+	path := qt.NewQPainterPath()
+	// The stand and its foot.
+	path.MoveTo2(64, 82)
+	path.LineTo2(64, 100)
+	path.MoveTo2(44, 100)
+	path.LineTo2(84, 100)
+	painter.DrawPath(path)
+}
+
+// The colours of the sidebar tab icons, and of the buttons of each tab. The
+// workspaces have the colour of the Send button.
 const (
+	workspacesColour   = primaryColour
 	environmentsColour = "#8e6fd8"
 	requestsColour     = "#17807c"
 )

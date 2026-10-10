@@ -23,6 +23,7 @@ import (
 	"github.com/nomad-software/triggerapi/internal/rpc"
 	"github.com/nomad-software/triggerapi/internal/rpc/rpctest"
 	"github.com/nomad-software/triggerapi/internal/settings"
+	"github.com/nomad-software/triggerapi/internal/workspace"
 )
 
 // TestMain runs the Qt event loop on the main thread and the tests on another
@@ -51,12 +52,26 @@ func TestMain(m *testing.M) {
 // type stands for the user cancelling the dialog.
 var testRequestType = collection.TypeREST
 
-func testFiles(t *testing.T) Files {
+// testPaths are the places a test window keeps its data, with the paths of
+// the files of its one workspace.
+type testPaths struct {
+	Files
+	Environments string
+	Requests     string
+}
+
+// testFiles returns places in a temporary folder for a window to keep its
+// data in, with a workspace named Default that has nothing in it yet.
+func testFiles(t *testing.T) testPaths {
 	dir := t.TempDir()
-	return Files{
-		Environments: filepath.Join(dir, "environments.json"),
-		Requests:     filepath.Join(dir, "requests.json"),
-		Settings:     filepath.Join(dir, "settings.json"),
+	workspaces := filepath.Join(dir, "workspaces")
+	if err := workspace.Create(workspaces, workspace.Default); err != nil {
+		t.Fatal(err)
+	}
+	return testPaths{
+		Files:        Files{Settings: filepath.Join(dir, "settings.json"), Workspaces: workspaces},
+		Environments: workspace.Environments(workspaces, workspace.Default),
+		Requests:     workspace.Requests(workspaces, workspace.Default),
 	}
 }
 
@@ -84,7 +99,7 @@ func TestSendRequest(t *testing.T) {
 
 	var w *Window
 	mainthread.Wait(func() {
-		w = NewWindow(testFiles(t))
+		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
 		w.request.method.SetCurrentIndex(1) // POST
@@ -167,10 +182,11 @@ func TestEnvironments(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	path := filepath.Join(t.TempDir(), "environments.json")
+	files := testFiles(t)
+	path := files.Environments
 
 	mainthread.Wait(func() {
-		w := NewWindow(Files{Environments: path, Requests: filepath.Join(filepath.Dir(path), "requests.json")})
+		w := NewWindow(files.Files)
 		w.Show()
 
 		// Editing with nothing selected does nothing.
@@ -260,7 +276,7 @@ func TestEnvironments(t *testing.T) {
 
 	// A new window restores the environments and the selection.
 	mainthread.Wait(func() {
-		w := NewWindow(Files{Environments: path, Requests: filepath.Join(filepath.Dir(path), "requests.json")})
+		w := NewWindow(files.Files)
 
 		if w.environments.list.Count() != 2 || w.environments.list.CurrentRow() != 0 || w.environments.list.Item(1).Text() != "Other" {
 			t.Errorf("list not restored: count %d, current %d", w.environments.list.Count(), w.environments.list.CurrentRow())
@@ -298,11 +314,12 @@ func TestEnvironments(t *testing.T) {
 }
 
 func TestEnvironmentsUnreadableFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "environments.json")
+	files := testFiles(t)
+	path := files.Environments
 	os.WriteFile(path, []byte("{oops"), 0o644)
 
 	mainthread.Wait(func() {
-		w := NewWindow(Files{Environments: path, Requests: filepath.Join(filepath.Dir(path), "requests.json")})
+		w := NewWindow(files.Files)
 		if !strings.Contains(w.StatusBar().CurrentMessage(), "could not be loaded") {
 			t.Error("no error shown")
 		}
@@ -318,7 +335,7 @@ func TestRequests(t *testing.T) {
 	files := testFiles(t)
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree
 
@@ -414,7 +431,7 @@ func TestRequests(t *testing.T) {
 
 	// A new window restores the tree, and a request loads back unchanged.
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		tree := w.requests.tree
 
 		if tree.TopLevelItemCount() != 2 || tree.TopLevelItem(0).Text(0) != "Api" || tree.TopLevelItem(0).Child(1).Text(0) != "Post" {
@@ -480,7 +497,7 @@ func TestRequestsUnreadableFile(t *testing.T) {
 	os.WriteFile(files.Requests, []byte("{oops"), 0o644)
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		if !strings.Contains(w.StatusBar().CurrentMessage(), "could not be loaded") {
 			t.Error("no error shown")
 		}
@@ -500,7 +517,7 @@ func TestWindowSizeRemembered(t *testing.T) {
 	files := testFiles(t)
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		if w.Width() != 1024 || w.Height() != 768 {
 			t.Errorf("default size = %dx%d", w.Width(), w.Height())
 		}
@@ -509,12 +526,12 @@ func TestWindowSizeRemembered(t *testing.T) {
 		w.Close()
 	})
 
-	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, ResponseFont: "Iosevka Term Curly"}); got != want {
+	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default}); got != want {
 		t.Errorf("saved %+v, want %+v", got, want)
 	}
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		if w.Width() != 900 || w.Height() != 650 {
 			t.Errorf("restored size = %dx%d", w.Width(), w.Height())
 		}
@@ -523,21 +540,21 @@ func TestWindowSizeRemembered(t *testing.T) {
 	// A maximised window is restored maximised and keeps its normal size.
 	settings.Settings{Width: 900, Height: 650, Maximized: true}.Save(files.Settings)
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 		if !w.IsMaximized() {
 			t.Error("window not maximised")
 		}
 		w.Close()
 	})
-	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, Maximized: true, ResponseFont: "Iosevka Term Curly"}); got != want {
+	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, Maximized: true, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default}); got != want {
 		t.Errorf("saved %+v, want %+v", got, want)
 	}
 }
 
 func TestParamsShownInURL(t *testing.T) {
 	mainthread.Wait(func() {
-		w := NewWindow(testFiles(t))
+		w := NewWindow(testFiles(t).Files)
 		p := w.request
 
 		// Params appear in the URL as they are added.
@@ -586,7 +603,7 @@ func TestParamsShownInURL(t *testing.T) {
 
 func TestRequestReopened(t *testing.T) {
 	mainthread.Wait(func() {
-		w := NewWindow(testFiles(t))
+		w := NewWindow(testFiles(t).Files)
 		w.Show()
 
 		w.requests.addRequest()
@@ -607,9 +624,9 @@ func TestRequestReopened(t *testing.T) {
 
 func TestSidebarTabs(t *testing.T) {
 	mainthread.Wait(func() {
-		w := NewWindow(testFiles(t))
-		if w.sidebar.Count() != 2 || w.sidebar.TabToolTip(0) != "Environments" || w.sidebar.TabToolTip(1) != "Requests" {
-			t.Errorf("tabs = %d: %q, %q", w.sidebar.Count(), w.sidebar.TabToolTip(0), w.sidebar.TabToolTip(1))
+		w := NewWindow(testFiles(t).Files)
+		if w.sidebar.Count() != 3 || w.sidebar.TabToolTip(tabWorkspaces) != "Workspaces" || w.sidebar.TabToolTip(tabEnvironments) != "Environments" || w.sidebar.TabToolTip(tabRequests) != "Requests" {
+			t.Errorf("tabs = %d: %q, %q, %q", w.sidebar.Count(), w.sidebar.TabToolTip(0), w.sidebar.TabToolTip(1), w.sidebar.TabToolTip(2))
 		}
 
 		// The tabs have icons and no text.
@@ -625,7 +642,7 @@ func TestMenuBar(t *testing.T) {
 	files := testFiles(t)
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 
 		if w.about.Text() != "&About" {
@@ -650,7 +667,7 @@ func TestResponseFont(t *testing.T) {
 	settings.Settings{Width: 800, Height: 600, ResponseFont: "Some Font"}.Save(files.Settings)
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 
 		families := w.response.body.Font().Families()
@@ -671,7 +688,7 @@ func TestPlaceholderColouringLeavesRequestAlone(t *testing.T) {
 	files := testFiles(t)
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 
 		w.request.url.SetText("{{host}}/users?id={{id}}")
@@ -700,7 +717,7 @@ func TestPlaceholderColouringLeavesRequestAlone(t *testing.T) {
 // also frees crashes when the garbage collector next runs.
 func TestPlaceholderColouringSurvivesGC(t *testing.T) {
 	mainthread.Wait(func() {
-		w := NewWindow(testFiles(t))
+		w := NewWindow(testFiles(t).Files)
 		w.Show()
 
 		for range 50 {
@@ -795,7 +812,7 @@ func TestGRPCRequest(t *testing.T) {
 	var request *collection.Request
 
 	mainthread.Wait(func() {
-		w = NewWindow(files)
+		w = NewWindow(files.Files)
 		w.Show()
 
 		request = addGRPCRequest(w)
@@ -934,7 +951,7 @@ func TestGRPCRequest(t *testing.T) {
 	// A new window restores the request, and loads the methods when it is
 	// opened without changing the one that was saved.
 	mainthread.Wait(func() {
-		w = NewWindow(files)
+		w = NewWindow(files.Files)
 		w.Show()
 
 		tree := w.requests.tree
@@ -955,7 +972,7 @@ func TestGRPCRequest(t *testing.T) {
 
 func TestGRPCAndRESTRequests(t *testing.T) {
 	mainthread.Wait(func() {
-		w := NewWindow(testFiles(t))
+		w := NewWindow(testFiles(t).Files)
 		w.Show()
 		tree := w.requests.tree
 
@@ -1021,7 +1038,7 @@ func TestGRPCDefinitionError(t *testing.T) {
 
 	var w *Window
 	mainthread.Wait(func() {
-		w = NewWindow(testFiles(t))
+		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
 		addGRPCRequest(w)
@@ -1044,7 +1061,7 @@ func TestGRPCCancel(t *testing.T) {
 
 	var w *Window
 	mainthread.Wait(func() {
-		w = NewWindow(testFiles(t))
+		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
 		addGRPCRequest(w)
@@ -1081,7 +1098,7 @@ func TestGRPCCancel(t *testing.T) {
 
 func TestRequestTypeDialog(t *testing.T) {
 	mainthread.Wait(func() {
-		w := NewWindow(testFiles(t))
+		w := NewWindow(testFiles(t).Files)
 
 		for _, typ := range []collection.Type{collection.TypeREST, collection.TypeGRPC} {
 			dialog := newRequestTypeDialog(w.QWidget)
@@ -1167,12 +1184,12 @@ func TestMethodCombo(t *testing.T) {
 
 func TestSettingsDialog(t *testing.T) {
 	mainthread.Wait(func() {
-		defaults := Files{Environments: "environments.json", Requests: "requests.json"}
-		current := settings.Settings{Width: 900, Height: 650, ResponseFont: "A Font That Is Not Installed", RequestsFile: "/data/r.json"}
+		defaults := Files{Workspaces: "workspaces"}
+		current := settings.Settings{Width: 900, Height: 650, ResponseFont: "A Font That Is Not Installed"}
 
 		d := newSettingsDialog(nil, current, defaults)
-		if d.environments.Text() != "environments.json" || d.requests.Text() != "/data/r.json" {
-			t.Errorf("locations shown as %q and %q", d.environments.Text(), d.requests.Text())
+		if d.workspaces.Text() != "workspaces" {
+			t.Errorf("location shown as %q", d.workspaces.Text())
 		}
 
 		// Accepting without changing anything changes nothing, even though
@@ -1181,18 +1198,21 @@ func TestSettingsDialog(t *testing.T) {
 			t.Errorf("unchanged dialog gave %+v, want %+v", got, current)
 		}
 
-		d.environments.SetText("  /data/e.json ")
-		d.requests.SetText("requests.json")
+		d.workspaces.SetText("  /data/workspaces ")
 		d.font.SetCurrentFont(qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont))
 
 		got := d.settings(current)
 		want := current
-		want.EnvironmentsFile = "/data/e.json"
-		// A location put back to its default is not recorded.
-		want.RequestsFile = ""
+		want.WorkspacesDir = "/data/workspaces"
 		want.ResponseFont = d.font.CurrentFont().Family()
 		if got != want || got.ResponseFont == current.ResponseFont {
 			t.Errorf("got %+v, want %+v", got, want)
+		}
+
+		// A location put back to its default is not recorded.
+		d.workspaces.SetText("workspaces")
+		if got := d.settings(got); got.WorkspacesDir != "" {
+			t.Errorf("default location recorded as %q", got.WorkspacesDir)
 		}
 
 		d.buttons.Button(qt.QDialogButtonBox__Ok).Click()
@@ -1205,19 +1225,21 @@ func TestSettingsDialog(t *testing.T) {
 func TestApplySettings(t *testing.T) {
 	files := testFiles(t)
 	dir := filepath.Dir(files.Settings)
-	movedEnvs := filepath.Join(dir, "moved", "environments.json")
-	otherRequests := filepath.Join(dir, "other-requests.json")
-	os.Mkdir(filepath.Join(dir, "moved"), 0o755)
+	moved := filepath.Join(dir, "moved")
+	other := filepath.Join(dir, "other")
 
-	// Another set of requests already exists.
-	other := &collection.Store{}
-	other.AddFolder("Other").Add(collection.NewREST("Elsewhere", rest.Request{Method: "GET", URL: "other.test"}))
-	if err := other.Save(otherRequests); err != nil {
+	// Another folder already has a workspace.
+	elsewhere := &collection.Store{}
+	elsewhere.AddFolder("Other").Add(collection.NewREST("Elsewhere", rest.Request{Method: "GET", URL: "other.test"}))
+	if err := workspace.Create(other, "Theirs"); err != nil {
+		t.Fatal(err)
+	}
+	if err := elsewhere.Save(workspace.Requests(other, "Theirs")); err != nil {
 		t.Fatal(err)
 	}
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 
 		w.environments.add()
@@ -1228,8 +1250,7 @@ func TestApplySettings(t *testing.T) {
 
 		s := w.config
 		s.ResponseFont = "Some Font"
-		s.EnvironmentsFile = movedEnvs
-		s.RequestsFile = otherRequests
+		s.WorkspacesDir = moved
 		if err := w.applySettings(s); err != nil {
 			t.Fatal(err)
 		}
@@ -1240,90 +1261,90 @@ func TestApplySettings(t *testing.T) {
 		if got := w.grpcResponse.body.Font().Families()[0]; got != "Some Font" {
 			t.Errorf("gRPC response font = %q", got)
 		}
-
-		// The environments are kept, as their new file did not exist, and
-		// later changes go to it.
-		if w.environments.list.Count() != 1 || w.environments.store.Environments[0].Name != "Local" {
-			t.Errorf("environments = %+v", w.environments.store.Environments)
+		// The request body, the gRPC message and the curl command have it
+		// too.
+		for name, editor := range map[string]*qt.QPlainTextEdit{"body": w.request.bodyRaw, "message": w.grpc.message, "command": w.request.command} {
+			if got := editor.Font().Families()[0]; got != "Some Font" {
+				t.Errorf("%s font = %q", name, got)
+			}
 		}
+
+		// The workspaces are copied to the new folder, as it had none, and
+		// later changes go there.
+		if w.workspaces.current() != workspace.Default || w.environments.list.Count() != 1 || w.environments.store.Environments[0].Name != "Local" {
+			t.Fatalf("workspace %q, environments %+v", w.workspaces.current(), w.environments.store.Environments)
+		}
+		if w.environments.path != workspace.Environments(moved, workspace.Default) || w.requests.path != workspace.Requests(moved, workspace.Default) {
+			t.Errorf("paths = %q, %q", w.environments.path, w.requests.path)
+		}
+		w.environments.edit()
 		w.editor.variables.add("token", "abc")
-
-		// The requests are replaced by those in the file that existed, and
-		// the request that was open is closed.
-		tree := w.requests.tree
-		if tree.TopLevelItemCount() != 1 || tree.TopLevelItem(0).Text(colName) != "Other" || tree.TopLevelItem(0).Child(0).Text(colName) != "Elsewhere" {
-			t.Error("requests not loaded from the other file")
-		}
-		if w.open != nil || w.request.url.Text() != "" {
-			t.Errorf("request still open: %+v", w.open)
-		}
-		tree.SetCurrentItem(tree.TopLevelItem(0).Child(0))
-		w.request.url.SetText("changed.test")
 	})
 
-	moved, err := env.Load(movedEnvs)
-	if err != nil || len(moved.Environments) != 1 || len(moved.Environments[0].Variables) != 2 {
-		t.Errorf("moved environments = %+v, %v", moved, err)
+	copied, err := env.Load(workspace.Environments(moved, workspace.Default))
+	if err != nil || len(copied.Environments) != 1 || len(copied.Environments[0].Variables) != 2 {
+		t.Errorf("moved environments = %+v, %v", copied, err)
 	}
-	if old, _ := env.Load(files.Environments); len(old.Environments[0].Variables) != 1 {
-		t.Errorf("old environments file still written to: %+v", old.Environments)
-	}
-	if reloaded, _ := collection.Load(otherRequests); reloaded.Folders[0].Requests[0].URL != "changed.test" {
-		t.Errorf("other requests = %+v", reloaded.Folders[0].Requests[0].Request)
+	if old, _ := env.Load(files.Environments); len(old.Environments) != 1 || len(old.Environments[0].Variables) != 1 {
+		t.Errorf("old environments file changed: %+v", old.Environments)
 	}
 	if old, _ := collection.Load(files.Requests); len(old.Folders) != 1 || old.Folders[0].Requests[0].URL != "{{host}}/users" {
 		t.Errorf("old requests file changed: %+v", old.Folders)
 	}
-
-	saved := settings.Load(files.Settings)
-	if saved.ResponseFont != "Some Font" || saved.EnvironmentsFile != movedEnvs || saved.RequestsFile != otherRequests {
+	if saved := settings.Load(files.Settings); saved.ResponseFont != "Some Font" || saved.WorkspacesDir != moved || saved.Workspace != workspace.Default {
 		t.Errorf("saved settings = %+v", saved)
 	}
 
-	// The next run uses the new locations.
+	// The next run uses the new location.
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		if w.environments.list.Count() != 1 || len(w.environments.store.Environments[0].Variables) != 2 {
 			t.Errorf("environments = %+v", w.environments.store.Environments)
 		}
-		if w.requests.tree.TopLevelItem(0).Text(colName) != "Other" {
-			t.Error("requests not loaded from the other file")
-		}
 
-		// A file that cannot be used is refused and the setting left alone.
-		bad := filepath.Join(dir, "bad.json")
-		os.WriteFile(bad, []byte("{oops"), 0o644)
-
+		// A folder that already has workspaces shows those, and nothing is
+		// copied into it.
 		s := w.config
-		s.RequestsFile = bad
-		s.EnvironmentsFile = filepath.Join(dir, "missing-directory", "e.json")
-		err := w.applySettings(s)
-		if err == nil || !strings.Contains(err.Error(), "requests were not moved") || !strings.Contains(err.Error(), "environments were not moved") {
-			t.Errorf("err = %v", err)
-		}
-		if w.config.RequestsFile != otherRequests || w.config.EnvironmentsFile != movedEnvs || w.requests.path != otherRequests || w.environments.path != movedEnvs {
-			t.Errorf("settings changed: %+v", w.config)
-		}
-
-		// Going back to the defaults loads the original files.
-		s = w.config
-		s.EnvironmentsFile, s.RequestsFile = "", ""
+		s.WorkspacesDir = other
 		if err := w.applySettings(s); err != nil {
 			t.Fatal(err)
 		}
-		if len(w.environments.store.Environments[0].Variables) != 1 || w.requests.tree.TopLevelItem(0).Text(colName) != "New Folder" {
-			t.Error("default files not loaded")
+		if got := w.workspaces.names; !reflect.DeepEqual(got, []string{"Theirs"}) || w.workspaces.current() != "Theirs" {
+			t.Errorf("workspaces = %q, current %q", got, w.workspaces.current())
+		}
+		tree := w.requests.tree
+		if tree.TopLevelItemCount() != 1 || tree.TopLevelItem(0).Text(colName) != "Other" || w.environments.list.Count() != 0 {
+			t.Error("the workspace of the other folder was not loaded")
+		}
+
+		// A location that cannot be used is refused and the setting left
+		// alone.
+		blocked := filepath.Join(dir, "blocked")
+		os.WriteFile(blocked, []byte("a file, not a folder"), 0o644)
+		s = w.config
+		s.WorkspacesDir = blocked
+		if err := w.applySettings(s); err == nil || !strings.Contains(err.Error(), "workspaces were not moved") {
+			t.Errorf("err = %v", err)
+		}
+		if w.config.WorkspacesDir != other || w.workspaces.current() != "Theirs" || w.requests.path != workspace.Requests(other, "Theirs") {
+			t.Errorf("settings changed: %+v", w.config)
+		}
+
+		// Going back to the default shows the original workspace.
+		s = w.config
+		s.WorkspacesDir = ""
+		if err := w.applySettings(s); err != nil {
+			t.Fatal(err)
+		}
+		if w.workspaces.current() != workspace.Default || len(w.environments.store.Environments[0].Variables) != 1 || w.requests.tree.TopLevelItem(0).Text(colName) != "New Folder" {
+			t.Error("the default workspaces were not loaded")
 		}
 	})
-
-	if data, _ := os.ReadFile(filepath.Join(dir, "bad.json")); string(data) != "{oops" {
-		t.Errorf("bad file was overwritten: %q", data)
-	}
 }
 
 func TestMenuShortcuts(t *testing.T) {
 	mainthread.Wait(func() {
-		w := NewWindow(testFiles(t))
+		w := NewWindow(testFiles(t).Files)
 		if got := w.about.Shortcut().ToString(); got != "Ctrl+I" {
 			t.Errorf("about shortcut = %q", got)
 		}
@@ -1343,7 +1364,7 @@ func TestStatusBar(t *testing.T) {
 
 	var w *Window
 	mainthread.Wait(func() {
-		w = NewWindow(testFiles(t))
+		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
 		if !w.StatusBar().IsVisible() || !w.StatusBar().IsSizeGripEnabled() || w.StatusBar().CurrentMessage() != "" {
@@ -1380,7 +1401,7 @@ func TestStatusBar(t *testing.T) {
 
 func TestIcons(t *testing.T) {
 	mainthread.Wait(func() {
-		w := NewWindow(testFiles(t))
+		w := NewWindow(testFiles(t).Files)
 		if w.WindowIcon().IsNull() || appIcon().IsNull() {
 			t.Error("the window has no icon")
 		}
@@ -1413,7 +1434,7 @@ func TestRESTErrorStatus(t *testing.T) {
 	}
 
 	mainthread.Wait(func() {
-		w = NewWindow(testFiles(t))
+		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		// The response is empty until there is one, with no hint in it.
 		if w.response.body.PlaceholderText() != "" || w.response.body.ToPlainText() != "" || len(w.response.fields) != 0 {
@@ -1470,7 +1491,7 @@ func TestLayoutRemembered(t *testing.T) {
 
 	var w *Window
 	mainthread.Wait(func() {
-		w = NewWindow(files)
+		w = NewWindow(files.Files)
 		w.Resize(1000, 700)
 		w.Show()
 		addGRPCRequest(w)
@@ -1499,7 +1520,7 @@ func TestLayoutRemembered(t *testing.T) {
 	}
 
 	mainthread.Wait(func() {
-		w = NewWindow(files)
+		w = NewWindow(files.Files)
 		w.Show()
 	})
 	waitFor(t, "the sidebar width", func() bool { return w.split.Sizes()[0] == 350 })
@@ -1531,11 +1552,11 @@ func TestHeader(t *testing.T) {
 	files := testFiles(t)
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 
 		// The requests are shown first.
-		if w.sidebar.CurrentIndex() != 1 || w.sidebar.TabToolTip(1) != "Requests" {
+		if w.sidebar.CurrentIndex() != tabRequests || w.sidebar.TabToolTip(tabRequests) != "Requests" {
 			t.Errorf("sidebar tab = %d", w.sidebar.CurrentIndex())
 		}
 
@@ -1609,7 +1630,7 @@ func TestHeader(t *testing.T) {
 func TestGRPCRequestBarOrder(t *testing.T) {
 	var w *Window
 	mainthread.Wait(func() {
-		w = NewWindow(testFiles(t))
+		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		addGRPCRequest(w)
 	})
@@ -1654,7 +1675,7 @@ func TestFolding(t *testing.T) {
 
 	var w *Window
 	mainthread.Wait(func() {
-		w = NewWindow(testFiles(t))
+		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		w.response.show(&rest.Response{
 			Status:     "200 OK",
@@ -1729,7 +1750,7 @@ func TestFolding(t *testing.T) {
 func TestFoldingWhileEditing(t *testing.T) {
 	var w *Window
 	mainthread.Wait(func() {
-		w = NewWindow(testFiles(t))
+		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
 		// Only a JSON body can be folded.
@@ -1804,7 +1825,7 @@ func TestJSONColourSettings(t *testing.T) {
 	defaults := defaultJSONColours()
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 
 		// The colours are the defaults until others are chosen.
@@ -1812,7 +1833,7 @@ func TestJSONColourSettings(t *testing.T) {
 			t.Errorf("key colour = %s, want %s", got, defaults[tokenKey])
 		}
 
-		d := newSettingsDialog(w.QWidget, w.config, files)
+		d := newSettingsDialog(w.QWidget, w.config, files.Files)
 		if got := d.swatches[tokenKey].Text(); got != defaults[tokenKey] {
 			t.Errorf("swatch = %q", got)
 		}
@@ -1860,7 +1881,7 @@ func TestJSONColourSettings(t *testing.T) {
 
 	// The colours are used from the start of the next run.
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		if got := formatColour(w.grpcResponse.formats[tokenKey]); got != "#112233" {
 			t.Errorf("key colour = %s", got)
 		}
@@ -1909,7 +1930,7 @@ func TestNestedFolders(t *testing.T) {
 	files := testFiles(t)
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
 		tree := rt.tree
@@ -1993,7 +2014,7 @@ func TestNestedFolders(t *testing.T) {
 
 	// A new window restores the whole tree.
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
 		tree := rt.tree
@@ -2071,7 +2092,7 @@ func TestDragAndDrop(t *testing.T) {
 	}
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
 		tree := rt.tree
@@ -2222,7 +2243,7 @@ paths:
 	os.WriteFile(bad, []byte("just: text"), 0o644)
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
 		tree := rt.tree
@@ -2307,7 +2328,7 @@ func TestSidebarOrder(t *testing.T) {
 
 	var w *Window
 	mainthread.Wait(func() {
-		w = NewWindow(files)
+		w = NewWindow(files.Files)
 		w.Show()
 
 		// Environments are listed alphabetically, whatever order they were
@@ -2411,7 +2432,7 @@ func TestImportPostman(t *testing.T) {
 	os.WriteFile(spec, []byte(`{"openapi": "3.0.0", "paths": {"/a": {"get": {}}}}`), 0o644)
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
 		tree := rt.tree
@@ -2464,7 +2485,7 @@ func TestImportPostman(t *testing.T) {
 
 func TestImportDialog(t *testing.T) {
 	mainthread.Wait(func() {
-		w := NewWindow(testFiles(t))
+		w := NewWindow(testFiles(t).Files)
 
 		for source, label := range map[importSource]string{importOpenAPI: "OpenAPI", importPostman: "Postman"} {
 			dialog := newImportDialog(w.QWidget)
@@ -2495,7 +2516,7 @@ func TestFoldersStayOpenOrClosed(t *testing.T) {
 	}
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree
 
@@ -2518,7 +2539,7 @@ func TestFoldersStayOpenOrClosed(t *testing.T) {
 
 	// They are as they were left the next time.
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree
 
@@ -2556,7 +2577,7 @@ func TestImportEnvironment(t *testing.T) {
 	os.WriteFile(other, []byte(`{"info": {"name": "A"}, "item": []}`), 0o644)
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 		el := w.environments
 
@@ -2681,7 +2702,7 @@ func TestKeyValueOrder(t *testing.T) {
 
 func TestParamsOrder(t *testing.T) {
 	mainthread.Wait(func() {
-		w := NewWindow(testFiles(t))
+		w := NewWindow(testFiles(t).Files)
 
 		// A request is shown with its params and headers in order, in the
 		// URL too.
@@ -2746,7 +2767,7 @@ func TestCurlView(t *testing.T) {
 	}
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 		p := w.request
 
@@ -2843,7 +2864,7 @@ func TestExecuteCurl(t *testing.T) {
 
 	var w *Window
 	mainthread.Wait(func() {
-		w = NewWindow(files)
+		w = NewWindow(files.Files)
 		w.Show()
 		w.request.load(rest.Request{Method: "GET", URL: "{{host}}/a", Headers: []rest.KeyValue{{Key: "X-Key", Value: "abc", Enabled: true}}})
 		w.request.curl.Click()
@@ -2901,7 +2922,7 @@ func TestSearchRequests(t *testing.T) {
 	}
 
 	mainthread.Wait(func() {
-		w := NewWindow(files)
+		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
 		tree := rt.tree
@@ -2984,7 +3005,7 @@ func TestSaveResponse(t *testing.T) {
 	dir := t.TempDir()
 
 	mainthread.Wait(func() {
-		w := NewWindow(testFiles(t))
+		w := NewWindow(testFiles(t).Files)
 		w.Show()
 
 		for _, p := range []*responsePanel{w.response, w.grpcResponse} {
@@ -3117,4 +3138,271 @@ func TestKeyValueRemoveButtons(t *testing.T) {
 			t.Error("the new row has no button, or the empty one has")
 		}
 	})
+}
+
+func TestWorkspaces(t *testing.T) {
+	files := testFiles(t)
+	dir := files.Workspaces
+
+	var w *Window
+	var warned []string
+	mainthread.Wait(func() {
+		w = NewWindow(files.Files)
+		w.Show()
+		ws := w.workspaces
+		ws.warn = func(message string) { warned = append(warned, message) }
+
+		// There is one workspace to begin with, which is the one in use.
+		if !reflect.DeepEqual(ws.names, []string{"Default"}) || ws.current() != "Default" || ws.list.CurrentRow() != 0 {
+			t.Fatalf("workspaces = %q, current %q", ws.names, ws.current())
+		}
+
+		// It is given an environment and a request.
+		w.environments.add()
+		w.editor.name.SetText("Local")
+		w.closeEditor()
+		w.request.url.SetText("default.test")
+		w.requests.addRequest()
+
+		// The last workspace cannot be removed.
+		ws.confirm = func(string) bool { t.Error("asked about the last workspace"); return true }
+		ws.remove()
+		if len(warned) != 1 || !strings.Contains(warned[0], "last workspace") || len(ws.names) != 1 {
+			t.Errorf("warned %q with workspaces %q", warned, ws.names)
+		}
+		warned = nil
+
+		// A new workspace becomes the one in use, and has nothing in it.
+		ws.add()
+		if !reflect.DeepEqual(ws.names, []string{"Default", "New Workspace"}) || ws.current() != "New Workspace" || w.config.Workspace != "New Workspace" {
+			t.Fatalf("workspaces = %q, current %q", ws.names, ws.current())
+		}
+		if w.environments.list.Count() != 0 || w.requests.tree.TopLevelItemCount() != 0 || w.open != nil || w.request.url.Text() != "" {
+			t.Errorf("new workspace has %d environments and %d folders, open %+v", w.environments.list.Count(), w.requests.tree.TopLevelItemCount(), w.open)
+		}
+
+		// What is added now goes into it.
+		w.environments.add()
+		w.editor.name.SetText("Staging")
+		w.closeEditor()
+		w.request.url.SetText("new.test")
+		w.requests.addRequest()
+
+		// It is renamed, which renames its folder and moves it in the list.
+		ws.list.CurrentItem().SetText("  Alpha ")
+	})
+
+	waitFor(t, "the workspace to be renamed", func() bool {
+		return reflect.DeepEqual(w.workspaces.names, []string{"Alpha", "Default"}) && w.workspaces.current() == "Alpha"
+	})
+
+	mainthread.Wait(func() {
+		ws := w.workspaces
+		if w.config.Workspace != "Alpha" || w.environments.path != workspace.Environments(dir, "Alpha") || w.requests.path != workspace.Requests(dir, "Alpha") {
+			t.Errorf("after rename: workspace %q, paths %q and %q", w.config.Workspace, w.environments.path, w.requests.path)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "New Workspace")); err == nil {
+			t.Error("the old folder is still there")
+		}
+
+		// Later changes are saved under the new name.
+		w.environments.edit()
+		w.editor.variables.add("host", "alpha.test")
+		w.closeEditor()
+
+		// A name that cannot be used is refused.
+		ws.list.CurrentItem().SetText("default")
+	})
+
+	waitFor(t, "the name to be refused", func() bool { return len(warned) == 1 })
+
+	mainthread.Wait(func() {
+		ws := w.workspaces
+		if !strings.Contains(warned[0], "already a workspace") || !reflect.DeepEqual(ws.names, []string{"Alpha", "Default"}) || ws.list.Item(0).Text() != "Alpha" {
+			t.Errorf("warned %q, workspaces %q, shown %q", warned, ws.names, ws.list.Item(0).Text())
+		}
+		warned = nil
+
+		// Selecting the other workspace shows what is in it.
+		ws.list.SetCurrentRow(1)
+		if ws.current() != "Default" || w.environments.list.Count() != 1 || w.environments.list.Item(0).Text() != "Local" {
+			t.Fatalf("current %q with %d environments", ws.current(), w.environments.list.Count())
+		}
+		tree := w.requests.tree
+		if tree.TopLevelItemCount() != 1 || w.open != nil {
+			t.Fatalf("%d folders, open %+v", tree.TopLevelItemCount(), w.open)
+		}
+		tree.SetCurrentItem(tree.TopLevelItem(0).Child(0))
+		if w.request.url.Text() != "default.test" {
+			t.Errorf("url = %q", w.request.url.Text())
+		}
+
+		// And back again.
+		ws.list.SetCurrentRow(0)
+		if w.environments.list.Item(0).Text() != "Staging" || w.expand("{{host}}") != "alpha.test" || w.open != nil {
+			t.Errorf("environment %q, host %q", w.environments.list.Item(0).Text(), w.expand("{{host}}"))
+		}
+
+		w.Close()
+	})
+
+	// Each workspace has its own files.
+	alpha, err := collection.Load(workspace.Requests(dir, "Alpha"))
+	if err != nil || len(alpha.Folders) != 1 || alpha.Folders[0].Requests[0].URL != "new.test" {
+		t.Errorf("requests of Alpha = %+v, %v", alpha, err)
+	}
+	original, err := collection.Load(files.Requests)
+	if err != nil || len(original.Folders) != 1 || original.Folders[0].Requests[0].URL != "default.test" {
+		t.Errorf("requests of Default = %+v, %v", original, err)
+	}
+	if envs, _ := env.Load(workspace.Environments(dir, "Alpha")); len(envs.Environments) != 1 || len(envs.Environments[0].Variables) != 1 {
+		t.Errorf("environments of Alpha = %+v", envs)
+	}
+	if saved := settings.Load(files.Settings); saved.Workspace != "Alpha" {
+		t.Errorf("saved workspace = %q", saved.Workspace)
+	}
+
+	// The next run opens the workspace that was in use.
+	mainthread.Wait(func() {
+		w = NewWindow(files.Files)
+		w.Show()
+		ws := w.workspaces
+		ws.warn = func(message string) { warned = append(warned, message) }
+
+		if ws.current() != "Alpha" || w.environments.list.Count() != 1 || w.environments.list.Item(0).Text() != "Staging" {
+			t.Fatalf("current %q with %d environments", ws.current(), w.environments.list.Count())
+		}
+		tree := w.requests.tree
+		tree.SetCurrentItem(tree.TopLevelItem(0).Child(0))
+
+		// It is not removed unless the user agrees to it.
+		var asked string
+		ws.confirm = func(question string) bool { asked = question; return false }
+		ws.remove()
+		if len(ws.names) != 2 || !strings.Contains(asked, `"Alpha"`) {
+			t.Errorf("workspaces %q after being asked %q", ws.names, asked)
+		}
+
+		// Removing it deletes its files, and the other becomes the one in
+		// use, with the request that was open closed.
+		ws.confirm = func(string) bool { return true }
+		ws.remove()
+		if !reflect.DeepEqual(ws.names, []string{"Default"}) || ws.current() != "Default" || w.config.Workspace != "Default" || len(warned) != 0 {
+			t.Fatalf("workspaces = %q, current %q, warned %q", ws.names, ws.current(), warned)
+		}
+		if w.open != nil || w.environments.list.Item(0).Text() != "Local" || w.requests.path != files.Requests {
+			t.Errorf("after remove: open %+v, requests at %q", w.open, w.requests.path)
+		}
+	})
+	if _, err := os.Stat(filepath.Join(dir, "Alpha")); err == nil {
+		t.Error("the folder of the removed workspace is still there")
+	}
+
+	// A workspace whose folder has other files in it is not removed.
+	mainthread.Wait(func() {
+		ws := w.workspaces
+		ws.add()
+		os.WriteFile(filepath.Join(dir, "New Workspace", "notes.txt"), []byte("mine"), 0o644)
+		ws.remove()
+		if len(warned) != 1 || !strings.Contains(warned[0], "notes.txt") || len(ws.names) != 2 || ws.current() != "New Workspace" {
+			t.Errorf("warned %q, workspaces %q", warned, ws.names)
+		}
+	})
+}
+
+func TestWorkspaceMigration(t *testing.T) {
+	dir := t.TempDir()
+	files := Files{
+		Settings:     filepath.Join(dir, "settings.json"),
+		Workspaces:   filepath.Join(dir, "workspaces"),
+		Environments: filepath.Join(dir, "environments.json"),
+		Requests:     filepath.Join(dir, "requests.json"),
+	}
+
+	// The environments were where they always were, and the requests had
+	// been moved elsewhere in the settings.
+	envs := &env.Store{Active: 0, Environments: []env.Environment{{Name: "Local", Variables: []env.Variable{{Key: "host", Value: "old.test", Enabled: true}}}}}
+	if err := envs.Save(files.Environments); err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := filepath.Join(dir, "shared", "requests.json")
+	os.Mkdir(filepath.Dir(elsewhere), 0o755)
+	requests := &collection.Store{}
+	requests.AddFolder("Old").Add(collection.NewREST("Ping", rest.Request{Method: "GET", URL: "{{host}}/ping"}))
+	if err := requests.Save(elsewhere); err != nil {
+		t.Fatal(err)
+	}
+	if err := (settings.Settings{Width: 900, Height: 650, RequestsFile: elsewhere}).Save(files.Settings); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(elsewhere)
+
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+
+		// They are in a workspace named Default, which is the one in use.
+		if !reflect.DeepEqual(w.workspaces.names, []string{"Default"}) || w.workspaces.current() != "Default" || w.StatusBar().CurrentMessage() != "" {
+			t.Fatalf("workspaces = %q, status %q", w.workspaces.names, w.StatusBar().CurrentMessage())
+		}
+		if w.environments.list.Count() != 1 || w.expand("{{host}}") != "old.test" {
+			t.Errorf("%d environments, host %q", w.environments.list.Count(), w.expand("{{host}}"))
+		}
+		tree := w.requests.tree
+		if tree.TopLevelItemCount() != 1 || tree.TopLevelItem(0).Text(colName) != "Old" {
+			t.Fatal("the requests were not brought in")
+		}
+
+		// Changes go to the workspace, not to the files they came from.
+		tree.SetCurrentItem(tree.TopLevelItem(0).Child(0))
+		w.request.url.SetText("{{host}}/changed")
+		w.Close()
+	})
+
+	if after, _ := os.ReadFile(elsewhere); string(after) != string(before) {
+		t.Error("the old requests file was changed")
+	}
+	if old, _ := env.Load(files.Environments); len(old.Environments) != 1 {
+		t.Error("the old environments file was changed")
+	}
+	moved, err := collection.Load(workspace.Requests(files.Workspaces, "Default"))
+	if err != nil || len(moved.Folders) != 1 || moved.Folders[0].Requests[0].URL != "{{host}}/changed" {
+		t.Errorf("requests of the workspace = %+v, %v", moved, err)
+	}
+	if saved := settings.Load(files.Settings); saved.Workspace != "Default" || saved.RequestsFile != "" || saved.EnvironmentsFile != "" {
+		t.Errorf("saved settings = %+v", saved)
+	}
+
+	// The old files are not brought in again, once there is a workspace.
+	requests.AddFolder("Later")
+	requests.Save(elsewhere)
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		if w.requests.tree.TopLevelItemCount() != 1 || len(w.workspaces.names) != 1 {
+			t.Errorf("%d folders in %q", w.requests.tree.TopLevelItemCount(), w.workspaces.names)
+		}
+	})
+}
+
+func TestFirstRun(t *testing.T) {
+	dir := t.TempDir()
+	files := Files{
+		Settings:     filepath.Join(dir, "settings.json"),
+		Workspaces:   filepath.Join(dir, "workspaces"),
+		Environments: filepath.Join(dir, "environments.json"),
+		Requests:     filepath.Join(dir, "requests.json"),
+	}
+
+	// With nothing saved at all there is still a workspace to work in.
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		if !reflect.DeepEqual(w.workspaces.names, []string{"Default"}) || w.StatusBar().CurrentMessage() != "" {
+			t.Fatalf("workspaces = %q, status %q", w.workspaces.names, w.StatusBar().CurrentMessage())
+		}
+		w.request.url.SetText("first.test")
+		w.requests.addRequest()
+	})
+	if saved, err := collection.Load(workspace.Requests(files.Workspaces, "Default")); err != nil || len(saved.Folders) != 1 {
+		t.Errorf("requests = %+v, %v", saved, err)
+	}
 }

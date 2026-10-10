@@ -200,8 +200,9 @@ func (p *requestPanel) newCurlPage() *qt.QWidget {
 	return page
 }
 
-// setCodeFont sets the font the curl command is shown in.
+// setCodeFont sets the font the body and the curl command are shown in.
 func (p *requestPanel) setCodeFont(family string) {
+	p.bodyRaw.SetFont(fixedFont(family))
 	p.command.SetFont(fixedFont(family))
 }
 
@@ -392,10 +393,10 @@ func (p *requestPanel) updatePreview(expand func(string) string) {
 	resolved := expand(url)
 	if unknown := env.Placeholders(resolved); len(unknown) > 0 {
 		p.preview.SetText("Not defined in the selected environment: " + strings.Join(unknown, ", "))
-		p.preview.SetStyleSheet("color: " + statusColour(400))
+		p.preview.SetStyleSheet("color: " + unknownColour)
 	} else {
 		p.preview.SetText("→ " + resolved)
-		p.preview.SetStyleSheet("color: " + statusColour(200))
+		p.preview.SetStyleSheet("color: " + knownColour)
 	}
 	p.preview.SetVisible(true)
 }

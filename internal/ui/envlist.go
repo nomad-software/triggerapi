@@ -111,7 +111,9 @@ func (s *envList) load(store *env.Store, path string) {
 
 	s.list.Clear()
 	for _, e := range store.Environments {
-		s.list.AddItem(e.Name)
+		item := qt.NewQListWidgetItem2(e.Name)
+		item.SetIcon(environmentIcon())
+		s.list.AddItemWithItem(item)
 	}
 	s.list.SetCurrentRow(store.Active)
 }
@@ -254,4 +256,16 @@ func (s *envList) save() {
 	if err := s.store.Save(s.path); err != nil && s.onError != nil {
 		s.onError(err)
 	}
+}
+
+// environmentIconCache is the icon of an environment, once it has been
+// drawn.
+var environmentIconCache *qt.QIcon
+
+// environmentIcon returns the icon shown before the name of an environment.
+func environmentIcon() *qt.QIcon {
+	if environmentIconCache == nil {
+		environmentIconCache = drawIcon(iconSize*2, environmentsColour, drawGlobe)
+	}
+	return environmentIconCache
 }

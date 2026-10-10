@@ -224,6 +224,10 @@ func (p *responsePanel) setFields(fields ...field) {
 	const nowrap = `white-space: nowrap; `
 	var left strings.Builder
 	var right []string
+	// The last cell takes the width that is left over, which would
+	// otherwise be shared out and leave gaps between the others. It is the
+	// error if there is one.
+	filled := false
 	for _, f := range p.fields {
 		value := html.EscapeString(f.value)
 		if f.failure {
@@ -236,6 +240,7 @@ func (p *responsePanel) setFields(fields ...field) {
 			fmt.Fprintf(&left, `<td style="%spadding-right: 5px">%s</td><td style="%spadding-right: 20px">%s</td>`, nowrap, label, nowrap, value)
 		case fieldError:
 			fmt.Fprintf(&left, `<td style="%spadding-right: 5px">%s</td><td width="100%%">%s</td>`, nowrap, label, value)
+			filled = true
 		default:
 			right = append(right, label+" "+value)
 		}
@@ -243,6 +248,9 @@ func (p *responsePanel) setFields(fields ...field) {
 
 	result := ""
 	if left.Len() > 0 {
+		if !filled {
+			left.WriteString(`<td width="100%"></td>`)
+		}
 		result = `<table width="100%" cellspacing="0" cellpadding="0"><tr>` + left.String() + `</tr></table>`
 	}
 	p.result.SetText(result)

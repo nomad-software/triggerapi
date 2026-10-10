@@ -20,6 +20,8 @@ bindings.
   can be searched by name.
 - Import an OpenAPI 3 or Swagger 2 document, as JSON or YAML, or a Postman
   collection, to create a folder of requests.
+- Keep separate sets of environments and requests in workspaces, and switch
+  between them.
 - Define environments of variables and use them anywhere in a request as
   `{{name}}` placeholders. Environments exported from Postman can be imported.
 
@@ -128,15 +130,22 @@ definitions from `.proto` files is not supported yet.
 TriggerAPI keeps its data as JSON files, by default in the directory it is run
 from:
 
-| File | Contents |
+| Path | Contents |
 | --- | --- |
-| `environments.json` | Environments and their variables |
-| `requests.json` | Saved requests and their folders |
-| `settings.json` | Window size and layout, the response font and file locations |
+| `settings.json` | Window size and layout, the response font, colours, the workspaces folder and the workspace in use |
+| `workspaces/<name>/environments.json` | The environments of a workspace and their variables |
+| `workspaces/<name>/requests.json` | The saved requests of a workspace and their folders |
 
-The environments and requests files can be kept elsewhere, such as a folder
-that is synced or shared, by choosing their locations in File > Settings.
-`settings.json` always stays in the directory TriggerAPI is run from.
+Each workspace has its own environments and requests, and is a folder named
+after it inside the workspaces folder. Workspaces are added, renamed and
+removed in the Workspaces tab of the sidebar; the selected one is the one in
+use. The workspaces folder can be kept elsewhere, such as a folder that is
+synced or shared, by choosing its location in File > Settings. `settings.json`
+always stays in the directory TriggerAPI is run from.
+
+If there are `environments.json` and `requests.json` files from a version
+before workspaces, they are copied into a workspace named Default the first
+time this version is run, and left where they were.
 
 Changes are saved as they are made. Passwords and tokens entered in requests
 and environments are stored in these files as plain text.
