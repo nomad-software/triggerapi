@@ -25,8 +25,8 @@ type responsePanel struct {
 	body    *qt.QPlainTextEdit
 	headers *qt.QTableWidget
 
-	// save writes the body of the response to a file. It is in the slim
-	// bar at the right of the panel.
+	// save writes the body of the response to a file. It is at the right
+	// of the line the tabs are on.
 	save *qt.QToolButton
 	// content is the body as it is saved: JSON formatted as it is shown,
 	// and any other HTTP response as it was received. fileName is the name
@@ -98,7 +98,11 @@ func newResponsePanel(bodyFont string) *responsePanel {
 	p.headers.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
 	p.headers.SetSelectionBehavior(qt.QAbstractItemView__SelectRows)
 
-	p.tabs = qt.NewQTabWidget2()
+	p.save = newTabButton(saveColour, drawDisk, "Save the response to a file")
+	p.save.SetEnabled(false)
+	p.save.OnClicked(p.saveBody)
+
+	p.tabs = newButtonTabs(p.save)
 	p.tabs.AddTab(p.body.QWidget, "Response")
 	p.tabs.AddTab(p.headers.QWidget, "Headers")
 
@@ -109,12 +113,7 @@ func newResponsePanel(bodyFont string) *responsePanel {
 	p.warn = func(message string) {
 		qt.QMessageBox_Warning(p.root, "TriggerAPI", message)
 	}
-	p.save = newViewButton(saveColour, drawDisk, "Save the response to a file")
-	p.save.SetEnabled(false)
-	p.save.OnClicked(p.saveBody)
-
-	layout := qt.NewQVBoxLayout(qt.NewQWidget2())
-	layout.SetContentsMargins(0, 0, 0, 0)
+	layout := qt.NewQVBoxLayout(p.root)
 	p.result = qt.NewQLabel2()
 	p.result.SetTextFormat(qt.RichText)
 	p.result.SetWordWrap(true)
@@ -122,18 +121,12 @@ func newResponsePanel(bodyFont string) *responsePanel {
 	p.details = qt.NewQLabel2()
 	p.details.SetTextFormat(qt.RichText)
 
-	bar := qt.NewQHBoxLayout2()
-	bar.AddWidget2(p.result.QWidget, 1)
-	bar.AddWidget3(p.details.QWidget, 0, qt.AlignRight|qt.AlignTop)
+	fields := qt.NewQHBoxLayout2()
+	fields.AddWidget2(p.result.QWidget, 1)
+	fields.AddWidget3(p.details.QWidget, 0, qt.AlignRight|qt.AlignTop)
 
 	layout.AddWidget2(p.tabs.QWidget, 1)
-	layout.AddLayout(bar.QLayout)
-
-	// The slim bar is beside the whole of the response, as the one of the
-	// request panel is beside the request.
-	content := qt.NewQHBoxLayout(p.root)
-	content.AddWidget2(layout.ParentWidget(), 1)
-	content.AddWidget(newViewBar(p.save))
+	layout.AddLayout(fields.QLayout)
 
 	return p
 }

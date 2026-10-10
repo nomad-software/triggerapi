@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"fmt"
-
 	qt "github.com/mappu/miqt/qt6"
 )
 
@@ -28,16 +26,4 @@ QPushButton:disabled { background-color: #8a9aab; }
 // makePrimary styles a button as the main action of its page.
 func makePrimary(button *qt.QPushButton) {
 	button.SetStyleSheet(primaryStyle)
-}
-
-// borderColour returns a colour for a border drawn around part of a window:
-// that of the window with some of the colour of its text mixed in, so that
-// it shows on a light theme and on a dark one.
-func borderColour() string {
-	palette := qt.QGuiApplication_Palette()
-	window := palette.ColorWithCr(qt.QPalette__Window)
-	text := palette.ColorWithCr(qt.QPalette__WindowText)
-
-	mix := func(a, b int) int { return (a*65 + b*35) / 100 }
-	return fmt.Sprintf("#%02x%02x%02x", mix(window.Red(), text.Red()), mix(window.Green(), text.Green()), mix(window.Blue(), text.Blue()))
 }

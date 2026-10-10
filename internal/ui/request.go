@@ -63,8 +63,8 @@ type requestPanel struct {
 	bodyFold *folder
 
 	// pages shows the fields of the request, or the request as a command
-	// (pageFields / pageCurl), as chosen with the curl button in the bar at
-	// the right.
+	// (pageFields / pageCurl), as chosen with the curl button beside the
+	// tabs.
 	pages *qt.QStackedWidget
 	curl  *qt.QToolButton
 	// command is the request as a curl command.
@@ -130,7 +130,19 @@ func newRequestPanel() *requestPanel {
 	p.headers.onChange = p.changed
 	p.highlight.table(p.headers.table)
 
-	tabs := qt.NewQTabWidget2()
+	// The curl button is at the right of the line the tabs are on.
+	p.curl = newTabButton(curlColour, drawPrompt, "Show the request as a curl command")
+	p.curl.SetCheckable(true)
+	p.curl.OnToggled(func(checked bool) {
+		if checked {
+			p.pages.SetCurrentIndex(pageCurl)
+			p.updateCurl()
+		} else {
+			p.pages.SetCurrentIndex(pageFields)
+		}
+	})
+
+	tabs := newButtonTabs(p.curl)
 	tabs.AddTab(p.newBodyTab(), "Body")
 	tabs.AddTab(p.params.panel(), "Params")
 	tabs.AddTab(p.auth.root, "Authorization")
@@ -147,32 +159,11 @@ func newRequestPanel() *requestPanel {
 	p.pages.AddWidget(fields)
 	p.pages.AddWidget(p.newCurlPage())
 
-	content := qt.NewQHBoxLayout2()
-	content.AddWidget2(p.pages.QWidget, 1)
-	content.AddWidget(p.newViewBar())
-
 	layout := qt.NewQVBoxLayout(p.root)
 	layout.AddWidget(p.header.root)
-	layout.AddLayout2(content.QLayout, 1)
+	layout.AddWidget2(p.pages.QWidget, 1)
 
 	return p
-}
-
-// newViewBar returns the slim bar at the right of the panel, with a button
-// for each other way of showing the request.
-func (p *requestPanel) newViewBar() *qt.QWidget {
-	p.curl = newViewButton(curlColour, drawPrompt, "Show the request as a curl command")
-	p.curl.SetCheckable(true)
-	p.curl.OnToggled(func(checked bool) {
-		if checked {
-			p.pages.SetCurrentIndex(pageCurl)
-			p.updateCurl()
-		} else {
-			p.pages.SetCurrentIndex(pageFields)
-		}
-	})
-
-	return newViewBar(p.curl)
 }
 
 // newCurlPage returns the page which shows the request as a curl command.
