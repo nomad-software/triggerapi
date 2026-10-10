@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -22,6 +23,42 @@ const (
 	environmentsFile = "environments.json"
 	requestsFile     = "requests.json"
 )
+
+// appName is the name of the folder of the program, in the place the system
+// has for the data of programs.
+const appName = "triggerapi"
+
+// DefaultDir returns the folder the workspaces are kept in unless another is
+// chosen: a folder for the program in the place the system has for the data
+// of programs, which is ~/.local/share on Linux (or $XDG_DATA_HOME) and
+// ~/Library/Application Support on macOS.
+func DefaultDir() (string, error) {
+	dir, err := dataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, appName, "workspaces"), nil
+}
+
+// dataDir returns the place the system has for the data of programs.
+func dataDir() (string, error) {
+	switch runtime.GOOS {
+	case "darwin", "ios", "windows", "plan9":
+		// These keep data where they keep configuration.
+		return os.UserConfigDir()
+	}
+
+	// The rest follow the XDG base directory specification, in which a
+	// path that is not absolute is to be ignored.
+	if dir := os.Getenv("XDG_DATA_HOME"); filepath.IsAbs(dir) {
+		return dir, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".local", "share"), nil
+}
 
 // Environments returns the path of the file the environments of a workspace
 // are kept in.

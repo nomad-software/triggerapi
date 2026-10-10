@@ -3,6 +3,8 @@
 package settings
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 
 	"github.com/nomad-software/triggerapi/internal/jsonfile"
@@ -42,12 +44,6 @@ type Settings struct {
 	// Pinned are the requests that are kept open in tabs of their own.
 	Pinned []Pin `json:"pinned,omitempty"`
 
-	// EnvironmentsFile and RequestsFile are where the environments and the
-	// requests were kept before there were workspaces. They are only read,
-	// to bring those into the first workspace, and are then emptied.
-	EnvironmentsFile string `json:"environmentsFile,omitempty"`
-	RequestsFile     string `json:"requestsFile,omitempty"`
-
 	// JSONColours are the colours JSON is highlighted in.
 	JSONColours JSONColours `json:"jsonColours,omitzero"`
 }
@@ -81,6 +77,29 @@ func (c JSONColours) valid() JSONColours {
 		}
 	}
 	return c
+}
+
+// appName is the name of the folder the settings are kept in.
+const appName = "triggerapi"
+
+// fileName is the name of the settings file.
+const fileName = "settings.json"
+
+// Path returns where the settings file is kept: in a folder for the program
+// in the place the system has for the configuration of programs, which is
+// ~/.config on Linux (or $XDG_CONFIG_HOME), ~/Library/Application Support on
+// macOS and %AppData% on Windows.
+func Path() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, appName, fileName), nil
+}
+
+// Prepare makes the folder the settings file at path is kept in.
+func Prepare(path string) error {
+	return os.MkdirAll(filepath.Dir(path), 0o755)
 }
 
 // Load reads the settings from the JSON file at path. Defaults are used if

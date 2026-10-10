@@ -3322,20 +3322,16 @@ func TestWorkspaceMigration(t *testing.T) {
 		Requests:     filepath.Join(dir, "requests.json"),
 	}
 
-	// The environments were where they always were, and the requests had
-	// been moved elsewhere in the settings.
+	// There are environments and requests from before there were
+	// workspaces.
 	envs := &env.Store{Active: 0, Environments: []env.Environment{{Name: "Local", Variables: []env.Variable{{Key: "host", Value: "old.test", Enabled: true}}}}}
 	if err := envs.Save(files.Environments); err != nil {
 		t.Fatal(err)
 	}
-	elsewhere := filepath.Join(dir, "shared", "requests.json")
-	os.Mkdir(filepath.Dir(elsewhere), 0o755)
+	elsewhere := files.Requests
 	requests := &collection.Store{}
 	requests.AddFolder("Old").Add(collection.NewREST("Ping", rest.Request{Method: "GET", URL: "{{host}}/ping"}))
 	if err := requests.Save(elsewhere); err != nil {
-		t.Fatal(err)
-	}
-	if err := (settings.Settings{Width: 900, Height: 650, RequestsFile: elsewhere}).Save(files.Settings); err != nil {
 		t.Fatal(err)
 	}
 	before, _ := os.ReadFile(elsewhere)
@@ -3372,7 +3368,7 @@ func TestWorkspaceMigration(t *testing.T) {
 	if err != nil || len(moved.Folders) != 1 || moved.Folders[0].Requests[0].URL != "{{host}}/changed" {
 		t.Errorf("requests of the workspace = %+v, %v", moved, err)
 	}
-	if saved := settings.Load(files.Settings); saved.Workspace != "Default" || saved.RequestsFile != "" || saved.EnvironmentsFile != "" {
+	if saved := settings.Load(files.Settings); saved.Workspace != "Default" {
 		t.Errorf("saved settings = %+v", saved)
 	}
 
@@ -3727,4 +3723,76 @@ func TestDuplicate(t *testing.T) {
 	if copied, err := collection.Load(workspace.Requests(files.Workspaces, "Default copy")); err != nil || len(copied.Folders) != 1 {
 		t.Errorf("requests of the copy = %+v, %v", copied, err)
 	}
+}
+
+func TestWorkspacesMoved(t *testing.T) {
+	dir := t.TempDir()
+	files := Files{
+		Settings:      filepath.Join(dir, "config", "settings.json"),
+		Workspaces:    filepath.Join(dir, "data", "workspaces"),
+		OldWorkspaces: filepath.Join(dir, "workspaces"),
+	}
+	os.Mkdir(filepath.Dir(files.Settings), 0o755)
+
+	// There are workspaces where they used to be kept.
+	for name, url := range map[string]string{"Hotel": "hotel.test", "Payments": "pay.test"} {
+		if err := workspace.Create(files.OldWorkspaces, name); err != nil {
+			t.Fatal(err)
+		}
+		store := &collection.Store{}
+		store.AddFolder("Folder").Add(collection.NewREST("Ping", rest.Request{Method: "GET", URL: url}))
+		if err := store.Save(workspace.Requests(files.OldWorkspaces, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := (settings.Settings{Width: 900, Height: 650, Workspace: "Payments"}).Save(files.Settings); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+
+		// They are where they are kept now, with the one that was in use
+		// still the one in use.
+		if !reflect.DeepEqual(w.workspaces.names, []string{"Hotel", "Payments"}) || w.workspaces.current() != "Payments" || w.StatusBar().CurrentMessage() != "" {
+			t.Fatalf("workspaces = %q, current %q, status %q", w.workspaces.names, w.workspaces.current(), w.StatusBar().CurrentMessage())
+		}
+		if w.requests.path != workspace.Requests(files.Workspaces, "Payments") {
+			t.Errorf("requests kept at %q", w.requests.path)
+		}
+
+		// Changes go there, and not to where they came from.
+		tree := w.requests.tree
+		tree.SetCurrentItem(treeItem(tree, "Folder", "Ping"))
+		w.request.url.SetText("changed.test")
+		w.Close()
+	})
+
+	if moved, err := collection.Load(workspace.Requests(files.Workspaces, "Payments")); err != nil || moved.Folders[0].Requests[0].URL != "changed.test" {
+		t.Errorf("requests = %+v, %v", moved, err)
+	}
+	if old, err := collection.Load(workspace.Requests(files.OldWorkspaces, "Payments")); err != nil || old.Folders[0].Requests[0].URL != "pay.test" {
+		t.Errorf("the workspace copied from was changed: %+v, %v", old, err)
+	}
+
+	// They are not brought in again, nor over a folder chosen in the
+	// settings.
+	workspace.Create(files.OldWorkspaces, "Later")
+	chosen := filepath.Join(dir, "chosen")
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		if len(w.workspaces.names) != 2 {
+			t.Errorf("workspaces = %q", w.workspaces.names)
+		}
+	})
+	if err := (settings.Settings{Width: 900, Height: 650, WorkspacesDir: chosen}).Save(files.Settings); err != nil {
+		t.Fatal(err)
+	}
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		if !reflect.DeepEqual(w.workspaces.names, []string{"Default"}) || w.workspacesDir() != chosen {
+			t.Errorf("workspaces = %q in %q", w.workspaces.names, w.workspacesDir())
+		}
+	})
 }

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -207,5 +208,30 @@ func TestDuplicate(t *testing.T) {
 	Create(dir, long)
 	if name, err := Duplicate(dir, long); err != nil || Valid(name) != nil {
 		t.Errorf("duplicate of a long name = %q, %v", name, err)
+	}
+}
+
+func TestDefaultDir(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("the place for data is only chosen here on Linux")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	t.Setenv("XDG_DATA_HOME", "")
+	if got, err := DefaultDir(); err != nil || got != filepath.Join(home, ".local", "share", "triggerapi", "workspaces") {
+		t.Errorf("default = %q, %v", got, err)
+	}
+
+	data := filepath.Join(home, "data")
+	t.Setenv("XDG_DATA_HOME", data)
+	if got, err := DefaultDir(); err != nil || got != filepath.Join(data, "triggerapi", "workspaces") {
+		t.Errorf("default = %q, %v", got, err)
+	}
+
+	// A path that is not absolute is ignored.
+	t.Setenv("XDG_DATA_HOME", "relative")
+	if got, err := DefaultDir(); err != nil || got != filepath.Join(home, ".local", "share", "triggerapi", "workspaces") {
+		t.Errorf("default = %q, %v", got, err)
 	}
 }

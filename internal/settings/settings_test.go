@@ -11,7 +11,7 @@ import (
 func TestSaveLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 
-	want := Settings{Width: 900, Height: 600, Maximized: true, SidebarWidth: 310, ResponseHeight: 240, ResponseFont: "Hack", WorkspacesDir: "/a/workspaces", Workspace: "Default", Pinned: []Pin{{Workspace: "Default", Path: []string{"Folder", "Request"}}}, EnvironmentsFile: "/a/e.json", RequestsFile: "r.json", JSONColours: JSONColours{Key: "#A31515", Number: "#098658"}}
+	want := Settings{Width: 900, Height: 600, Maximized: true, SidebarWidth: 310, ResponseHeight: 240, ResponseFont: "Hack", WorkspacesDir: "/a/workspaces", Workspace: "Default", Pinned: []Pin{{Workspace: "Default", Path: []string{"Folder", "Request"}}}, JSONColours: JSONColours{Key: "#A31515", Number: "#098658"}}
 	if err := want.Save(path); err != nil {
 		t.Fatal(err)
 	}
@@ -55,5 +55,47 @@ func TestDefaultColoursNotSaved(t *testing.T) {
 	}
 	if data, _ := os.ReadFile(path); strings.Contains(string(data), "jsonColours") {
 		t.Errorf("default colours were saved: %s", data)
+	}
+}
+
+func TestPath(t *testing.T) {
+	config := t.TempDir()
+	// These are where the configuration of programs is kept on Linux and
+	// on Windows. On macOS it is in the home folder.
+	t.Setenv("XDG_CONFIG_HOME", config)
+	t.Setenv("AppData", config)
+	t.Setenv("HOME", config)
+
+	path, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(path, config) || !strings.HasSuffix(path, filepath.Join("triggerapi", "settings.json")) {
+		t.Errorf("path = %q", path)
+	}
+}
+
+func TestPrepare(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config", "triggerapi", "settings.json")
+
+	// The folder is made, and no settings file.
+	if err := Prepare(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Error("a settings file was made from nothing")
+	}
+
+	// Settings can then be saved there, and making the folder again leaves
+	// them alone.
+	want := Settings{Width: 900, Height: 600, ResponseFont: "Hack", Workspace: "Mine"}
+	if err := want.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := Prepare(path); err != nil {
+		t.Fatal(err)
+	}
+	if got := Load(path); !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
 	}
 }

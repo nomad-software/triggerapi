@@ -83,6 +83,11 @@ type Files struct {
 	// Workspaces is the folder the workspaces are kept in, unless the
 	// settings name another.
 	Workspaces string
+	// OldWorkspaces is the folder the workspaces were kept in, unless the
+	// settings named another, before they were kept where the system keeps
+	// the data of programs. The workspaces in it are brought into
+	// Workspaces if that has none.
+	OldWorkspaces string
 	// Environments and Requests are the paths of the files the
 	// environments and requests were kept in before there were workspaces.
 	// What is in them is brought into the first workspace.
@@ -435,26 +440,36 @@ func (w *Window) workspacesDir() string {
 	return w.files.Workspaces
 }
 
-// migrate makes the first workspace if there are none, and brings into it
-// the environments and requests from before there were workspaces. Their
-// files are copied and left where they were.
+// migrate brings in what was saved by earlier versions, if there are no
+// workspaces. The workspaces from where they used to be kept are copied to
+// where they are kept now. If there were none, the first workspace is made,
+// and the environments and requests from before there were workspaces are
+// copied into it. Everything copied is left where it was.
 func (w *Window) migrate() {
 	dir := w.workspacesDir()
 	if names, err := workspace.List(dir); err != nil || len(names) > 0 {
 		return
 	}
 
+	// Only the default folder has moved. One chosen in the settings is
+	// where it was.
+	if w.config.WorkspacesDir == "" && w.files.OldWorkspaces != "" {
+		if err := workspace.CopyAll(w.files.OldWorkspaces, dir); err != nil {
+			w.status("The workspaces could not be moved to " + dir + ": " + err.Error())
+			return
+		}
+		if names, err := workspace.List(dir); err != nil || len(names) > 0 {
+			return
+		}
+	}
+
 	err := workspace.Create(dir, workspace.Default)
 	if err == nil {
-		err = workspace.Import(dir, workspace.Default,
-			orDefault(w.config.EnvironmentsFile, w.files.Environments),
-			orDefault(w.config.RequestsFile, w.files.Requests))
+		err = workspace.Import(dir, workspace.Default, w.files.Environments, w.files.Requests)
 	}
 	if err != nil {
 		w.status("The first workspace could not be made: " + err.Error())
-		return
 	}
-	w.config.EnvironmentsFile, w.config.RequestsFile = "", ""
 }
 
 // loadWorkspace reads the environments and requests of a workspace, and

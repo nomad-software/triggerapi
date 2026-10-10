@@ -164,25 +164,41 @@ definitions from `.proto` files is not supported yet.
 ./triggerapi
 ```
 
-TriggerAPI keeps its data as JSON files, by default in the directory it is run
-from:
+TriggerAPI keeps its data as JSON files.
 
-| Path | Contents |
+The settings are kept where the system keeps the configuration of programs:
+
+| System | Settings file |
 | --- | --- |
-| `settings.json` | Window size and layout, the response font, colours, the workspaces folder, the workspace in use and the pinned requests |
-| `workspaces/<name>/environments.json` | The environments of a workspace and their variables |
-| `workspaces/<name>/requests.json` | The saved requests of a workspace and their folders |
+| Linux | `~/.config/triggerapi/settings.json` (or under `$XDG_CONFIG_HOME`) |
+| macOS | `~/Library/Application Support/triggerapi/settings.json` |
+
+They hold the window size and layout, the response font, colours, the
+workspaces folder, the workspace in use and the pinned requests.
+
+The workspaces are kept, by default, where the system keeps the data of
+programs:
+
+| System | Workspaces folder |
+| --- | --- |
+| Linux | `~/.local/share/triggerapi/workspaces` (or under `$XDG_DATA_HOME`) |
+| macOS | `~/Library/Application Support/triggerapi/workspaces` |
+
+| Path in it | Contents |
+| --- | --- |
+| `<name>/environments.json` | The environments of a workspace and their variables |
+| `<name>/requests.json` | The saved requests of a workspace and their folders |
 
 Each workspace has its own environments and requests, and is a folder named
 after it inside the workspaces folder. Workspaces are added, renamed and
 removed in the Workspaces tab of the sidebar; the selected one is the one in
 use. The workspaces folder can be kept elsewhere, such as a folder that is
-synced or shared, by choosing its location in File > Settings. `settings.json`
-always stays in the directory TriggerAPI is run from.
+synced or shared, by choosing its location in File > Settings.
 
-If there are `environments.json` and `requests.json` files from a version
-before workspaces, they are copied into a workspace named Default the first
-time this version is run, and left where they were.
+Earlier versions kept the workspaces in a `workspaces` folder in the directory
+TriggerAPI was run from. The first time this version is run from that
+directory, with no workspaces yet in the new place, they are copied there and
+left where they were.
 
 Changes are saved as they are made. Passwords and tokens entered in requests
 and environments are stored in these files as plain text.
