@@ -79,9 +79,15 @@ func newRequestTypeDialog(parent *qt.QWidget) *requestTypeDialog {
 	bottom := qt.NewQHBoxLayout2()
 	bottom.AddStretch()
 	bottom.AddWidget(cancel.QWidget)
+	bottom.AddStretch()
 
 	layout := qt.NewQVBoxLayout(d.QWidget)
-	layout.AddWidget(qt.NewQLabel3("Choose the type of request to create.").QWidget)
+	// Leave room around the edge of the window and between its parts.
+	layout.SetContentsMargins(112, 24, 112, 24)
+	layout.SetSpacing(18)
+	prompt := qt.NewQLabel3("Choose the type of request to create.")
+	prompt.SetAlignment(qt.AlignCenter)
+	layout.AddWidget(prompt.QWidget)
 	layout.AddLayout(types.QLayout)
 	layout.AddLayout(bottom.QLayout)
 

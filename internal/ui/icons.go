@@ -17,6 +17,11 @@ const glyphSize = 128
 // Icons are drawn like this rather than loaded from files so that the program
 // needs nothing beside its binary.
 func drawIcon(size int, colour string, glyph func(*qt.QPainter)) *qt.QIcon {
+	return qt.NewQIcon2(drawPixmap(size, colour, glyph))
+}
+
+// drawPixmap draws the picture of an icon. See drawIcon.
+func drawPixmap(size int, colour string, glyph func(*qt.QPainter)) *qt.QPixmap {
 	pixmap := qt.NewQPixmap2(size, size)
 	pixmap.FillWithFillColor(qt.NewQColor2(qt.Transparent))
 
@@ -31,8 +36,50 @@ func drawIcon(size int, colour string, glyph func(*qt.QPainter)) *qt.QIcon {
 	painter.End()
 	painter.Delete()
 
-	return qt.NewQIcon2(pixmap)
+	return pixmap
 }
+
+// drawTabIcon returns an icon for a tab at the left of a tab widget. Tabs
+// there are drawn turned a quarter turn anticlockwise, icon and all, so the
+// picture is turned the other way beforehand to end up upright.
+func drawTabIcon(colour string, glyph func(*qt.QPainter)) *qt.QIcon {
+	pixmap := drawPixmap(iconSize*2, colour, glyph)
+	return qt.NewQIcon2(pixmap.Transformed2(qt.NewQTransform2().Rotate(90), qt.SmoothTransformation))
+}
+
+// drawGlobe draws a globe, for the environments requests are sent to.
+func drawGlobe(painter *qt.QPainter) {
+	painter.SetPenWithPen(whitePen())
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	// The outline, a meridian and the equator.
+	painter.DrawEllipse2(28, 28, 72, 72)
+	painter.DrawEllipse2(49, 28, 30, 72)
+	painter.DrawLine2(28, 64, 100, 64)
+}
+
+// drawFolder draws a folder, for the requests kept in folders.
+func drawFolder(painter *qt.QPainter) {
+	painter.SetPenWithPen(whitePen())
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	// A folder with its tab at the top left.
+	path := qt.NewQPainterPath()
+	path.MoveTo2(28, 40)
+	path.LineTo2(54, 40)
+	path.LineTo2(64, 52)
+	path.LineTo2(100, 52)
+	path.LineTo2(100, 92)
+	path.LineTo2(28, 92)
+	path.CloseSubpath()
+	painter.DrawPath(path)
+}
+
+// The colours of the sidebar tab icons.
+const (
+	environmentsColour = "#8e6fd8"
+	requestsColour     = "#1f9e9a"
+)
 
 // whitePen returns a pen for drawing the lines of a symbol.
 func whitePen() *qt.QPen {

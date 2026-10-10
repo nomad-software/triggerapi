@@ -28,6 +28,12 @@ const (
 	pageGRPC
 )
 
+// sidebarIconSize is the size of the icons on the tabs of the sidebar.
+const sidebarIconSize = 56
+
+// defaultSidebarWidth is the width of the sidebar until it is dragged.
+const defaultSidebarWidth = 350
+
 // reflectTimeout limits how long a server is given to describe its services.
 const reflectTimeout = 15 * time.Second
 
@@ -310,9 +316,15 @@ func NewWindow(files Files) *Window {
 		}
 	})
 
+	// The tabs are down the left edge and have icons in place of names,
+	// which are given as tooltips.
 	w.sidebar = qt.NewQTabWidget2()
-	w.sidebar.AddTab(w.environments.root, "Environments")
-	w.sidebar.AddTab(w.requests.root, "Requests")
+	w.sidebar.SetTabPosition(qt.QTabWidget__West)
+	w.sidebar.SetIconSize(qt.NewQSize2(sidebarIconSize, sidebarIconSize))
+	w.sidebar.AddTab2(w.environments.root, drawTabIcon(environmentsColour, drawGlobe), "")
+	w.sidebar.AddTab2(w.requests.root, drawTabIcon(requestsColour, drawFolder), "")
+	w.sidebar.SetTabToolTip(0, "Environments")
+	w.sidebar.SetTabToolTip(1, "Requests")
 	// The requests are what is wanted first.
 	w.sidebar.SetCurrentIndex(1)
 
@@ -321,7 +333,7 @@ func NewWindow(files Files) *Window {
 	w.split.AddWidget(w.stack.QWidget)
 	w.split.SetStretchFactor(0, 0)
 	w.split.SetStretchFactor(1, 1)
-	w.split.SetSizes([]int{280, 744})
+	w.split.SetSizes([]int{defaultSidebarWidth, 1024 - defaultSidebarWidth})
 	w.SetCentralWidget(w.split.QWidget)
 
 	// The saved layout is restored the first time the window is shown, as

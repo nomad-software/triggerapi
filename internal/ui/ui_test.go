@@ -582,8 +582,15 @@ func TestRequestReopened(t *testing.T) {
 func TestSidebarTabs(t *testing.T) {
 	mainthread.Wait(func() {
 		w := NewWindow(testFiles(t))
-		if w.sidebar.Count() != 2 || w.sidebar.TabText(0) != "Environments" || w.sidebar.TabText(1) != "Requests" {
-			t.Errorf("tabs = %d: %q, %q", w.sidebar.Count(), w.sidebar.TabText(0), w.sidebar.TabText(1))
+		if w.sidebar.Count() != 2 || w.sidebar.TabToolTip(0) != "Environments" || w.sidebar.TabToolTip(1) != "Requests" {
+			t.Errorf("tabs = %d: %q, %q", w.sidebar.Count(), w.sidebar.TabToolTip(0), w.sidebar.TabToolTip(1))
+		}
+
+		// The tabs have icons and no text.
+		for i := range w.sidebar.Count() {
+			if w.sidebar.TabText(i) != "" || w.sidebar.TabIcon(i).IsNull() {
+				t.Errorf("tab %d has text %q", i, w.sidebar.TabText(i))
+			}
 		}
 	})
 }
@@ -600,14 +607,14 @@ func TestMenuBar(t *testing.T) {
 		}
 
 		// Quit closes the window, which saves the settings.
-		w.Resize(800, 500)
+		w.Resize(900, 500)
 		w.quit.Trigger()
 		if w.IsVisible() {
 			t.Error("window still open after quit")
 		}
 	})
 
-	if got := settings.Load(files.Settings); got.Width != 800 || got.Height != 500 {
+	if got := settings.Load(files.Settings); got.Width != 900 || got.Height != 500 {
 		t.Errorf("settings not saved on quit: %+v", got)
 	}
 }
@@ -1441,7 +1448,7 @@ func TestLayoutRemembered(t *testing.T) {
 	})
 
 	// Let the window be laid out before the handles are moved.
-	waitFor(t, "the layout", func() bool { return w.split.Sizes()[0] == 280 })
+	waitFor(t, "the layout", func() bool { return w.split.Sizes()[0] == defaultSidebarWidth })
 
 	var total int
 	mainthread.Wait(func() {
@@ -1498,7 +1505,7 @@ func TestHeader(t *testing.T) {
 		w.Show()
 
 		// The requests are shown first.
-		if w.sidebar.CurrentIndex() != 1 || w.sidebar.TabText(1) != "Requests" {
+		if w.sidebar.CurrentIndex() != 1 || w.sidebar.TabToolTip(1) != "Requests" {
 			t.Errorf("sidebar tab = %d", w.sidebar.CurrentIndex())
 		}
 
