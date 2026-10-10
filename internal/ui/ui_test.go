@@ -678,3 +678,12 @@ func TestPlaceholderColouringSurvivesGC(t *testing.T) {
 		mainthread.Wait(func() {})
 	}
 }
+
+func TestAboutText(t *testing.T) {
+	text := mainthread.Wait2(aboutText)
+	for _, want := range []string{"Qt version 6.", "LGPLv3", "https://www.gnu.org/licenses/lgpl-3.0.html", "The Qt Company Ltd"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("about text does not mention %q", want)
+		}
+	}
+}

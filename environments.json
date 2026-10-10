@@ -1,17 +1,22 @@
 {
-  "active": 0,
+  "active": 1,
   "environments": [
     {
-      "name": "Test 1",
+      "name": "Random task API",
       "variables": [
         {
           "key": "host",
           "value": "https://bored-api.appbrewery.com/random",
           "enabled": true
-        },
+        }
+      ]
+    },
+    {
+      "name": "Example API",
+      "variables": [
         {
-          "key": "param",
-          "value": "foo",
+          "key": "host",
+          "value": "https://api.restful-api.dev/objects",
           "enabled": true
         }
       ]

@@ -1,10 +1,10 @@
 {
   "folders": [
     {
-      "name": "Test 1",
+      "name": "Random Task API",
       "requests": [
         {
-          "name": "Test request 1",
+          "name": "Get random task",
           "method": "GET",
           "url": "{{host}}",
           "params": [
@@ -18,18 +18,71 @@
             "type": "none"
           },
           "bodyType": "none"
+        }
+      ]
+    },
+    {
+      "name": "Example API",
+      "requests": [
+        {
+          "name": "List of all objects",
+          "method": "GET",
+          "url": "{{host}}",
+          "auth": {
+            "type": "none"
+          },
+          "bodyType": "none"
         },
         {
-          "name": "Test request 2",
+          "name": "Single object",
           "method": "GET",
           "url": "{{host}}",
           "params": [
             {
-              "key": "test",
-              "value": "{{param}}",
+              "key": "id",
+              "value": "ff808181a09d98f701a121db91a93010",
               "enabled": true
             }
           ],
+          "auth": {
+            "type": "none"
+          },
+          "bodyType": "none"
+        },
+        {
+          "name": "Add a new object",
+          "method": "POST",
+          "url": "{{host}}",
+          "auth": {
+            "type": "none"
+          },
+          "bodyType": "json",
+          "body": "{\n  \"name\": \"Apple MacBook Pro 16\",\n  \"data\": {\n    \"year\": 2019,\n    \"price\": 1849.99,\n    \"CPU model\": \"Intel Core i9\",\n    \"Hard disk size\": \"1 TB\"\n  }\n}"
+        },
+        {
+          "name": "Update an object",
+          "method": "PUT",
+          "url": "{{host}}/ff808181a09d98f701a121db91a93010",
+          "auth": {
+            "type": "none"
+          },
+          "bodyType": "json",
+          "body": "{\n  \"name\": \"Apple MacBook Pro 16\",\n  \"data\": {\n    \"year\": 2019,\n    \"price\": 2049.99,\n    \"CPU model\": \"Intel Core i9\",\n    \"Hard disk size\": \"1 TB\",\n    \"color\": \"silver\"\n  }\n}"
+        },
+        {
+          "name": "Partially update an object",
+          "method": "PATCH",
+          "url": "{{host}}/ff808181a09d98f701a121db91a93010",
+          "auth": {
+            "type": "none"
+          },
+          "bodyType": "json",
+          "body": "{\n  \"name\": \"Apple MacBook Pro 16 (Updated Name)\"\n}"
+        },
+        {
+          "name": "Delete an object",
+          "method": "DELETE",
+          "url": "{{host}}/ff808181a09d98f701a121db91a93010",
           "auth": {
             "type": "none"
           },
