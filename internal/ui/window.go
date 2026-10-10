@@ -46,12 +46,17 @@ var askRequestType = func(parent *qt.QWidget) (collection.Type, bool) {
 
 // aboutText returns the contents of the about box, which carries the notice
 // the LGPL asks of programs that use Qt.
+// Version is the version of the program, shown in the title bar and the
+// about box.
+const Version = "v0.0.1"
+
 func aboutText() string {
 	// The licence notices are set apart from the description of the program
 	// in a bordered box of smaller text. Qt's rich text draws a border
 	// around a table but not around a paragraph.
-	return "<h3>Postie</h3>" +
+	return "<h3>Postie " + Version + "</h3>" +
 		"<p>A desktop client for making REST API and gRPC calls.</p>" +
+		"<p>Copyright © 2026 Gary Willoughby. All rights reserved.</p>" +
 		"<table style=\"margin-top: 24px; border: 1px solid #888888; border-collapse: collapse;\" cellpadding=\"10\" width=\"100%\">" +
 		"<tr><td style=\"font-size: small;\">" +
 		"<p><b>Third party licences</b></p>" +
@@ -150,7 +155,7 @@ func NewWindow(files Files) *Window {
 		schemas:     map[string]*rpc.Schema{},
 	}
 
-	w.SetWindowTitle("Postie")
+	w.SetWindowTitle("Postie " + Version)
 	w.SetWindowIcon(appIcon())
 	// Dialogs take their icon from the application.
 	qt.QGuiApplication_SetWindowIcon(appIcon())

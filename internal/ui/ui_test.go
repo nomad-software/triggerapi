@@ -693,7 +693,7 @@ func TestPlaceholderColouringSurvivesGC(t *testing.T) {
 
 func TestAboutText(t *testing.T) {
 	text := mainthread.Wait2(aboutText)
-	for _, want := range []string{"Qt version 6.", "LGPLv3", "https://www.gnu.org/licenses/lgpl-3.0.html", "The Qt Company Ltd"} {
+	for _, want := range []string{"Postie v0.0.1", "Copyright © 2026 Gary Willoughby", "Qt version 6.", "LGPLv3", "https://www.gnu.org/licenses/lgpl-3.0.html", "The Qt Company Ltd"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("about text does not mention %q", want)
 		}
@@ -2415,7 +2415,7 @@ func TestImportPostman(t *testing.T) {
 		want := rest.Request{
 			Method:   "POST",
 			URL:      "{{HostName}}/rooms",
-			Params:   []rest.KeyValue{{Key: "dry", Value: "1", Enabled: true}, {Key: "debug", Value: "x"}},
+			Params:   []rest.KeyValue{{Key: "debug", Value: "x"}, {Key: "dry", Value: "1", Enabled: true}},
 			Headers:  []rest.KeyValue{{Key: "x-app-key", Value: "{{AppKey}}", Enabled: true}},
 			Auth:     rest.Auth{Type: rest.AuthBearer, Token: "{{Token}}"},
 			BodyType: rest.BodyJSON,
@@ -2504,5 +2504,204 @@ func TestFoldersStayOpenOrClosed(t *testing.T) {
 		if !treeItem(tree, "a", "inner").IsExpanded() {
 			t.Error("folder not opened for the request added to it")
 		}
+	})
+}
+
+func TestImportEnvironment(t *testing.T) {
+	files := testFiles(t)
+
+	store := &env.Store{Active: 0, Environments: []env.Environment{{Name: "Local"}}}
+	if err := store.Save(files.Environments); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	exported := filepath.Join(dir, "staging.postman_environment.json")
+	os.WriteFile(exported, []byte(`{
+		"name": "Staging",
+		"values": [
+			{"key": "host", "value": "api.test", "enabled": true},
+			{"key": "off", "value": "x", "enabled": false}
+		]
+	}`), 0o644)
+	other := filepath.Join(dir, "collection.json")
+	os.WriteFile(other, []byte(`{"info": {"name": "A"}, "item": []}`), 0o644)
+
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+		el := w.environments
+
+		var warned []string
+		el.warn = func(message string) { warned = append(warned, message) }
+
+		// Nothing is asked for or added if no kind is chosen, or no file.
+		el.chooseSource = func() (envImportSource, bool) { return "", false }
+		el.chooseFile = func(envImportSource) (string, bool) { t.Error("asked for a file"); return "", false }
+		el.importDocument()
+		el.chooseSource = func() (envImportSource, bool) { return envImportPostman, true }
+		el.chooseFile = func(envImportSource) (string, bool) { return "", false }
+		el.importDocument()
+		if el.list.Count() != 1 || len(warned) != 0 {
+			t.Fatalf("%d environments, warned %q", el.list.Count(), warned)
+		}
+
+		// The imported environment is listed in order, selected and saved.
+		el.chooseFile = func(envImportSource) (string, bool) { return exported, true }
+		el.importDocument()
+		if len(warned) != 0 || el.list.Count() != 2 || el.list.CurrentRow() != 1 || el.list.Item(1).Text() != "Staging" {
+			t.Fatalf("not imported: %d environments, row %d, warned %q", el.list.Count(), el.list.CurrentRow(), warned)
+		}
+		if got := w.expand("{{host}}/{{off}}"); got != "api.test/{{off}}" {
+			t.Errorf("expanded to %q", got)
+		}
+		if w.request.header.environment.CurrentText() != "Staging" {
+			t.Errorf("header shows %q", w.request.header.environment.CurrentText())
+		}
+
+		saved, err := env.Load(files.Environments)
+		want := []env.Variable{{Key: "host", Value: "api.test", Enabled: true}, {Key: "off", Value: "x"}}
+		if err != nil || saved.Active != 1 || len(saved.Environments) != 2 || !reflect.DeepEqual(saved.Environments[1].Variables, want) {
+			t.Errorf("saved %+v, %v", saved, err)
+		}
+
+		// A file of another kind is refused, and adds nothing.
+		el.chooseFile = func(envImportSource) (string, bool) { return other, true }
+		el.importDocument()
+		if len(warned) != 1 || !strings.Contains(warned[0], "not a Postman environment") || el.list.Count() != 2 {
+			t.Errorf("warned %q", warned)
+		}
+
+		// The dialog offers Postman alone.
+		dialog := newEnvImportDialog(w.QWidget)
+		dialog.Show()
+		button := dialog.buttons[envImportPostman]
+		if len(dialog.buttons) != 1 || button == nil || button.Text() != "Postman" {
+			t.Fatal("no button labelled Postman")
+		}
+		button.Click()
+		if dialog.chosen != envImportPostman || dialog.Result() != int(qt.QDialog__Accepted) {
+			t.Errorf("clicking chose %q with result %d", dialog.chosen, dialog.Result())
+		}
+	})
+}
+
+func TestKeyValueOrder(t *testing.T) {
+	mainthread.Wait(func() {
+		table := newKeyValueTable("Key", "Value")
+		changes := 0
+		table.onChange = func() { changes++ }
+
+		keys := func() []string {
+			var keys []string
+			for _, item := range table.items() {
+				keys = append(keys, item.Key)
+			}
+			return keys
+		}
+
+		// Pairs are shown in order, ignoring case, and those with the same
+		// key stay as they were.
+		table.setItems([]rest.KeyValue{
+			{Key: "zeta", Value: "1", Enabled: true},
+			{Key: "Beta", Value: "first"},
+			{Key: "alpha", Value: "3", Enabled: true},
+			{Key: "beta", Value: "second", Enabled: true},
+		})
+		want := []rest.KeyValue{
+			{Key: "alpha", Value: "3", Enabled: true},
+			{Key: "Beta", Value: "first"},
+			{Key: "beta", Value: "second", Enabled: true},
+			{Key: "zeta", Value: "1", Enabled: true},
+		}
+		if got := table.items(); !reflect.DeepEqual(got, want) || changes != 0 {
+			t.Fatalf("items = %+v, %d changes", got, changes)
+		}
+
+		// A row whose key is edited moves to its place, taking the rest of
+		// the row and the current cell with it.
+		table.table.SetCurrentCell(0, colValue)
+		table.table.Item(0, colKey).SetText("gamma")
+		changes = 0
+		table.sort()
+		if got, want := keys(), []string{"Beta", "beta", "gamma", "zeta"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("keys = %q, want %q", got, want)
+		}
+		if got := table.pair(2); got != (rest.KeyValue{Key: "gamma", Value: "3", Enabled: true}) || table.pair(0).Enabled {
+			t.Errorf("moved row = %+v", got)
+		}
+		if table.table.CurrentRow() != 2 || table.table.CurrentColumn() != colValue || changes != 1 {
+			t.Errorf("current cell = %d,%d with %d changes", table.table.CurrentRow(), table.table.CurrentColumn(), changes)
+		}
+
+		// Nothing is reported when the rows are already in order.
+		table.sort()
+		if changes != 1 {
+			t.Errorf("%d changes", changes)
+		}
+
+		// A new pair goes to its place, leaving the empty row at the bottom.
+		table.add("delta", "4")
+		if got, want := keys(), []string{"Beta", "beta", "delta", "gamma", "zeta"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("keys = %q, want %q", got, want)
+		}
+		if last := table.table.RowCount() - 1; last != 5 || table.pair(last).Key != "" {
+			t.Errorf("last row = %+v of %d", table.pair(last), last+1)
+		}
+	})
+}
+
+func TestParamsOrder(t *testing.T) {
+	mainthread.Wait(func() {
+		w := NewWindow(testFiles(t))
+
+		// A request is shown with its params and headers in order, in the
+		// URL too.
+		w.request.load(rest.Request{
+			Method:  "GET",
+			URL:     "http://a.test/x",
+			Params:  []rest.KeyValue{{Key: "page", Value: "2", Enabled: true}, {Key: "all", Value: "1", Enabled: true}},
+			Headers: []rest.KeyValue{{Key: "X-B", Value: "b", Enabled: true}, {Key: "Accept", Value: "a", Enabled: true}},
+		})
+		if got := w.request.url.Text(); got != "http://a.test/x?all=1&page=2" {
+			t.Errorf("url = %q", got)
+		}
+		got := w.request.request()
+		if got.Params[0].Key != "all" || got.Headers[0].Key != "Accept" {
+			t.Errorf("request = %+v", got)
+		}
+
+		// A param added in the table goes to its place in both.
+		w.request.params.add("limit", "5")
+		if got := w.request.url.Text(); got != "http://a.test/x?all=1&limit=5&page=2" {
+			t.Errorf("url = %q", got)
+		}
+
+		// Params typed into the URL are listed in order.
+		w.request.url.SetText("http://a.test/x?z=1&b=2")
+		if got := w.request.request().Params; len(got) != 2 || got[0].Key != "b" || got[1].Key != "z" {
+			t.Errorf("params = %+v", got)
+		}
+	})
+}
+
+func TestKeyValueOrderAfterEditing(t *testing.T) {
+	var table *keyValueTable
+	mainthread.Wait(func() {
+		table = newKeyValueTable("Key", "Value")
+		table.setItems([]rest.KeyValue{{Key: "a", Value: "1", Enabled: true}, {Key: "b", Value: "2", Enabled: true}})
+		table.table.Show()
+
+		// The key of the first row is edited and the editor closed.
+		item := table.table.Item(0, colKey)
+		table.table.SetCurrentItem(item)
+		table.table.EditItem(item)
+		item.SetText("c")
+		table.table.ClosePersistentEditor(item)
+		table.table.SetCurrentItem(table.table.Item(0, colKey))
+	})
+
+	waitFor(t, "the rows to be put in order", func() bool {
+		return table.pair(0).Key == "b" && table.pair(1) == rest.KeyValue{Key: "c", Value: "1", Enabled: true}
 	})
 }

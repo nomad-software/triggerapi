@@ -16,12 +16,13 @@ bindings.
 - Import an OpenAPI 3 or Swagger 2 document, as JSON or YAML, or a Postman
   collection, to create a folder of requests.
 - Define environments of variables and use them anywhere in a request as
-  `{{name}}` placeholders.
+  `{{name}}` placeholders. Environments exported from Postman can be imported.
 
 ## Requirements
 
-Postie currently builds and runs on Linux. A macOS release is planned but not
-yet supported.
+Postie is developed and tested on Linux. It has not been tested on macOS yet,
+and there is no macOS release, but the instructions below should build it
+there.
 
 Building needs:
 
@@ -29,6 +30,8 @@ Building needs:
 - A C++ compiler (GCC or Clang)
 - `pkg-config`
 - The Qt 6 base development files (Qt 6 Widgets)
+
+### Linux
 
 Install them with your distribution's package manager:
 
@@ -41,17 +44,44 @@ sudo apt install golang-go build-essential pkg-config qt6-base-dev
 
 # Fedora
 sudo dnf install golang gcc-c++ pkgconf-pkg-config qt6-qtbase-devel
+
+# openSUSE
+sudo zypper install go gcc-c++ pkgconf-pkg-config qt6-base-devel
 ```
 
-Check that Qt can be found with:
+If your distribution's Go is older than 1.27, install Go from
+[go.dev/dl](https://go.dev/dl/) instead.
+
+Running a built binary on another machine only needs the Qt 6 runtime
+libraries (`qt6-base` on Arch, `libqt6widgets6` on Debian and Ubuntu,
+`qt6-qtbase` on Fedora, `libQt6Widgets6` on openSUSE).
+
+### macOS
+
+Install the Xcode command line tools, which provide the Clang compiler, and
+then the rest with [Homebrew](https://brew.sh):
+
+```sh
+xcode-select --install
+brew install go pkgconf qt
+```
+
+The `qt` formula is Qt 6. If `pkg-config` cannot find it afterwards, tell it
+where Homebrew put Qt:
+
+```sh
+export PKG_CONFIG_PATH="$(brew --prefix qt)/lib/pkgconfig:$PKG_CONFIG_PATH"
+```
+
+### Checking
+
+On either system, check that Qt can be found with:
 
 ```sh
 pkg-config --modversion Qt6Widgets
 ```
 
-Running a built binary on another machine only needs the Qt 6 runtime
-libraries (`qt6-base` on Arch, `libqt6widgets6` on Debian and Ubuntu,
-`qt6-qtbase` on Fedora).
+This should print a version starting with 6.
 
 ## Building
 

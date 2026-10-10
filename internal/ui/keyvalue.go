@@ -1,7 +1,10 @@
 package ui
 
 import (
+	"slices"
+
 	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/postie/internal/rest"
 )
@@ -14,6 +17,7 @@ const (
 
 // keyValueTable is an editable list of key/value pairs, each of which can be
 // switched off. An empty row is always kept at the bottom for new entries.
+// The pairs are kept in alphabetical order of their keys.
 type keyValueTable struct {
 	table    *qt.QTableWidget
 	updating bool
@@ -44,9 +48,77 @@ func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
 		t.changed()
 	})
 
+	// The rows are put in order once a key has been edited, but not while
+	// the user is moving on to edit another cell, which would move the row
+	// from under them.
+	t.table.OnCloseEditor(func(super func(*qt.QWidget, qt.QAbstractItemDelegate__EndEditHint), editor *qt.QWidget, hint qt.QAbstractItemDelegate__EndEditHint) {
+		super(editor, hint)
+		mainthread.Start(func() {
+			if !t.editing() {
+				t.sort()
+			}
+		})
+	})
+
 	t.addRow("", "", true)
 
 	return t
+}
+
+// editing reports whether a cell is being edited.
+func (t *keyValueTable) editing() bool {
+	focus := qt.QApplication_FocusWidget()
+	return focus != nil && t.table.Viewport().IsAncestorOf(focus)
+}
+
+// sort puts the rows in alphabetical order of their keys, keeping the
+// current cell on the pair it was on, and calls onChange if any moved.
+func (t *keyValueTable) sort() {
+	type entry struct {
+		rest.KeyValue
+		row int
+	}
+
+	rows := make([]entry, t.table.RowCount()-1)
+	for row := range rows {
+		rows[row] = entry{t.pair(row), row}
+	}
+	sorted := slices.Clone(rows)
+	slices.SortStableFunc(sorted, func(a, b entry) int { return rest.ComparePairs(a.KeyValue, b.KeyValue) })
+	if slices.Equal(rows, sorted) {
+		return
+	}
+
+	current, column := t.table.CurrentRow(), t.table.CurrentColumn()
+
+	t.updating = true
+	for row, e := range sorted {
+		t.table.Item(row, colKey).SetText(e.Key)
+		t.table.Item(row, colValue).SetText(e.Value)
+		t.table.Item(row, colEnabled).SetCheckState(checkState(e.Enabled))
+		if e.row == current {
+			t.table.SetCurrentCell(row, column)
+		}
+	}
+	t.updating = false
+
+	t.changed()
+}
+
+func checkState(enabled bool) qt.CheckState {
+	if enabled {
+		return qt.Checked
+	}
+	return qt.Unchecked
+}
+
+// pair returns the contents of a row.
+func (t *keyValueTable) pair(row int) rest.KeyValue {
+	return rest.KeyValue{
+		Key:     t.text(row, colKey),
+		Value:   t.text(row, colValue),
+		Enabled: t.table.Item(row, colEnabled).CheckState() == qt.Checked,
+	}
 }
 
 func (t *keyValueTable) widget() *qt.QWidget {
@@ -68,11 +140,7 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 
 	check := qt.NewQTableWidgetItem()
 	check.SetFlags(qt.ItemIsEnabled | qt.ItemIsUserCheckable)
-	if enabled {
-		check.SetCheckState(qt.Checked)
-	} else {
-		check.SetCheckState(qt.Unchecked)
-	}
+	check.SetCheckState(checkState(enabled))
 
 	t.table.SetItem(row, colEnabled, check)
 	t.table.SetItem(row, colKey, qt.NewQTableWidgetItem2(key))
@@ -88,10 +156,15 @@ func (t *keyValueTable) add(key, value string) {
 	t.updating = false
 	t.addRow("", "", true)
 	t.changed()
+	t.sort()
 }
 
-// setItems replaces the contents of the table without calling onChange.
+// setItems replaces the contents of the table, in alphabetical order,
+// without calling onChange.
 func (t *keyValueTable) setItems(items []rest.KeyValue) {
+	items = slices.Clone(items)
+	rest.SortPairs(items)
+
 	defer func(prev bool) { t.updating = prev }(t.updating)
 	t.updating = true
 
@@ -123,15 +196,9 @@ func (t *keyValueTable) text(row, col int) string {
 func (t *keyValueTable) items() []rest.KeyValue {
 	var items []rest.KeyValue
 	for row := range t.table.RowCount() {
-		key := t.text(row, colKey)
-		if key == "" {
-			continue
+		if pair := t.pair(row); pair.Key != "" {
+			items = append(items, pair)
 		}
-		items = append(items, rest.KeyValue{
-			Key:     key,
-			Value:   t.text(row, colValue),
-			Enabled: t.table.Item(row, colEnabled).CheckState() == qt.Checked,
-		})
 	}
 	return items
 }

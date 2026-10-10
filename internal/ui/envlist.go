@@ -1,9 +1,14 @@
 package ui
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+
 	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/postie/internal/env"
+	"github.com/nomad-software/postie/internal/postman"
 )
 
 // envList lists the environments. The selected environment is the active one
@@ -16,6 +21,15 @@ type envList struct {
 	// path is the file the store is saved to. Nothing is saved if it is empty.
 	path     string
 	updating bool
+
+	// chooseSource asks the user what kind of file to import. It reports
+	// false if they decide against importing.
+	chooseSource func() (envImportSource, bool)
+	// chooseFile asks the user for a file of a kind to import. It reports
+	// false if they decide against choosing one.
+	chooseFile func(source envImportSource) (string, bool)
+	// warn tells the user of a problem.
+	warn func(message string)
 
 	// onEdit is called when the user asks to edit the selected environment.
 	onEdit func()
@@ -32,8 +46,23 @@ func newEnvList(store *env.Store, path string) *envList {
 		list: qt.NewQListWidget2(),
 	}
 
+	s.chooseSource = func() (envImportSource, bool) {
+		return newEnvImportDialog(s.root).ask()
+	}
+	s.chooseFile = func(source envImportSource) (string, bool) {
+		kind := envImportSources[source]
+		path := qt.QFileDialog_GetOpenFileName4(s.root, "Import "+kind.label, "", kind.filter+";;All files (*)")
+		return path, path != ""
+	}
+	s.warn = func(message string) {
+		qt.QMessageBox_Warning(s.root, "Postie", message)
+	}
+
 	add := qt.NewQPushButton3("Add")
 	add.OnClicked(s.add)
+	importButton := qt.NewQPushButton3("Import")
+	importButton.SetToolTip("Create an environment from one exported from Postman")
+	importButton.OnClicked(s.importDocument)
 	edit := qt.NewQPushButton3("Edit")
 	edit.OnClicked(s.edit)
 	remove := qt.NewQPushButton3("Remove")
@@ -41,8 +70,10 @@ func newEnvList(store *env.Store, path string) *envList {
 
 	buttons := qt.NewQHBoxLayout2()
 	buttons.AddWidget(add.QWidget)
-	buttons.AddWidget(edit.QWidget)
-	buttons.AddWidget(remove.QWidget)
+	buttons.AddWidget(importButton.QWidget)
+	change := qt.NewQHBoxLayout2()
+	change.AddWidget(edit.QWidget)
+	change.AddWidget(remove.QWidget)
 
 	hint := qt.NewQLabel3("Use {{variable}} in any request field to insert a value from the selected environment.")
 	hint.SetWordWrap(true)
@@ -51,6 +82,7 @@ func newEnvList(store *env.Store, path string) *envList {
 	layout := qt.NewQVBoxLayout(s.root)
 	layout.AddWidget2(s.list.QWidget, 1)
 	layout.AddLayout(buttons.QLayout)
+	layout.AddLayout(change.QLayout)
 	layout.AddWidget(hint.QWidget)
 
 	s.load(store, path)
@@ -98,6 +130,70 @@ func (s *envList) add() {
 	s.sort()
 	s.selected()
 	s.edit()
+}
+
+// envImportSource is a kind of file that an environment can be imported
+// from.
+type envImportSource string
+
+const envImportPostman envImportSource = "postman"
+
+// envImportSources describes the kinds of file that an environment can be
+// imported from.
+var envImportSources = map[envImportSource]struct {
+	label  string
+	filter string
+	colour string
+	glyph  func(*qt.QPainter)
+	read   func([]byte) (env.Environment, error)
+}{
+	envImportPostman: {"Postman", "Postman environments (*.json)", "#ef5b25", drawPlane, postman.ImportEnvironment},
+}
+
+// newEnvImportDialog returns a dialog which asks what kind of file to import
+// an environment from.
+func newEnvImportDialog(parent *qt.QWidget) *choiceDialog[envImportSource] {
+	var choices []choice[envImportSource]
+	for _, source := range []envImportSource{envImportPostman} {
+		kind := envImportSources[source]
+		choices = append(choices, choice[envImportSource]{source, kind.label, drawIcon(iconSize*2, kind.colour, kind.glyph)})
+	}
+	return newChoiceDialog(parent, "Import", "Choose what to import an environment from.", choices)
+}
+
+// importDocument asks what kind of file to import, and for the file, and
+// imports it.
+func (s *envList) importDocument() {
+	source, ok := s.chooseSource()
+	if !ok {
+		return
+	}
+	path, ok := s.chooseFile(source)
+	if !ok {
+		return
+	}
+	if err := s.importFile(source, path); err != nil {
+		s.warn(fmt.Sprintf("%s could not be imported: %v.", filepath.Base(path), err))
+	}
+}
+
+// importFile adds the environment in the file at path, which is of the kind
+// given, and selects it.
+func (s *envList) importFile(source envImportSource, path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	environment, err := envImportSources[source].read(data)
+	if err != nil {
+		return err
+	}
+
+	s.store.Environments = append(s.store.Environments, environment)
+	s.store.Active = len(s.store.Environments) - 1
+	s.sort()
+	s.selected()
+	return nil
 }
 
 // sort puts the environments in alphabetical order and lists them again,

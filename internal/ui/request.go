@@ -253,6 +253,7 @@ func (p *requestPanel) load(r rest.Request) {
 	// A query string in the stored URL is moved into the params.
 	base, query := rest.SplitURL(r.URL)
 	params := append(query, r.Params...)
+	rest.SortPairs(params)
 	p.url.SetText(rest.JoinURL(base, params))
 	p.params.setItems(params)
 	p.headers.setItems(r.Headers)

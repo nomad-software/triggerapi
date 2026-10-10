@@ -209,3 +209,16 @@ func TestExpand(t *testing.T) {
 		t.Error("original request was modified")
 	}
 }
+
+func TestSortPairs(t *testing.T) {
+	pairs := []KeyValue{{Key: "b", Value: "1"}, {Key: ""}, {Key: "B", Value: "2"}, {Key: "a"}, {Key: "C"}}
+	SortPairs(pairs)
+
+	var got []string
+	for _, p := range pairs {
+		got = append(got, p.Key+p.Value)
+	}
+	if want := "a b1 B2 C "; strings.Join(got, " ") != want {
+		t.Errorf("sorted = %q, want %q", strings.Join(got, " "), want)
+	}
+}

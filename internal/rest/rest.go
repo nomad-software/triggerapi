@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
@@ -123,6 +124,26 @@ func (a Auth) Header() (string, bool) {
 		return "Bearer " + a.Token, true
 	}
 	return "", false
+}
+
+// SortPairs puts the pairs in alphabetical order of their keys, ignoring
+// case, with those that have no key last. Pairs with the same key keep their
+// order, as which comes last can matter.
+func SortPairs(pairs []KeyValue) {
+	slices.SortStableFunc(pairs, func(a, b KeyValue) int {
+		return ComparePairs(a, b)
+	})
+}
+
+// ComparePairs gives the order SortPairs puts two pairs in.
+func ComparePairs(a, b KeyValue) int {
+	if (a.Key == "") != (b.Key == "") {
+		if a.Key == "" {
+			return 1
+		}
+		return -1
+	}
+	return strings.Compare(strings.ToLower(a.Key), strings.ToLower(b.Key))
 }
 
 // ExpandPairs returns a copy of the pairs with f applied to every key and
