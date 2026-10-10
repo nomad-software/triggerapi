@@ -222,6 +222,8 @@ func (p *responsePanel) setFields(fields ...field) {
 	// long for its line carries on beneath itself and not beneath the
 	// status before it. Nothing else is wrapped.
 	const nowrap = `white-space: nowrap; `
+	// The labels are fainter than the values they name.
+	faded := fadedTextColour()
 	var left strings.Builder
 	var right []string
 	// The last cell takes the width that is left over, which would
@@ -233,7 +235,7 @@ func (p *responsePanel) setFields(fields ...field) {
 		if f.failure {
 			value = fmt.Sprintf(`<span style="color: %s">%s</span>`, failureColour, value)
 		}
-		label := fmt.Sprintf("<b>%s:</b>", html.EscapeString(f.label))
+		label := fmt.Sprintf(`<b style="color: %s">%s:</b>`, faded, html.EscapeString(f.label))
 
 		switch f.label {
 		case fieldCode:

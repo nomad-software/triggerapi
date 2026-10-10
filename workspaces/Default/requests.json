@@ -306,6 +306,7 @@
         },
         {
           "name": "fofcfg",
+          "collapsed": true,
           "requests": [
             {
               "name": "GetTransactionCode",

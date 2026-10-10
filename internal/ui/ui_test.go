@@ -1454,10 +1454,10 @@ func TestRESTErrorStatus(t *testing.T) {
 		}
 		// The code is at the left of the bar and the rest at the right.
 		left, right := w.response.result.Text(), w.response.details.Text()
-		if !strings.Contains(left, "<b>Status:</b>") || strings.Contains(left, "Time") || strings.Contains(left, "Error") {
+		if !strings.Contains(left, ">Status:</b>") || strings.Contains(left, "Time") || strings.Contains(left, "Error") {
 			t.Errorf("left of the bar = %q", left)
 		}
-		if !strings.Contains(right, "<b>Time:</b>") || !strings.Contains(right, "<b>Size:</b>") || !strings.Contains(right, "<b>Protocol:</b>") || strings.Contains(right, "Status") {
+		if !strings.Contains(right, ">Time:</b>") || !strings.Contains(right, ">Size:</b>") || !strings.Contains(right, ">Protocol:</b>") || strings.Contains(right, "Status") {
 			t.Errorf("right of the bar = %q", right)
 		}
 	})

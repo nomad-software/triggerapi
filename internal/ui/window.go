@@ -46,12 +46,11 @@ var askRequestType = func(parent *qt.QWidget) (collection.Type, bool) {
 	return newRequestTypeDialog(parent).ask()
 }
 
-// aboutText returns the contents of the about box, which carries the notice
-// the LGPL asks of programs that use Qt.
-// Version is the version of the program, shown in the title bar and the
-// about box.
+// Version is the version of the program, shown in the about box.
 const Version = "v0.0.1"
 
+// aboutText returns the contents of the about box, which carries the notice
+// the LGPL asks of programs that use Qt.
 func aboutText() string {
 	// The licence notices are set apart from the description of the program
 	// in a bordered box of smaller text. Qt's rich text draws a border
@@ -179,7 +178,7 @@ func NewWindow(files Files) *Window {
 		schemas:     map[string]*rpc.Schema{},
 	}
 
-	w.SetWindowTitle("TriggerAPI " + Version)
+	w.SetWindowTitle("TriggerAPI")
 	w.SetWindowIcon(appIcon())
 	// Dialogs take their icon from the application.
 	qt.QGuiApplication_SetWindowIcon(appIcon())
