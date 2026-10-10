@@ -205,22 +205,29 @@ func drawPagePlus(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
-// drawImport draws an arrow pointing down into a tray, for bringing
-// something in from a file.
+// drawImport draws an arrow going into a page from outside it, pointing
+// left, for bringing something in from a file.
 func drawImport(painter *qt.QPainter) {
 	outline(painter)
 	path := qt.NewQPainterPath()
+	// The page, open at the right where the arrow goes in, with the fold at
+	// its top left corner.
+	path.MoveTo2(76, 44)
+	path.LineTo2(76, 28)
+	path.LineTo2(46, 28)
+	path.LineTo2(28, 46)
+	path.LineTo2(28, 100)
+	path.LineTo2(76, 100)
+	path.LineTo2(76, 84)
+	path.MoveTo2(46, 28)
+	path.LineTo2(46, 46)
+	path.LineTo2(28, 46)
 	// The arrow.
-	path.MoveTo2(64, 28)
-	path.LineTo2(64, 74)
-	path.MoveTo2(46, 56)
-	path.LineTo2(64, 74)
-	path.LineTo2(82, 56)
-	// The tray.
-	path.MoveTo2(32, 80)
-	path.LineTo2(32, 98)
-	path.LineTo2(96, 98)
-	path.LineTo2(96, 80)
+	path.MoveTo2(104, 64)
+	path.LineTo2(52, 64)
+	path.MoveTo2(68, 48)
+	path.LineTo2(52, 64)
+	path.LineTo2(68, 80)
 	painter.DrawPath(path)
 }
 
