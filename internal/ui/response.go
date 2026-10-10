@@ -131,8 +131,9 @@ func newResponsePanel(bodyFont string) *responsePanel {
 	return p
 }
 
-// saveColour is the colour of the save icon.
-const saveColour = "#2f9e44"
+// saveColour is the colour of the save icon, which is that of the buttons of
+// the Requests tab.
+const saveColour = requestsColour
 
 // setContent keeps the body of the response to be saved, and the name to
 // offer for its file. Without a body there is nothing to save.

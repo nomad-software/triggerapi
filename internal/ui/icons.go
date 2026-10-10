@@ -285,7 +285,7 @@ func drawBin(painter *qt.QPainter) {
 // The colours of the sidebar tab icons.
 const (
 	environmentsColour = "#8e6fd8"
-	requestsColour     = "#1f9e9a"
+	requestsColour     = "#17807c"
 )
 
 // whitePen returns a pen for drawing the lines of a symbol.

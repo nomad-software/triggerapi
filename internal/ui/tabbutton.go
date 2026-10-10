@@ -43,7 +43,7 @@ func newButtonTabs(button *qt.QToolButton) *qt.QTabWidget {
 }
 
 // removeColour is the colour of the buttons which remove something. The
-// other buttons along the bottom of the sidebar are primaryColour.
+// other buttons along the bottom of the sidebar are the colour of their tab.
 const removeColour = "#e03131"
 
 // newButtonRow lays out icon buttons in a row from the left, to go along the

@@ -108,18 +108,18 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	t.tree.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
 
 	// The buttons are icons along the bottom, each saying what it does in
-	// its tooltip. They are the colour of the Send button, but for the one
+	// its tooltip. They are the colour of the icon of the tab, but for the one
 	// which removes, and the one which imports is apart at the right. There
 	// is none to open a request, as selecting it does that.
-	addFolder := newIconButton(primaryColour, drawFolderPlus, "Add a folder")
+	addFolder := newIconButton(requestsColour, drawFolderPlus, "Add a folder")
 	addFolder.OnClicked(t.addFolder)
-	addRequest := newIconButton(primaryColour, drawPagePlus, "Add a request")
+	addRequest := newIconButton(requestsColour, drawPagePlus, "Add a request")
 	addRequest.OnClicked(t.addRequest)
-	rename := newIconButton(primaryColour, drawLetters, "Rename the selected folder or request")
+	rename := newIconButton(requestsColour, drawLetters, "Rename the selected folder or request")
 	rename.OnClicked(t.rename)
 	remove := newIconButton(removeColour, drawBin, "Remove the selected folder or request")
 	remove.OnClicked(t.remove)
-	importButton := newIconButton(primaryColour, drawImport, "Import a folder of requests from an OpenAPI document or a Postman collection")
+	importButton := newIconButton(requestsColour, drawImport, "Import a folder of requests from an OpenAPI document or a Postman collection")
 	importButton.OnClicked(t.importDocument)
 
 	buttons := newButtonRow(addFolder, addRequest, rename, remove)

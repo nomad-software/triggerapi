@@ -64,13 +64,13 @@ func newEnvList(store *env.Store, path string) *envList {
 	}
 
 	// The buttons are icons along the bottom, each saying what it does in
-	// its tooltip. They are the colour of the Send button, but for the one
+	// its tooltip. They are the colour of the icon of the tab, but for the one
 	// which removes, and the one which imports is apart at the right.
-	add := newIconButton(primaryColour, drawPlus, "Add an environment")
+	add := newIconButton(environmentsColour, drawPlus, "Add an environment")
 	add.OnClicked(s.add)
-	importButton := newIconButton(primaryColour, drawImport, "Import an environment exported from Postman")
+	importButton := newIconButton(environmentsColour, drawImport, "Import an environment exported from Postman")
 	importButton.OnClicked(s.importDocument)
-	edit := newIconButton(primaryColour, drawPencil, "Edit the selected environment")
+	edit := newIconButton(environmentsColour, drawPencil, "Edit the selected environment")
 	edit.OnClicked(s.edit)
 	remove := newIconButton(removeColour, drawBin, "Remove the selected environment")
 	remove.OnClicked(s.remove)
