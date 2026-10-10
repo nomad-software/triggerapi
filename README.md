@@ -9,6 +9,8 @@ bindings.
 - Call gRPC methods, sending the message as JSON with metadata and basic or
   bearer authorization. The methods of a server are discovered using gRPC
   server reflection, so no protobuf files are needed.
+- JSON bodies, messages and responses are syntax highlighted, and their
+  objects and arrays can be folded.
 - Save requests in folders.
 - Define environments of variables and use them anywhere in a request as
   `{{name}}` placeholders.

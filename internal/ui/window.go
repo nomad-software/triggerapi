@@ -51,7 +51,7 @@ func aboutText() string {
 	// around a table but not around a paragraph.
 	return "<h3>Postie</h3>" +
 		"<p>A desktop client for making REST API and gRPC calls.</p>" +
-		"<table style=\"border: 1px solid #888888; border-collapse: collapse;\" cellpadding=\"10\" width=\"100%\">" +
+		"<table style=\"margin-top: 24px; border: 1px solid #888888; border-collapse: collapse;\" cellpadding=\"10\" width=\"100%\">" +
 		"<tr><td style=\"font-size: small;\">" +
 		"<p><b>Third party licences</b></p>" +
 		"<p>This program uses Qt version " + qt.QLibraryInfo_Version().ToString() + ".</p>" +
@@ -342,6 +342,7 @@ func NewWindow(files Files) *Window {
 
 	w.newMenuBar()
 	w.updateHeaders()
+	w.applyJSONColours()
 
 	w.request.url.SetFocus()
 
@@ -467,6 +468,9 @@ func (w *Window) applySettings(s settings.Settings) error {
 	w.response.setBodyFont(s.ResponseFont)
 	w.grpcResponse.setBodyFont(s.ResponseFont)
 
+	w.config.JSONColours = s.JSONColours
+	w.applyJSONColours()
+
 	previous := w.environmentsFile()
 	w.config.EnvironmentsFile = s.EnvironmentsFile
 	if path := w.environmentsFile(); path != previous {
@@ -490,6 +494,19 @@ func (w *Window) applySettings(s settings.Settings) error {
 	}
 
 	return errors.Join(failed...)
+}
+
+// applyJSONColours shows JSON in the colours of the settings, everywhere it
+// is highlighted.
+func (w *Window) applyJSONColours() {
+	colours := jsonColours(w.config.JSONColours)
+
+	w.request.highlight.json.setColours(colours)
+	w.request.refreshPlaceholders()
+	w.grpc.highlight.json.setColours(colours)
+	w.grpc.refreshPlaceholders()
+	w.response.setJSONColours(colours)
+	w.grpcResponse.setJSONColours(colours)
 }
 
 // exists reports if there is a file at path.

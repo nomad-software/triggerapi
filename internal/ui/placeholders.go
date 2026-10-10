@@ -54,6 +54,7 @@ type placeholderHighlighter struct {
 
 	known   *qt.QTextCharFormat
 	unknown *qt.QTextCharFormat
+	json    jsonFormats
 
 	edits     []*qt.QLineEdit
 	documents []*qt.QSyntaxHighlighter
@@ -70,6 +71,7 @@ func newPlaceholderHighlighter() *placeholderHighlighter {
 		expand:  func(s string) string { return s },
 		known:   format(statusColour(200)),
 		unknown: format(statusColour(400)),
+		json:    newJSONFormats(),
 	}
 }
 
@@ -80,10 +82,15 @@ func (h *placeholderHighlighter) format(r placeholderRange) *qt.QTextCharFormat 
 	return h.unknown
 }
 
-// document colours the placeholders in a text document.
-func (h *placeholderHighlighter) document(doc *qt.QTextDocument) {
+// document colours the placeholders in a text document. While isJSON reports
+// true the text is coloured as JSON as well, beneath the placeholders. A
+// document can only have one highlighter, so both are done here.
+func (h *placeholderHighlighter) document(doc *qt.QTextDocument, isJSON func() bool) {
 	highlighter := qt.NewQSyntaxHighlighter2(doc)
 	highlighter.OnHighlightBlock(func(text string) {
+		if isJSON() {
+			h.json.apply(highlighter, text)
+		}
 		for _, r := range placeholderRanges(text, h.expand) {
 			highlighter.SetFormat(r.start, r.length, h.format(r))
 		}

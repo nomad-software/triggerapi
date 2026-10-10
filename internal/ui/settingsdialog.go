@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -16,6 +17,11 @@ type settingsDialog struct {
 	environments *qt.QLineEdit
 	requests     *qt.QLineEdit
 	buttons      *qt.QDialogButtonBox
+
+	// colours are the JSON colours the user has chosen. One that is empty
+	// is the default, which is what its swatch shows.
+	colours  settings.JSONColours
+	swatches map[tokenKind]*qt.QPushButton
 
 	// initialFont is the family the font selector started on. It can differ
 	// from the setting if that font is not installed.
@@ -33,6 +39,8 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 		requests:     qt.NewQLineEdit2(),
 		buttons:      qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel),
 		defaults:     defaults,
+		colours:      current.JSONColours,
+		swatches:     map[tokenKind]*qt.QPushButton{},
 	}
 	d.SetWindowTitle("Settings")
 	d.SetMinimumWidth(560)
@@ -53,13 +61,30 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	form.AddRow3("Response font", d.font.QWidget)
 	form.AddRow4("Environments file", d.fileRow(d.environments, "Environments File"))
 	form.AddRow4("Requests file", d.fileRow(d.requests, "Requests File"))
+	// The note is about the two files above it.
+	form.AddRowWithWidget(note.QWidget)
+
+	for _, t := range tokenKinds {
+		swatch := qt.NewQPushButton2()
+		swatch.SetToolTip("Choose the colour")
+		swatch.OnClicked(func() { d.pickColour(t.kind, t.label) })
+		d.swatches[t.kind] = swatch
+		form.AddRow3("JSON "+strings.ToLower(t.label[:1])+t.label[1:], swatch.QWidget)
+		d.showColour(t.kind)
+	}
+
+	reset := qt.NewQPushButton3("Use Default Colours")
+	reset.OnClicked(d.resetColours)
+	resetRow := qt.NewQHBoxLayout2()
+	resetRow.AddWidget(reset.QWidget)
+	resetRow.AddStretch()
+	form.AddRow4("", resetRow.QLayout)
 
 	d.buttons.OnAccepted(d.Accept)
 	d.buttons.OnRejected(d.Reject)
 
 	layout := qt.NewQVBoxLayout(d.QWidget)
 	layout.AddLayout(form.QLayout)
-	layout.AddWidget(note.QWidget)
 	layout.AddStretch()
 	layout.AddWidget(d.buttons.QWidget)
 
@@ -90,6 +115,57 @@ func (d *settingsDialog) fileRow(edit *qt.QLineEdit, caption string) *qt.QLayout
 	return row.QLayout
 }
 
+// colour returns the colour shown for a kind of token: the one chosen, or
+// the default if none has been.
+func (d *settingsDialog) colour(kind tokenKind) string {
+	return jsonColours(d.colours)[kind]
+}
+
+// showColour fills the swatch of a kind of token with its colour and names
+// the colour on it, in black or white, whichever can be read against it.
+func (d *settingsDialog) showColour(kind tokenKind) {
+	colour := d.colour(kind)
+
+	text := "#ffffff"
+	if qt.NewQColor6(colour).Lightness() > 140 {
+		text = "#000000"
+	}
+
+	swatch := d.swatches[kind]
+	swatch.SetText(colour)
+	swatch.SetStyleSheet(fmt.Sprintf(
+		"QPushButton { background-color: %s; color: %s; border: 1px solid #888888; border-radius: 3px; padding: 4px 12px; }",
+		colour, text,
+	))
+}
+
+// setColour chooses the colour for a kind of token. Choosing the default
+// colour is the same as not choosing, so that it still follows the theme.
+func (d *settingsDialog) setColour(kind tokenKind, colour string) {
+	colour = strings.ToLower(colour)
+	if colour == defaultJSONColours()[kind] {
+		colour = ""
+	}
+	*customColour(&d.colours, kind) = colour
+	d.showColour(kind)
+}
+
+// pickColour lets the user choose the colour for a kind of token.
+func (d *settingsDialog) pickColour(kind tokenKind, label string) {
+	chosen := qt.QColorDialog_GetColor3(qt.NewQColor6(d.colour(kind)), d.QWidget, "Colour of "+label)
+	if chosen.IsValid() {
+		d.setColour(kind, chosen.Name())
+	}
+}
+
+// resetColours goes back to the default colour for every kind of token.
+func (d *settingsDialog) resetColours() {
+	d.colours = settings.JSONColours{}
+	for kind := range d.swatches {
+		d.showColour(kind)
+	}
+}
+
 func orDefault(value, fallback string) string {
 	if value == "" {
 		return fallback
@@ -114,6 +190,7 @@ func (d *settingsDialog) settings(base settings.Settings) settings.Settings {
 	}
 	base.EnvironmentsFile = location(d.environments, d.defaults.Environments)
 	base.RequestsFile = location(d.requests, d.defaults.Requests)
+	base.JSONColours = d.colours
 
 	return base
 }

@@ -24,6 +24,14 @@ type responsePanel struct {
 	body    *qt.QPlainTextEdit
 	headers *qt.QTableWidget
 
+	// json records that the response is JSON, which is coloured and can have
+	// its objects and arrays folded.
+	json bool
+	fold *folder
+	// formats are the colours JSON is shown in, applied by the highlighter.
+	formats     jsonFormats
+	highlighter *qt.QSyntaxHighlighter
+
 	// result and details make up the bar beneath the response, which shows
 	// the fields. The code and any error are in result, at the left, and
 	// the rest in details, at the right.
@@ -55,6 +63,16 @@ func newResponsePanel(bodyFont string) *responsePanel {
 
 	p.body = qt.NewQPlainTextEdit2()
 	p.body.SetReadOnly(true)
+
+	isJSON := func() bool { return p.json }
+	p.formats = newJSONFormats()
+	p.highlighter = qt.NewQSyntaxHighlighter2(p.body.Document())
+	p.highlighter.OnHighlightBlock(func(text string) {
+		if isJSON() {
+			p.formats.apply(p.highlighter, text)
+		}
+	})
+	p.fold = newFolder(p.body, isJSON)
 	p.setBodyFont(bodyFont)
 
 	p.headers = qt.NewQTableWidget3(0, 2)
@@ -87,6 +105,12 @@ func newResponsePanel(bodyFont string) *responsePanel {
 	return p
 }
 
+// setJSONColours changes the colours JSON is shown in.
+func (p *responsePanel) setJSONColours(colours map[tokenKind]string) {
+	p.formats.setColours(colours)
+	p.highlighter.Rehighlight()
+}
+
 // setBodyFont shows the response body in the named font family. The system's
 // fixed width font is the fallback if the family is not installed, and
 // supplies the size.
@@ -98,10 +122,21 @@ func (p *responsePanel) setBodyFont(family string) {
 
 // clear empties the panel.
 func (p *responsePanel) clear() {
-	p.body.SetPlainText("")
+	p.setBody("", false)
 	p.headers.SetRowCount(0)
 	p.tabs.SetTabText(1, "Headers")
 	p.setFields()
+}
+
+// maxHighlight is the size of response above which it is not treated as
+// JSON, as colouring it line by line would take too long.
+const maxHighlight = 2 << 20
+
+// setBody shows text as the response. JSON is coloured and can be folded.
+func (p *responsePanel) setBody(text string, isJSON bool) {
+	p.json = isJSON && len(text) <= maxHighlight
+	p.body.SetPlainText(text)
+	p.fold.reset()
 }
 
 // setFields fills the bar beneath the response with labelled values. Fields
@@ -146,7 +181,7 @@ func (p *responsePanel) showError(err error, elapsed time.Duration) {
 // response; its status goes in the bar beneath, as a failure if it is an
 // error status.
 func (p *responsePanel) show(res *rest.Response) {
-	p.body.SetPlainText(res.Text())
+	p.setBody(res.Text(), res.IsJSON())
 	p.setHeaders(headerRows(res.Headers, ""))
 	p.setFields(
 		field{fieldCode, res.Status, res.StatusCode >= 400},
@@ -160,7 +195,7 @@ func (p *responsePanel) show(res *rest.Response) {
 // response; its status goes in the bar beneath, as a failure if it is not
 // OK. The trailers of the call are listed after its headers.
 func (p *responsePanel) showRPC(res *rpc.Response) {
-	p.body.SetPlainText(strings.Join(res.Messages, "\n\n"))
+	p.setBody(strings.Join(res.Messages, "\n\n"), true)
 	p.setHeaders(append(headerRows(res.Headers, ""), headerRows(res.Trailers, " (trailer)")...))
 	p.setFields(
 		field{fieldCode, fmt.Sprintf("%d %s", res.Code, res.CodeName), !res.OK()},

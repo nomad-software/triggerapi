@@ -24,11 +24,13 @@ type grpcPanel struct {
 	// status reports a failure to load the service definition.
 	status *qt.QLabel
 
-	message    *qt.QPlainTextEdit
-	example    *qt.QPushButton
-	auth       *authEditor
-	metadata   *keyValueTable
-	definition *qt.QPlainTextEdit
+	message *qt.QPlainTextEdit
+	// messageFold folds the objects and arrays of the message.
+	messageFold *folder
+	example     *qt.QPushButton
+	auth        *authEditor
+	metadata    *keyValueTable
+	definition  *qt.QPlainTextEdit
 
 	// highlight colours the placeholders in the fields of the request.
 	highlight *placeholderHighlighter
@@ -93,7 +95,10 @@ func newGRPCPanel() *grpcPanel {
 	p.message.SetFont(fixed)
 	p.message.SetPlaceholderText("The request message as JSON")
 	p.message.OnTextChanged(p.changed)
-	p.highlight.document(p.message.Document())
+	// The message is always JSON.
+	isJSON := func() bool { return true }
+	p.highlight.document(p.message.Document(), isJSON)
+	p.messageFold = newFolder(p.message, isJSON)
 
 	p.example = qt.NewQPushButton3("Use Example Message")
 	p.example.SetToolTip("Replace the message with one that has every field of the method's request")
@@ -182,6 +187,7 @@ func (p *grpcPanel) load(r rpc.Request) {
 	p.method.setMethods(nil, r.Method)
 
 	p.message.SetPlainText(r.Message)
+	p.messageFold.reset()
 	p.metadata.setItems(r.Metadata)
 	p.auth.load(r.Auth)
 

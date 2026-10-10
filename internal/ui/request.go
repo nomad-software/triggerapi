@@ -50,6 +50,8 @@ type requestPanel struct {
 	bodyType *qt.QComboBox
 	bodyRaw  *qt.QPlainTextEdit
 	bodyForm *keyValueTable
+	// bodyFold folds the objects and arrays of a JSON body.
+	bodyFold *folder
 
 	// highlight colours the placeholders in the fields of the request.
 	highlight *placeholderHighlighter
@@ -126,7 +128,8 @@ func (p *requestPanel) newBodyTab() *qt.QWidget {
 	p.bodyRaw = qt.NewQPlainTextEdit2()
 	p.bodyRaw.SetFont(qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont))
 	p.bodyRaw.OnTextChanged(p.changed)
-	p.highlight.document(p.bodyRaw.Document())
+	p.highlight.document(p.bodyRaw.Document(), p.bodyIsJSON)
+	p.bodyFold = newFolder(p.bodyRaw, p.bodyIsJSON)
 
 	p.bodyForm = newKeyValueTable("Key", "Value")
 	p.bodyForm.onChange = p.changed
@@ -145,6 +148,9 @@ func (p *requestPanel) newBodyTab() *qt.QWidget {
 		default:
 			stack.SetCurrentIndex(bodyPageRaw)
 		}
+		// Only a JSON body is coloured and can be folded.
+		p.refreshPlaceholders()
+		p.bodyFold.reset()
 		p.changed()
 	})
 
@@ -172,6 +178,11 @@ func newHint(text string) *qt.QWidget {
 	label.SetAlignment(qt.AlignCenter)
 	label.SetEnabled(false)
 	return label.QWidget
+}
+
+// bodyIsJSON reports if the body type is JSON.
+func (p *requestPanel) bodyIsJSON() bool {
+	return bodyTypes[p.bodyType.CurrentIndex()].typ == rest.BodyJSON
 }
 
 func (p *requestPanel) changed() {
@@ -253,6 +264,7 @@ func (p *requestPanel) load(r rest.Request) {
 	}
 	p.bodyType.SetCurrentIndex(bodyIndex)
 	p.bodyRaw.SetPlainText(r.Body)
+	p.bodyFold.reset()
 	p.bodyForm.setItems(r.Form)
 }
 

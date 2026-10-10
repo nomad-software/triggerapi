@@ -4,5 +4,11 @@
   "maximized": false,
   "sidebarWidth": 445,
   "responseHeight": 589,
-  "responseFont": "Iosevka Term Curly"
+  "responseFont": "Iosevka Term Curly",
+  "jsonColours": {
+    "key": "#9bdafc",
+    "string": "#a1b796",
+    "number": "#b0c8a4",
+    "literal": "#a1b796"
+  }
 }
