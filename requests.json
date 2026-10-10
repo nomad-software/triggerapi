@@ -109717,13 +109717,6 @@
           "type": "rest",
           "method": "GET",
           "url": "{{host}}",
-          "params": [
-            {
-              "key": "dsfasdfsf",
-              "value": "",
-              "enabled": true
-            }
-          ],
           "auth": {
             "type": "none"
           },

@@ -50,6 +50,48 @@ type Response struct {
 	Headers  http.Header
 	Trailers http.Header
 	Duration time.Duration
+	// Protocol is the RPC protocol the server answered in, such as
+	// "gRPC (proto)", as its Content-Type header says. It is empty if there
+	// was no answer.
+	Protocol string
+}
+
+// Protocol returns the RPC protocol, and the encoding of its messages, that
+// a response with a content type is in: "gRPC (proto)" for
+// application/grpc+proto. It returns an empty string for a content type
+// that is not of an RPC.
+//
+// gRPC and gRPC-Web have one content type however many messages there are.
+// The Connect protocol has one for a call with a single response, which is
+// just the type of the message, and another for a stream.
+func Protocol(contentType string) string {
+	mediaType, _, _ := strings.Cut(strings.ToLower(contentType), ";")
+	mediaType = strings.TrimSpace(mediaType)
+
+	for _, known := range []struct{ prefix, name string }{
+		{"application/grpc-web-text", "gRPC-Web text"},
+		{"application/grpc-web", "gRPC-Web"},
+		{"application/grpc", "gRPC"},
+		{"application/connect", "Connect stream"},
+	} {
+		if rest, ok := strings.CutPrefix(mediaType, known.prefix); ok {
+			switch {
+			case rest == "":
+				// Messages are protobuf unless it says otherwise.
+				return known.name + " (proto)"
+			case strings.HasPrefix(rest, "+"):
+				return known.name + " (" + rest[1:] + ")"
+			}
+		}
+	}
+
+	switch mediaType {
+	case "application/proto":
+		return "Connect (proto)"
+	case "application/json":
+		return "Connect (json)"
+	}
+	return ""
 }
 
 // OK reports if the call succeeded.
@@ -233,6 +275,7 @@ func Invoke(ctx context.Context, r Request, schema *Schema) (*Response, error) {
 
 	res.Duration = time.Since(start)
 	res.Headers = stream.ResponseHeader()
+	res.Protocol = Protocol(res.Headers.Get("Content-Type"))
 	res.Trailers = stream.ResponseTrailer()
 	_ = stream.CloseResponse()
 

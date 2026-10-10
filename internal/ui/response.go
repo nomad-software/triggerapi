@@ -59,7 +59,7 @@ type responsePanel struct {
 
 // The labels of the fields shown at the left of the bar.
 const (
-	fieldCode  = "Code"
+	fieldCode  = "Status"
 	fieldError = "Error"
 )
 
@@ -217,24 +217,35 @@ func (p *responsePanel) setBody(text string, isJSON bool) {
 func (p *responsePanel) setFields(fields ...field) {
 	p.fields = slices.DeleteFunc(fields, func(f field) bool { return f.value == "" })
 
-	var left, right []string
+	// The fields at the left are the cells of a table, so that an error too
+	// long for its line carries on beneath itself and not beneath the
+	// status before it. Nothing else is wrapped.
+	const nowrap = `white-space: nowrap; `
+	var left strings.Builder
+	var right []string
 	for _, f := range p.fields {
 		value := html.EscapeString(f.value)
 		if f.failure {
 			value = fmt.Sprintf(`<span style="color: %s">%s</span>`, failureColour, value)
 		}
-		text := fmt.Sprintf("<b>%s:</b> %s", html.EscapeString(f.label), value)
+		label := fmt.Sprintf("<b>%s:</b>", html.EscapeString(f.label))
 
-		if f.label == fieldCode || f.label == fieldError {
-			left = append(left, text)
-		} else {
-			right = append(right, text)
+		switch f.label {
+		case fieldCode:
+			fmt.Fprintf(&left, `<td style="%spadding-right: 5px">%s</td><td style="%spadding-right: 20px">%s</td>`, nowrap, label, nowrap, value)
+		case fieldError:
+			fmt.Fprintf(&left, `<td style="%spadding-right: 5px">%s</td><td width="100%%">%s</td>`, nowrap, label, value)
+		default:
+			right = append(right, label+" "+value)
 		}
 	}
 
-	const gap = "&nbsp;&nbsp;&nbsp;&nbsp; "
-	p.result.SetText(strings.Join(left, gap))
-	p.details.SetText(strings.Join(right, gap))
+	result := ""
+	if left.Len() > 0 {
+		result = `<table width="100%" cellspacing="0" cellpadding="0"><tr>` + left.String() + `</tr></table>`
+	}
+	p.result.SetText(result)
+	p.details.SetText(strings.Join(right, "&nbsp;&nbsp;&nbsp;&nbsp; "))
 }
 
 // showCancelled shows that the request was cancelled before it finished.
@@ -283,6 +294,7 @@ func (p *responsePanel) showRPC(res *rpc.Response) {
 		field{fieldError, res.Status, true},
 		field{label: "Time", value: formatDuration(res.Duration)},
 		field{label: "Messages", value: strconv.Itoa(len(res.Messages))},
+		field{label: "Protocol", value: res.Protocol},
 	)
 }
 

@@ -110,7 +110,7 @@ func TestSendRequest(t *testing.T) {
 	}
 
 	waitFor(t, "the response", func() bool {
-		return fieldValue(w.response, "Code") == "201 Created"
+		return fieldValue(w.response, "Status") == "201 Created"
 	})
 
 	mainthread.Wait(func() {
@@ -856,8 +856,11 @@ func TestGRPCRequest(t *testing.T) {
 	})
 
 	waitFor(t, "the response", func() bool {
-		return fieldValue(w.grpcResponse, "Code") == "0 OK"
+		return fieldValue(w.grpcResponse, "Status") == "0 OK"
 	})
+	if got := mainthread.Wait2(func() string { return fieldValue(w.grpcResponse, "Protocol") }); got != "gRPC (proto)" {
+		t.Errorf("protocol = %q", got)
+	}
 
 	mainthread.Wait(func() {
 		want := "{\n  \"text\": \"hello\",\n  \"authorization\": \"Bearer secret\",\n  \"trace\": \"abc\"\n}"
@@ -882,7 +885,7 @@ func TestGRPCRequest(t *testing.T) {
 		w.grpc.invoke.Click()
 	})
 
-	waitFor(t, "the failure", func() bool { return fieldValue(w.grpcResponse, "Code") == "5 NOT_FOUND" })
+	waitFor(t, "the failure", func() bool { return fieldValue(w.grpcResponse, "Status") == "5 NOT_FOUND" })
 
 	mainthread.Wait(func() {
 		// The failure is in the bar beneath the response, not in it.
@@ -1065,7 +1068,7 @@ func TestGRPCCancel(t *testing.T) {
 	mainthread.Wait(func() { w.grpc.invoke.Click() })
 
 	// The message received before the cancel is still shown.
-	waitFor(t, "the cancel", func() bool { return fieldValue(w.grpcResponse, "Code") == "1 CANCELED" })
+	waitFor(t, "the cancel", func() bool { return fieldValue(w.grpcResponse, "Status") == "1 CANCELED" })
 
 	mainthread.Wait(func() {
 		// The response holds the message alone.
@@ -1360,7 +1363,7 @@ func TestStatusBar(t *testing.T) {
 
 	close(release)
 	waitFor(t, "the response", func() bool {
-		return fieldValue(w.response, "Code") == "204 No Content"
+		return fieldValue(w.response, "Status") == "204 No Content"
 	})
 
 	// A request that fails is reported in the bar and in the response.
@@ -1369,7 +1372,7 @@ func TestStatusBar(t *testing.T) {
 	waitFor(t, "the failure", func() bool { return fieldValue(w.response, "Error") != "" })
 
 	mainthread.Wait(func() {
-		if w.StatusBar().CurrentMessage() != "" || w.response.body.ToPlainText() != "" || !isFailure(w.response) || fieldValue(w.response, "Time") == "" || fieldValue(w.response, "Code") != "" {
+		if w.StatusBar().CurrentMessage() != "" || w.response.body.ToPlainText() != "" || !isFailure(w.response) || fieldValue(w.response, "Time") == "" || fieldValue(w.response, "Status") != "" {
 			t.Errorf("response = %q, bar = %+v", w.response.body.ToPlainText(), w.response.fields)
 		}
 	})
@@ -1406,7 +1409,7 @@ func TestRESTErrorStatus(t *testing.T) {
 			w.request.url.SetText(srv.URL + path)
 			w.request.send.Click()
 		})
-		waitFor(t, "the response to "+path, func() bool { return fieldValue(w.response, "Code") == code })
+		waitFor(t, "the response to "+path, func() bool { return fieldValue(w.response, "Status") == code })
 	}
 
 	mainthread.Wait(func() {
@@ -1425,22 +1428,22 @@ func TestRESTErrorStatus(t *testing.T) {
 		if got, want := w.response.body.ToPlainText(), "{\n  \"error\": \"no such user\"\n}"; got != want {
 			t.Errorf("body = %q, want %q", got, want)
 		}
-		if fieldValue(w.response, "Code") != "404 Not Found" || !isFailure(w.response) || !strings.Contains(fieldValue(w.response, "Time"), "ms") || fieldValue(w.response, "Size") != "24 B" {
+		if fieldValue(w.response, "Status") != "404 Not Found" || !isFailure(w.response) || !strings.Contains(fieldValue(w.response, "Time"), "ms") || fieldValue(w.response, "Size") != "24 B" {
 			t.Errorf("bar = %+v", w.response.fields)
 		}
 		// The code is at the left of the bar and the rest at the right.
 		left, right := w.response.result.Text(), w.response.details.Text()
-		if !strings.Contains(left, "<b>Code:</b>") || strings.Contains(left, "Time") || strings.Contains(left, "Error") {
+		if !strings.Contains(left, "<b>Status:</b>") || strings.Contains(left, "Time") || strings.Contains(left, "Error") {
 			t.Errorf("left of the bar = %q", left)
 		}
-		if !strings.Contains(right, "<b>Time:</b>") || !strings.Contains(right, "<b>Size:</b>") || !strings.Contains(right, "<b>Protocol:</b>") || strings.Contains(right, "Code") {
+		if !strings.Contains(right, "<b>Time:</b>") || !strings.Contains(right, "<b>Size:</b>") || !strings.Contains(right, "<b>Protocol:</b>") || strings.Contains(right, "Status") {
 			t.Errorf("right of the bar = %q", right)
 		}
 	})
 
 	send("/empty", "500 Internal Server Error")
 	mainthread.Wait(func() {
-		if w.response.body.ToPlainText() != "" || fieldValue(w.response, "Code") != "500 Internal Server Error" || !isFailure(w.response) {
+		if w.response.body.ToPlainText() != "" || fieldValue(w.response, "Status") != "500 Internal Server Error" || !isFailure(w.response) {
 			t.Errorf("body = %q, bar = %+v", w.response.body.ToPlainText(), w.response.fields)
 		}
 	})
@@ -1448,7 +1451,7 @@ func TestRESTErrorStatus(t *testing.T) {
 	// A success has its status in the bar too, but not as a failure.
 	send("/ok", "200 OK")
 	mainthread.Wait(func() {
-		if w.response.body.ToPlainText() != "fine" || fieldValue(w.response, "Code") != "200 OK" || isFailure(w.response) {
+		if w.response.body.ToPlainText() != "fine" || fieldValue(w.response, "Status") != "200 OK" || isFailure(w.response) {
 			t.Errorf("body = %q, bar = %+v", w.response.body.ToPlainText(), w.response.fields)
 		}
 
@@ -1459,7 +1462,7 @@ func TestRESTErrorStatus(t *testing.T) {
 			t.Errorf("bar = %q", w.response.result.Text())
 		}
 	})
-	waitFor(t, "the last response", func() bool { return fieldValue(w.response, "Code") == "200 OK" })
+	waitFor(t, "the last response", func() bool { return fieldValue(w.response, "Status") == "200 OK" })
 }
 
 func TestLayoutRemembered(t *testing.T) {
@@ -2848,9 +2851,9 @@ func TestExecuteCurl(t *testing.T) {
 	})
 
 	// The response to the command is shown as any other is.
-	waitFor(t, "the response", func() bool { return fieldValue(w.response, "Code") != "" })
+	waitFor(t, "the response", func() bool { return fieldValue(w.response, "Status") != "" })
 	mainthread.Wait(func() {
-		if got := fieldValue(w.response, "Code"); got != "200 OK" || isFailure(w.response) {
+		if got := fieldValue(w.response, "Status"); got != "200 OK" || isFailure(w.response) {
 			t.Errorf("code = %q", got)
 		}
 		if got := w.response.body.ToPlainText(); !strings.Contains(got, `"agent": "curl"`) || !strings.Contains(got, `"key": "abc"`) {
@@ -2865,7 +2868,7 @@ func TestExecuteCurl(t *testing.T) {
 	})
 
 	// So is a failure.
-	waitFor(t, "the failure", func() bool { return strings.HasPrefix(fieldValue(w.response, "Code"), "404") })
+	waitFor(t, "the failure", func() bool { return strings.HasPrefix(fieldValue(w.response, "Status"), "404") })
 	mainthread.Wait(func() {
 		if !isFailure(w.response) {
 			t.Error("a 404 is not shown as a failure")

@@ -197,6 +197,9 @@ func TestInvokeUnary(t *testing.T) {
 	if len(res.Messages) != 1 || res.Messages[0] != want {
 		t.Errorf("messages = %v", res.Messages)
 	}
+	if res.Protocol != "gRPC (proto)" {
+		t.Errorf("protocol = %q, content type %q", res.Protocol, res.Headers.Get("Content-Type"))
+	}
 	if res.Headers.Get("X-Server") != "rpctest" || res.Trailers.Get("X-Done") != "yes" {
 		t.Errorf("headers = %v, trailers = %v", res.Headers, res.Trailers)
 	}
@@ -304,5 +307,27 @@ func TestInvokeUnreachable(t *testing.T) {
 	}
 	if res.CodeName != "UNAVAILABLE" || res.Status == "" {
 		t.Errorf("status = %s %q", res.CodeName, res.Status)
+	}
+}
+
+func TestProtocol(t *testing.T) {
+	tests := map[string]string{
+		"application/grpc":                 "gRPC (proto)",
+		"application/grpc+proto":           "gRPC (proto)",
+		"Application/gRPC+JSON; charset=x": "gRPC (json)",
+		"application/grpc-web+proto":       "gRPC-Web (proto)",
+		"application/grpc-web-text":        "gRPC-Web text (proto)",
+		"application/connect+proto":        "Connect stream (proto)",
+		"application/connect+json":         "Connect stream (json)",
+		"application/proto":                "Connect (proto)",
+		"application/json":                 "Connect (json)",
+		"application/grpcx":                "",
+		"text/html":                        "",
+		"":                                 "",
+	}
+	for contentType, want := range tests {
+		if got := rpc.Protocol(contentType); got != want {
+			t.Errorf("Protocol(%q) = %q, want %q", contentType, got, want)
+		}
 	}
 }
