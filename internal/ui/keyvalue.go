@@ -13,11 +13,17 @@ const (
 	colEnabled = iota
 	colKey
 	colValue
+	// colRemove holds the button which removes the row.
+	colRemove
 )
+
+// removeIconSize is the size of the icon which removes a row.
+const removeIconSize = 18
 
 // keyValueTable is an editable list of key/value pairs, each of which can be
 // switched off. An empty row is always kept at the bottom for new entries.
-// The pairs are kept in alphabetical order of their keys.
+// The pairs are kept in alphabetical order of their keys. Each row but the
+// empty one has a button at its right which removes it.
 type keyValueTable struct {
 	table    *qt.QTableWidget
 	updating bool
@@ -27,15 +33,16 @@ type keyValueTable struct {
 }
 
 func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
-	t := &keyValueTable{table: qt.NewQTableWidget3(0, 3)}
+	t := &keyValueTable{table: qt.NewQTableWidget3(0, 4)}
 
-	t.table.SetHorizontalHeaderLabels([]string{"", keyLabel, valueLabel})
+	t.table.SetHorizontalHeaderLabels([]string{"", keyLabel, valueLabel, ""})
 	t.table.VerticalHeader().SetVisible(false)
 
 	header := t.table.HorizontalHeader()
 	header.SetSectionResizeMode2(colEnabled, qt.QHeaderView__ResizeToContents)
 	header.SetSectionResizeMode2(colKey, qt.QHeaderView__Stretch)
 	header.SetSectionResizeMode2(colValue, qt.QHeaderView__Stretch)
+	header.SetSectionResizeMode2(colRemove, qt.QHeaderView__ResizeToContents)
 
 	t.table.OnItemChanged(func(item *qt.QTableWidgetItem) {
 		if t.updating {
@@ -145,6 +152,46 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 	t.table.SetItem(row, colEnabled, check)
 	t.table.SetItem(row, colKey, qt.NewQTableWidgetItem2(key))
 	t.table.SetItem(row, colValue, qt.NewQTableWidgetItem2(value))
+
+	// Nothing is typed or selected in the cell of the button.
+	blank := qt.NewQTableWidgetItem()
+	blank.SetFlags(qt.NoItemFlags)
+	t.table.SetItem(row, colRemove, blank)
+
+	// The row above is no longer the empty one, so it can now be removed.
+	if row > 0 && t.table.CellWidget(row-1, colRemove) == nil {
+		t.table.SetCellWidget(row-1, colRemove, t.newRemoveButton())
+	}
+}
+
+// removeIcon is the icon of the buttons which remove a row, once drawn.
+var removeIcon *qt.QIcon
+
+// newRemoveButton returns a button which removes the row it is in.
+func (t *keyValueTable) newRemoveButton() *qt.QWidget {
+	if removeIcon == nil {
+		removeIcon = drawIcon(removeIconSize*2, removeColour, drawBin)
+	}
+
+	button := qt.NewQToolButton2()
+	button.SetIcon(removeIcon)
+	button.SetIconSize(qt.NewQSize2(removeIconSize, removeIconSize))
+	button.SetToolTip("Remove this row")
+	button.SetAutoRaise(true)
+	// The keyboard moves between the cells that are typed in, and a cell
+	// counts as being edited while something inside the table has focus.
+	button.SetFocusPolicy(qt.NoFocus)
+	// The rows move as others are removed, so the row of the button is
+	// found when it is pressed.
+	button.OnClicked(func() {
+		for row := range t.table.RowCount() {
+			if cell := t.table.CellWidget(row, colRemove); cell != nil && cell.UnsafePointer() == button.QWidget.UnsafePointer() {
+				t.remove(row)
+				return
+			}
+		}
+	})
+	return button.QWidget
 }
 
 // add inserts a pair above the trailing empty row.
@@ -175,10 +222,9 @@ func (t *keyValueTable) setItems(items []rest.KeyValue) {
 	t.addRow("", "", true)
 }
 
-// removeCurrent deletes the selected row, keeping the trailing empty row.
-func (t *keyValueTable) removeCurrent() {
-	row := t.table.CurrentRow()
-	if row < 0 || row == t.table.RowCount()-1 {
+// remove deletes a row, keeping the trailing empty row.
+func (t *keyValueTable) remove(row int) {
+	if row < 0 || row >= t.table.RowCount()-1 {
 		return
 	}
 	t.table.RemoveRow(row)
@@ -201,23 +247,4 @@ func (t *keyValueTable) items() []rest.KeyValue {
 		}
 	}
 	return items
-}
-
-// panel returns the table with a remove button beneath it.
-func (t *keyValueTable) panel() *qt.QWidget {
-	panel := qt.NewQWidget2()
-	layout := qt.NewQVBoxLayout(panel)
-	layout.SetContentsMargins(0, 0, 0, 0)
-
-	remove := qt.NewQPushButton3("Remove")
-	remove.OnClicked(t.removeCurrent)
-
-	buttons := qt.NewQHBoxLayout2()
-	buttons.AddStretch()
-	buttons.AddWidget(remove.QWidget)
-
-	layout.AddWidget(t.widget())
-	layout.AddLayout(buttons.QLayout)
-
-	return panel
 }

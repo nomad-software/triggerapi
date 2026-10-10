@@ -98,7 +98,7 @@ func newResponsePanel(bodyFont string) *responsePanel {
 	p.headers.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
 	p.headers.SetSelectionBehavior(qt.QAbstractItemView__SelectRows)
 
-	p.save = newTabButton(saveColour, drawDisk, "Save the response to a file")
+	p.save = newIconButton(saveColour, drawDisk, "Save the response to a file")
 	p.save.SetEnabled(false)
 	p.save.OnClicked(p.saveBody)
 

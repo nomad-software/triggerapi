@@ -127,7 +127,7 @@ func newGRPCPanel() *grpcPanel {
 	tabs := qt.NewQTabWidget2()
 	tabs.AddTab(messageTab, "Message")
 	tabs.AddTab(p.auth.root, "Authorization")
-	tabs.AddTab(p.metadata.panel(), "Metadata")
+	tabs.AddTab(p.metadata.widget(), "Metadata")
 	tabs.AddTab(p.definition.QWidget, "Service Definition")
 
 	layout := qt.NewQVBoxLayout(p.root)

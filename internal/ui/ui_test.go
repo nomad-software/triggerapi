@@ -147,10 +147,15 @@ func TestKeyValueTable(t *testing.T) {
 			t.Errorf("items = %+v", items)
 		}
 
-		table.table.SetCurrentCell(0, colKey)
-		table.removeCurrent()
+		table.remove(0)
 		if items := table.items(); len(items) != 1 || items[0].Key != "b" {
 			t.Errorf("items after remove = %+v", items)
+		}
+
+		// The empty row cannot be removed.
+		table.remove(1)
+		if table.table.RowCount() != 2 {
+			t.Errorf("rows = %d, want 2", table.table.RowCount())
 		}
 	})
 }
@@ -269,6 +274,15 @@ func TestEnvironments(t *testing.T) {
 		if items := w.editor.variables.items(); !reflect.DeepEqual(items, wantItems) {
 			t.Errorf("variables = %+v", items)
 		}
+
+		// Nothing is removed unless the user agrees to it.
+		var asked string
+		w.environments.confirm = func(question string) bool { asked = question; return false }
+		w.environments.remove()
+		if w.environments.list.Count() != 2 || !strings.Contains(asked, `"Local"`) {
+			t.Errorf("%d environments after being asked %q", w.environments.list.Count(), asked)
+		}
+		w.environments.confirm = func(string) bool { return true }
 
 		// Removing the environment being edited moves the editor to the
 		// next one, and closes it when none are left.
@@ -414,6 +428,15 @@ func TestRequests(t *testing.T) {
 		if got := w.request.request(); !reflect.DeepEqual(got, want) {
 			t.Errorf("loaded %+v, want %+v", got, want)
 		}
+
+		// A request is not removed unless the user agrees to it.
+		var asked string
+		w.requests.confirm = func(question string) bool { asked = question; return false }
+		w.requests.remove()
+		if folder := w.requests.store.Folders[0]; len(folder.Requests) != 2 || !strings.Contains(asked, "Remove the request") {
+			t.Errorf("%d requests after being asked %q", len(folder.Requests), asked)
+		}
+		w.requests.confirm = func(string) bool { return true }
 
 		// Removing the open request opens its neighbour.
 		w.requests.remove()
@@ -973,6 +996,7 @@ func TestGRPCAndRESTRequests(t *testing.T) {
 		}
 
 		// Removing the open gRPC request returns to the REST one beside it.
+		w.requests.confirm = func(string) bool { return true }
 		w.requests.remove()
 		if w.stack.CurrentIndex() != pageRequest || w.open != restRequest {
 			t.Errorf("after remove: page %d, open %+v", w.stack.CurrentIndex(), w.open)
@@ -3038,6 +3062,56 @@ func TestSaveResponse(t *testing.T) {
 			if got := responseFileName(contentType); got != want {
 				t.Errorf("file name for %q = %q, want %q", contentType, got, want)
 			}
+		}
+	})
+}
+
+func TestKeyValueRemoveButtons(t *testing.T) {
+	var table *keyValueTable
+	changes := 0
+	mainthread.Wait(func() {
+		table = newKeyValueTable("Key", "Value")
+		table.onChange = func() { changes++ }
+		table.setItems([]rest.KeyValue{{Key: "a", Value: "1", Enabled: true}, {Key: "b", Value: "2", Enabled: true}, {Key: "c", Value: "3", Enabled: true}})
+		table.table.Resize(500, 300)
+		table.table.Show()
+	})
+
+	mainthread.Wait(func() {
+		keys := func() []string {
+			var keys []string
+			for _, item := range table.items() {
+				keys = append(keys, item.Key)
+			}
+			return keys
+		}
+		click := func(row int) {
+			qt.UnsafeNewQAbstractButton(table.table.CellWidget(row, colRemove).UnsafePointer()).Click()
+		}
+
+		// Every row but the empty one has a button.
+		for row, want := range []bool{true, true, true, false} {
+			if got := table.table.CellWidget(row, colRemove) != nil; got != want {
+				t.Errorf("row %d has a button: %v", row, got)
+			}
+		}
+
+		// A button removes its own row, without asking.
+		click(1)
+		if got := keys(); !reflect.DeepEqual(got, []string{"a", "c"}) || changes != 1 {
+			t.Errorf("keys = %q with %d changes", got, changes)
+		}
+
+		// The buttons move with their rows.
+		click(1)
+		if got := keys(); !reflect.DeepEqual(got, []string{"a"}) {
+			t.Errorf("keys = %q", got)
+		}
+
+		// A row that is filled in gets a button.
+		table.table.Item(1, colKey).SetText("z")
+		if table.table.CellWidget(1, colRemove) == nil || table.table.CellWidget(2, colRemove) != nil {
+			t.Error("the new row has no button, or the empty one has")
 		}
 	})
 }

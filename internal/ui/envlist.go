@@ -22,6 +22,8 @@ type envList struct {
 	path     string
 	updating bool
 
+	// confirm asks the user a yes/no question.
+	confirm func(question string) bool
 	// chooseSource asks the user what kind of file to import. It reports
 	// false if they decide against importing.
 	chooseSource func() (envImportSource, bool)
@@ -46,6 +48,9 @@ func newEnvList(store *env.Store, path string) *envList {
 		list: qt.NewQListWidget2(),
 	}
 
+	s.confirm = func(question string) bool {
+		return qt.QMessageBox_Question(s.root, "TriggerAPI", question) == qt.QMessageBox__Yes
+	}
 	s.chooseSource = func() (envImportSource, bool) {
 		return newEnvImportDialog(s.root).ask()
 	}
@@ -58,22 +63,17 @@ func newEnvList(store *env.Store, path string) *envList {
 		qt.QMessageBox_Warning(s.root, "TriggerAPI", message)
 	}
 
-	add := qt.NewQPushButton3("Add")
+	// The buttons are icons along the bottom, each saying what it does in
+	// its tooltip. They are the colour of the Send button, but for the one
+	// which removes, and the one which imports is apart at the right.
+	add := newIconButton(primaryColour, drawPlus, "Add an environment")
 	add.OnClicked(s.add)
-	importButton := qt.NewQPushButton3("Import")
-	importButton.SetToolTip("Create an environment from one exported from Postman")
+	importButton := newIconButton(primaryColour, drawImport, "Import an environment exported from Postman")
 	importButton.OnClicked(s.importDocument)
-	edit := qt.NewQPushButton3("Edit")
+	edit := newIconButton(primaryColour, drawPencil, "Edit the selected environment")
 	edit.OnClicked(s.edit)
-	remove := qt.NewQPushButton3("Remove")
+	remove := newIconButton(removeColour, drawBin, "Remove the selected environment")
 	remove.OnClicked(s.remove)
-
-	buttons := qt.NewQHBoxLayout2()
-	buttons.AddWidget(add.QWidget)
-	buttons.AddWidget(importButton.QWidget)
-	change := qt.NewQHBoxLayout2()
-	change.AddWidget(edit.QWidget)
-	change.AddWidget(remove.QWidget)
 
 	hint := qt.NewQLabel3("Use {{variable}} in any request field to insert a value from the selected environment.")
 	hint.SetWordWrap(true)
@@ -81,9 +81,10 @@ func newEnvList(store *env.Store, path string) *envList {
 
 	layout := qt.NewQVBoxLayout(s.root)
 	layout.AddWidget2(s.list.QWidget, 1)
-	layout.AddLayout(buttons.QLayout)
-	layout.AddLayout(change.QLayout)
 	layout.AddWidget(hint.QWidget)
+	buttons := newButtonRow(add, edit, remove)
+	buttons.AddWidget(importButton.QWidget)
+	layout.AddLayout(buttons.QLayout)
 
 	s.load(store, path)
 
@@ -209,10 +210,13 @@ func (s *envList) edit() {
 	}
 }
 
-// remove deletes the selected environment.
+// remove deletes the selected environment, once the user has agreed to it.
 func (s *envList) remove() {
 	row := s.list.CurrentRow()
 	if row < 0 {
+		return
+	}
+	if !s.confirm(fmt.Sprintf("Remove the environment %q?", s.store.Environments[row].Name)) {
 		return
 	}
 

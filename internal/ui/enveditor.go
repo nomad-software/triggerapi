@@ -39,7 +39,7 @@ func newEnvEditor() *envEditor {
 
 	layout := qt.NewQVBoxLayout(e.root)
 	layout.AddLayout(bar.QLayout)
-	layout.AddWidget2(e.variables.panel(), 1)
+	layout.AddWidget2(e.variables.widget(), 1)
 
 	e.name.OnTextChanged(func(string) { e.changed() })
 	e.variables.onChange = e.changed

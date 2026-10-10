@@ -107,34 +107,28 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	// Names are only edited through the Rename button.
 	t.tree.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
 
-	addFolder := qt.NewQPushButton3("Add Folder")
+	// The buttons are icons along the bottom, each saying what it does in
+	// its tooltip. They are the colour of the Send button, but for the one
+	// which removes, and the one which imports is apart at the right. There
+	// is none to open a request, as selecting it does that.
+	addFolder := newIconButton(primaryColour, drawFolderPlus, "Add a folder")
 	addFolder.OnClicked(t.addFolder)
-	addRequest := qt.NewQPushButton3("Add Request")
+	addRequest := newIconButton(primaryColour, drawPagePlus, "Add a request")
 	addRequest.OnClicked(t.addRequest)
-	importButton := qt.NewQPushButton3("Import")
-	importButton.SetToolTip("Create a folder of requests from an OpenAPI document or a Postman collection")
-	importButton.OnClicked(t.importDocument)
-	edit := qt.NewQPushButton3("Edit")
-	edit.OnClicked(t.open)
-	rename := qt.NewQPushButton3("Rename")
+	rename := newIconButton(primaryColour, drawLetters, "Rename the selected folder or request")
 	rename.OnClicked(t.rename)
-	remove := qt.NewQPushButton3("Remove")
+	remove := newIconButton(removeColour, drawBin, "Remove the selected folder or request")
 	remove.OnClicked(t.remove)
+	importButton := newIconButton(primaryColour, drawImport, "Import a folder of requests from an OpenAPI document or a Postman collection")
+	importButton.OnClicked(t.importDocument)
 
-	add := qt.NewQHBoxLayout2()
-	add.AddWidget(addFolder.QWidget)
-	add.AddWidget(addRequest.QWidget)
-	add.AddWidget(importButton.QWidget)
-	change := qt.NewQHBoxLayout2()
-	change.AddWidget(edit.QWidget)
-	change.AddWidget(rename.QWidget)
-	change.AddWidget(remove.QWidget)
+	buttons := newButtonRow(addFolder, addRequest, rename, remove)
+	buttons.AddWidget(importButton.QWidget)
 
 	layout := qt.NewQVBoxLayout(t.root)
 	layout.AddWidget(t.search.QWidget)
 	layout.AddWidget2(t.tree.QWidget, 1)
-	layout.AddLayout(add.QLayout)
-	layout.AddLayout(change.QLayout)
+	layout.AddLayout(buttons.QLayout)
 
 	t.load(store, path)
 
@@ -730,7 +724,8 @@ func (t *requestTree) rename() {
 }
 
 // remove deletes the selected request, or the selected folder and everything
-// in it.
+// in it, once the user has agreed to it. An empty folder is removed without
+// asking.
 func (t *requestTree) remove() {
 	item := t.tree.CurrentItem()
 	if item == nil {
@@ -752,6 +747,9 @@ func (t *requestTree) remove() {
 	var removed []*collection.Request
 	switch {
 	case request != nil:
+		if !t.confirm(fmt.Sprintf("Remove the request %q?", request.Name)) {
+			return
+		}
 		removed = []*collection.Request{request}
 		holder.Remove(index - len(holder.Folders))
 	default:

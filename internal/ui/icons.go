@@ -157,6 +157,131 @@ func drawDisk(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
+// outline sets a painter up to draw the lines of a symbol.
+func outline(painter *qt.QPainter) {
+	painter.SetPenWithPen(whitePen())
+	painter.SetBrushWithStyle(qt.NoBrush)
+}
+
+// plus adds a plus sign to a path, centred on a point.
+func plus(path *qt.QPainterPath, x, y, arm float64) {
+	path.MoveTo2(x-arm, y)
+	path.LineTo2(x+arm, y)
+	path.MoveTo2(x, y-arm)
+	path.LineTo2(x, y+arm)
+}
+
+// drawPlus draws a plus sign, for adding something.
+func drawPlus(painter *qt.QPainter) {
+	outline(painter)
+	path := qt.NewQPainterPath()
+	plus(path, 64, 64, 30)
+	painter.DrawPath(path)
+}
+
+// drawFolderPlus draws a folder with a plus sign on it, for adding a folder.
+func drawFolderPlus(painter *qt.QPainter) {
+	drawFolder(painter)
+	path := qt.NewQPainterPath()
+	plus(path, 64, 72, 11)
+	painter.DrawPath(path)
+}
+
+// drawPagePlus draws a page with a plus sign on it, for adding a request.
+func drawPagePlus(painter *qt.QPainter) {
+	outline(painter)
+	path := qt.NewQPainterPath()
+	// The page, and the fold at its top right corner.
+	path.MoveTo2(36, 26)
+	path.LineTo2(72, 26)
+	path.LineTo2(92, 46)
+	path.LineTo2(92, 102)
+	path.LineTo2(36, 102)
+	path.CloseSubpath()
+	path.MoveTo2(72, 26)
+	path.LineTo2(72, 46)
+	path.LineTo2(92, 46)
+	plus(path, 64, 74, 12)
+	painter.DrawPath(path)
+}
+
+// drawImport draws an arrow pointing down into a tray, for bringing
+// something in from a file.
+func drawImport(painter *qt.QPainter) {
+	outline(painter)
+	path := qt.NewQPainterPath()
+	// The arrow.
+	path.MoveTo2(64, 28)
+	path.LineTo2(64, 74)
+	path.MoveTo2(46, 56)
+	path.LineTo2(64, 74)
+	path.LineTo2(82, 56)
+	// The tray.
+	path.MoveTo2(32, 80)
+	path.LineTo2(32, 98)
+	path.LineTo2(96, 98)
+	path.LineTo2(96, 80)
+	painter.DrawPath(path)
+}
+
+// drawPencil draws a pencil, for editing something.
+func drawPencil(painter *qt.QPainter) {
+	outline(painter)
+	path := qt.NewQPainterPath()
+	// The pencil, from its point at the bottom left.
+	path.MoveTo2(30, 98)
+	path.LineTo2(36, 74)
+	path.LineTo2(80, 30)
+	path.LineTo2(98, 48)
+	path.LineTo2(54, 92)
+	path.CloseSubpath()
+	// The band beneath the rubber.
+	path.MoveTo2(68, 42)
+	path.LineTo2(86, 60)
+	painter.DrawPath(path)
+}
+
+// drawLetters draws a capital and a small letter with the cursor that text
+// is typed at, for renaming something.
+func drawLetters(painter *qt.QPainter) {
+	font := qt.NewQFont()
+	font.SetPixelSize(56)
+	font.SetBold(true)
+
+	painter.SetFont(font)
+	painter.SetPenWithPen(whitePen())
+	painter.DrawText7(14, 0, 80, glyphSize-6, int(qt.AlignCenter), "Aa")
+
+	path := qt.NewQPainterPath()
+	path.MoveTo2(104, 34)
+	path.LineTo2(104, 94)
+	painter.DrawPath(path)
+}
+
+// drawBin draws a rubbish bin, for removing something.
+func drawBin(painter *qt.QPainter) {
+	outline(painter)
+	path := qt.NewQPainterPath()
+	// The lid and its handle.
+	path.MoveTo2(30, 42)
+	path.LineTo2(98, 42)
+	path.MoveTo2(52, 42)
+	path.LineTo2(52, 28)
+	path.LineTo2(76, 28)
+	path.LineTo2(76, 42)
+	// The bin.
+	path.MoveTo2(40, 42)
+	path.LineTo2(46, 102)
+	path.LineTo2(82, 102)
+	path.LineTo2(88, 42)
+	// The ribs down its side.
+	path.MoveTo2(56, 58)
+	path.LineTo2(57, 86)
+	path.MoveTo2(72, 58)
+	path.LineTo2(71, 86)
+	painter.DrawPath(path)
+}
+
 // The colours of the sidebar tab icons.
 const (
 	environmentsColour = "#8e6fd8"

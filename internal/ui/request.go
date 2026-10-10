@@ -131,7 +131,7 @@ func newRequestPanel() *requestPanel {
 	p.highlight.table(p.headers.table)
 
 	// The curl button is at the right of the line the tabs are on.
-	p.curl = newTabButton(curlColour, drawPrompt, "Show the request as a curl command")
+	p.curl = newIconButton(curlColour, drawPrompt, "Show the request as a curl command")
 	p.curl.SetCheckable(true)
 	p.curl.OnToggled(func(checked bool) {
 		if checked {
@@ -144,9 +144,9 @@ func newRequestPanel() *requestPanel {
 
 	tabs := newButtonTabs(p.curl)
 	tabs.AddTab(p.newBodyTab(), "Body")
-	tabs.AddTab(p.params.panel(), "Params")
+	tabs.AddTab(p.params.widget(), "Params")
 	tabs.AddTab(p.auth.root, "Authorization")
-	tabs.AddTab(p.headers.panel(), "Headers")
+	tabs.AddTab(p.headers.widget(), "Headers")
 
 	fields := qt.NewQWidget2()
 	fieldsLayout := qt.NewQVBoxLayout(fields)
@@ -246,7 +246,7 @@ func (p *requestPanel) newBodyTab() *qt.QWidget {
 	stack := qt.NewQStackedWidget2()
 	stack.AddWidget(newHint("This request does not have a body."))
 	stack.AddWidget(p.bodyRaw.QWidget)
-	stack.AddWidget(p.bodyForm.panel())
+	stack.AddWidget(p.bodyForm.widget())
 
 	p.bodyType.OnCurrentIndexChanged(func(index int) {
 		switch bodyTypes[index].typ {
