@@ -1969,3 +1969,149 @@ func TestNestedFolders(t *testing.T) {
 		t.Errorf("removal not saved: %+v, %v", saved, err)
 	}
 }
+
+// treeNames lists the names of the children of an item of the request tree,
+// with a slash after those of folders.
+func treeNames(item *qt.QTreeWidgetItem) []string {
+	var names []string
+	for i := range item.ChildCount() {
+		child := item.Child(i)
+		name := child.Text(colName)
+		if itemType(child) == "" {
+			name += "/"
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+func TestDragAndDrop(t *testing.T) {
+	files := testFiles(t)
+
+	// service/
+	//   rpc/
+	//     Get
+	//     List
+	//   rest/
+	//   Health
+	// other/
+	store := &collection.Store{}
+	service := store.AddFolder("service")
+	rpcFolder := service.AddFolder("rpc")
+	get := rpcFolder.Add(collection.NewGRPC("Get", rpc.Request{}))
+	list := rpcFolder.Add(collection.NewGRPC("List", rpc.Request{}))
+	restFolder := service.AddFolder("rest")
+	health := service.Add(collection.NewREST("Health", rest.Request{Method: "GET"}))
+	other := store.AddFolder("other")
+	if err := store.Save(files.Requests); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+		rt := w.requests
+		tree := rt.tree
+
+		// The folders and requests of the window are its own copies.
+		store = rt.store
+		service, other = store.Folders[0], store.Folders[1]
+		rpcFolder, restFolder = service.Folders[0], service.Folders[1]
+		get, list, health = rpcFolder.Requests[0], rpcFolder.Requests[1], service.Requests[0]
+
+		check := func(what string, item *qt.QTreeWidgetItem, want ...string) {
+			t.Helper()
+			if got := treeNames(item); !reflect.DeepEqual(got, want) {
+				t.Errorf("%s: %q, want %q", what, got, want)
+			}
+		}
+
+		// Nothing can be dropped onto a request, only beside it.
+		if tree.TopLevelItem(0).Child(2).Flags()&qt.ItemIsDropEnabled != 0 || tree.TopLevelItem(0).Flags()&qt.ItemIsDropEnabled == 0 {
+			t.Error("drop flags are wrong")
+		}
+
+		// Open a request, and close a folder, to see that both survive.
+		tree.SetCurrentItem(tree.TopLevelItem(0).Child(2))
+		if w.open != health {
+			t.Fatalf("open = %+v", w.open)
+		}
+		tree.TopLevelItem(1).SetExpanded(false)
+
+		// A request dropped on a folder goes inside it, at the end.
+		if !rt.drop(nil, health, rpcFolder, nil, dropOn) {
+			t.Fatal("request not moved")
+		}
+		check("service", tree.TopLevelItem(0), "rpc/", "rest/")
+		check("rpc", tree.TopLevelItem(0).Child(0), "Get", "List", "Health")
+		if tree.CurrentItem().Text(colName) != "Health" || w.open != health {
+			t.Errorf("selected %q, open %+v", tree.CurrentItem().Text(colName), w.open)
+		}
+		if tree.TopLevelItem(1).IsExpanded() || !tree.TopLevelItem(0).IsExpanded() {
+			t.Error("folders did not stay open or closed")
+		}
+
+		// Dropped above another request it is put before it.
+		rt.drop(nil, health, rpcFolder, get, dropAbove)
+		check("rpc", tree.TopLevelItem(0).Child(0), "Health", "Get", "List")
+		rt.drop(nil, get, rpcFolder, list, dropBelow)
+		check("rpc", tree.TopLevelItem(0).Child(0), "Health", "List", "Get")
+
+		// Dropped beside a folder it goes in the folder that holds that one,
+		// with the requests, which come after the folders.
+		rt.drop(nil, list, restFolder, nil, dropAbove)
+		check("service", tree.TopLevelItem(0), "rpc/", "rest/", "List")
+
+		// A request cannot be put at the top level.
+		if rt.drop(nil, list, nil, nil, dropNowhere) || rt.drop(nil, list, service, nil, dropBelow) {
+			t.Error("request moved to the top level")
+		}
+		check("service", tree.TopLevelItem(0), "rpc/", "rest/", "List")
+
+		// A folder dropped on a closed folder goes inside it, which opens.
+		if !rt.drop(rpcFolder, nil, other, nil, dropOn) {
+			t.Fatal("folder not moved")
+		}
+		check("service", tree.TopLevelItem(0), "rest/", "List")
+		check("other", tree.TopLevelItem(1), "rpc/")
+		check("rpc", tree.TopLevelItem(1).Child(0), "Health", "Get")
+		if !tree.TopLevelItem(1).IsExpanded() || tree.CurrentItem().Text(colName) != "rpc" {
+			t.Errorf("other open %t, selected %q", tree.TopLevelItem(1).IsExpanded(), tree.CurrentItem().Text(colName))
+		}
+
+		// The open request is still found where it now is.
+		tree.SetCurrentItem(tree.TopLevelItem(1).Child(0).Child(0))
+		w.request.url.SetText("moved.test")
+		if health.URL != "moved.test" {
+			t.Errorf("edit went to %+v", health.Request)
+		}
+
+		// A folder cannot be put inside itself.
+		if rt.drop(other, nil, rpcFolder, nil, dropOn) {
+			t.Error("folder moved inside itself")
+		}
+
+		// Folders are reordered by dropping one above or below another, and
+		// dropping one in the empty space puts it last at the top level.
+		rt.drop(other, nil, service, nil, dropAbove)
+		if tree.TopLevelItem(0).Text(colName) != "other" || tree.TopLevelItem(1).Text(colName) != "service" {
+			t.Errorf("top level = %q, %q", tree.TopLevelItem(0).Text(colName), tree.TopLevelItem(1).Text(colName))
+		}
+		rt.drop(restFolder, nil, nil, nil, dropNowhere)
+		if tree.TopLevelItemCount() != 3 || tree.TopLevelItem(2).Text(colName) != "rest" {
+			t.Errorf("top level has %d folders", tree.TopLevelItemCount())
+		}
+
+		// A folder dropped beside a request goes with the folders there.
+		rt.drop(restFolder, nil, rpcFolder, get, dropBelow)
+		check("rpc", tree.TopLevelItem(0).Child(0), "rest/", "Health", "Get")
+	})
+
+	saved, err := collection.Load(files.Requests)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.Folders) != 2 || saved.Folders[0].Name != "other" || saved.Folders[0].Folders[0].Folders[0].Name != "rest" || saved.Folders[0].Folders[0].Requests[0].URL != "moved.test" || saved.Folders[1].Requests[0].Name != "List" {
+		t.Errorf("saved %+v", saved.Folders)
+	}
+}

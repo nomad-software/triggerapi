@@ -178,3 +178,117 @@ func TestLoadNestedNulls(t *testing.T) {
 		t.Errorf("got %+v", b)
 	}
 }
+
+// names lists the names of the folders and then the requests of a folder.
+func names(f *Folder) []string {
+	var out []string
+	for _, sub := range f.Folders {
+		out = append(out, sub.Name+"/")
+	}
+	for _, r := range f.Requests {
+		out = append(out, r.Name)
+	}
+	return out
+}
+
+func TestMoveRequest(t *testing.T) {
+	s := &Store{}
+	a := s.AddFolder("a")
+	b := a.AddFolder("b")
+	r1 := a.Add(NewREST("1", rest.Request{}))
+	r2 := a.Add(NewREST("2", rest.Request{}))
+	r3 := a.Add(NewREST("3", rest.Request{}))
+	r4 := b.Add(NewREST("4", rest.Request{}))
+
+	if s.FolderOf(r4) != b || s.FolderOf(r1) != a || s.FolderOf(NewREST("x", rest.Request{})) != nil {
+		t.Error("FolderOf is wrong")
+	}
+
+	steps := []struct {
+		request *Request
+		to      *Folder
+		index   int
+		wantA   []string
+		wantB   []string
+	}{
+		// Reordering within a folder, later and then earlier.
+		{r1, a, 2, []string{"b/", "2", "1", "3"}, []string{"4"}},
+		{r3, a, 0, []string{"b/", "3", "2", "1"}, []string{"4"}},
+		// To the end, and to an index past the end.
+		{r3, a, 3, []string{"b/", "2", "1", "3"}, []string{"4"}},
+		{r2, a, 99, []string{"b/", "1", "3", "2"}, []string{"4"}},
+		// Into another folder.
+		{r1, b, 0, []string{"b/", "3", "2"}, []string{"1", "4"}},
+		{r2, b, 2, []string{"b/", "3"}, []string{"1", "4", "2"}},
+		// Where it already is.
+		{r4, b, 1, []string{"b/", "3"}, []string{"1", "4", "2"}},
+	}
+	for i, step := range steps {
+		if !s.MoveRequest(step.request, step.to, step.index) {
+			t.Fatalf("step %d: not moved", i)
+		}
+		if got := names(a); !reflect.DeepEqual(got, step.wantA) {
+			t.Errorf("step %d: a = %v, want %v", i, got, step.wantA)
+		}
+		if got := names(b); !reflect.DeepEqual(got, step.wantB) {
+			t.Errorf("step %d: b = %v, want %v", i, got, step.wantB)
+		}
+	}
+
+	if s.MoveRequest(NewREST("x", rest.Request{}), a, 0) || s.MoveRequest(r3, nil, 0) {
+		t.Error("moved a request that is not in the store, or to no folder")
+	}
+}
+
+func TestMoveFolder(t *testing.T) {
+	s := &Store{}
+	a := s.AddFolder("a")
+	b := s.AddFolder("b")
+	c := a.AddFolder("c")
+	d := c.AddFolder("d")
+	c.Add(NewREST("r", rest.Request{}))
+
+	top := func() []string {
+		var out []string
+		for _, f := range s.Folders {
+			out = append(out, f.Name)
+		}
+		return out
+	}
+
+	if parent, ok := s.ParentOf(d); !ok || parent != c {
+		t.Error("ParentOf(d) is wrong")
+	}
+	if parent, ok := s.ParentOf(a); !ok || parent != nil {
+		t.Error("ParentOf(a) is wrong")
+	}
+	if _, ok := s.ParentOf(&Folder{}); ok {
+		t.Error("found the parent of a folder that is not in the store")
+	}
+
+	// A folder cannot go inside itself or anything inside it.
+	if s.MoveFolder(a, a, 0) || s.MoveFolder(a, d, 0) || s.MoveFolder(c, d, 0) || s.MoveFolder(&Folder{}, a, 0) {
+		t.Error("moved a folder inside itself")
+	}
+	if got := names(a); !reflect.DeepEqual(got, []string{"c/"}) {
+		t.Errorf("a = %v", got)
+	}
+
+	// Into another folder, taking its contents with it.
+	if !s.MoveFolder(c, b, 0) || len(a.Folders) != 0 || !reflect.DeepEqual(names(b), []string{"c/"}) || !reflect.DeepEqual(names(c), []string{"d/", "r"}) {
+		t.Errorf("a = %v, b = %v, c = %v", names(a), names(b), names(c))
+	}
+
+	// Out to the top level, between the two folders there.
+	if !s.MoveFolder(d, nil, 1) || !reflect.DeepEqual(top(), []string{"a", "d", "b"}) || len(c.Folders) != 0 {
+		t.Errorf("top = %v", top())
+	}
+
+	// Reordering the top level.
+	if !s.MoveFolder(a, nil, 3) || !reflect.DeepEqual(top(), []string{"d", "b", "a"}) {
+		t.Errorf("top = %v", top())
+	}
+	if !s.MoveFolder(a, nil, 0) || !reflect.DeepEqual(top(), []string{"a", "d", "b"}) {
+		t.Errorf("top = %v", top())
+	}
+}

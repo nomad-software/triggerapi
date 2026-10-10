@@ -127,6 +127,114 @@ func (f *Folder) Descendants() int {
 	return n
 }
 
+// contains reports if other is the folder itself or is inside it.
+func (f *Folder) contains(other *Folder) bool {
+	if f == other {
+		return true
+	}
+	return slices.ContainsFunc(f.Folders, func(sub *Folder) bool { return sub.contains(other) })
+}
+
+// ParentOf returns the folder that holds a folder, or nil if it is at the top
+// level. It reports false if the folder is not in the store.
+func (s *Store) ParentOf(f *Folder) (*Folder, bool) {
+	if slices.Contains(s.Folders, f) {
+		return nil, true
+	}
+
+	var find func(in *Folder) *Folder
+	find = func(in *Folder) *Folder {
+		if slices.Contains(in.Folders, f) {
+			return in
+		}
+		for _, sub := range in.Folders {
+			if parent := find(sub); parent != nil {
+				return parent
+			}
+		}
+		return nil
+	}
+
+	for _, top := range s.Folders {
+		if parent := find(top); parent != nil {
+			return parent, true
+		}
+	}
+	return nil, false
+}
+
+// FolderOf returns the folder that holds a request, or nil if the request is
+// not in the store.
+func (s *Store) FolderOf(r *Request) *Folder {
+	var find func(in *Folder) *Folder
+	find = func(in *Folder) *Folder {
+		if slices.Contains(in.Requests, r) {
+			return in
+		}
+		for _, sub := range in.Folders {
+			if holder := find(sub); holder != nil {
+				return holder
+			}
+		}
+		return nil
+	}
+
+	for _, top := range s.Folders {
+		if holder := find(top); holder != nil {
+			return holder
+		}
+	}
+	return nil
+}
+
+// move takes item out of from and puts it in to, before the item that was at
+// index there, or at the end if the index is past it. The two can be the same
+// list, which is how an item is reordered.
+func move[T comparable](from, to *[]T, item T, index int) {
+	old := slices.Index(*from, item)
+	*from = slices.Delete(*from, old, old+1)
+
+	// Taking the item out of the list it is going back into moves what came
+	// after it down by one.
+	if from == to && old < index {
+		index--
+	}
+	index = min(max(index, 0), len(*to))
+	*to = slices.Insert(*to, index, item)
+}
+
+// MoveRequest moves a request into a folder, before the request at index
+// there. It reports false, having done nothing, if the request is not in the
+// store.
+func (s *Store) MoveRequest(r *Request, to *Folder, index int) bool {
+	from := s.FolderOf(r)
+	if from == nil || to == nil {
+		return false
+	}
+	move(&from.Requests, &to.Requests, r, index)
+	return true
+}
+
+// MoveFolder moves a folder into another, or to the top level if that is
+// nil, before the folder at index there. It reports false, having done
+// nothing, if the folder is not in the store or would be moved inside itself.
+func (s *Store) MoveFolder(f *Folder, to *Folder, index int) bool {
+	parent, ok := s.ParentOf(f)
+	if !ok || (to != nil && f.contains(to)) {
+		return false
+	}
+
+	from, into := &s.Folders, &s.Folders
+	if parent != nil {
+		from = &parent.Folders
+	}
+	if to != nil {
+		into = &to.Folders
+	}
+	move(from, into, f, index)
+	return true
+}
+
 // normalise drops nulls from the folder and everything inside it, so the
 // rest of the program need not check for them, and normalises its requests.
 func (f *Folder) normalise() {

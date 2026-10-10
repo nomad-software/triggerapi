@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/postie/internal/collection"
 	"github.com/nomad-software/postie/internal/rest"
@@ -31,6 +32,9 @@ type requestTree struct {
 	// path is the file the store is saved to. Nothing is saved if it is empty.
 	path     string
 	updating bool
+	// collapsed holds the folders that were closed when the tree was last
+	// drawn again.
+	collapsed map[*collection.Folder]bool
 
 	// confirm asks the user a yes/no question.
 	confirm func(question string) bool
@@ -89,6 +93,48 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 
 	t.load(store, path)
 
+	// Folders and requests are moved by dragging them. The move is made in
+	// the store and the tree drawn again from it, instead of letting the
+	// tree move its own items, so the two cannot come to differ.
+	t.tree.SetDragEnabled(true)
+	t.tree.SetAcceptDrops(true)
+	t.tree.SetDropIndicatorShown(true)
+	t.tree.SetDragDropMode(qt.QAbstractItemView__InternalMove)
+	t.tree.OnDropEvent(func(_ func(*qt.QDropEvent), event *qt.QDropEvent) {
+		dragged := t.tree.CurrentItem()
+		target := t.tree.ItemAt(event.Position().ToPoint())
+
+		where := dropNowhere
+		switch t.tree.DropIndicatorPosition() {
+		case qt.QAbstractItemView__OnItem:
+			where = dropOn
+		case qt.QAbstractItemView__AboveItem:
+			where = dropAbove
+		case qt.QAbstractItemView__BelowItem:
+			where = dropBelow
+		}
+
+		// Tell the tree that nothing was moved, so that it does not remove
+		// what was dragged.
+		event.SetDropAction(qt.IgnoreAction)
+		event.Accept()
+
+		if dragged == nil {
+			return
+		}
+		draggedFolder, draggedRequest := t.locate(dragged)
+		var targetFolder *collection.Folder
+		var targetRequest *collection.Request
+		if target != nil && where != dropNowhere {
+			targetFolder, targetRequest = t.locate(target)
+		}
+
+		// The items must not be replaced until the drag has finished.
+		mainthread.Start(func() {
+			t.drop(draggedFolder, draggedRequest, targetFolder, targetRequest, where)
+		})
+	})
+
 	// Clicking where there is no item clears the selection, which is how a
 	// folder is added at the top level once there are others.
 	t.tree.OnMousePressEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
@@ -136,22 +182,157 @@ func (t *requestTree) load(store *collection.Store, path string) {
 	t.store = store
 	t.path = path
 
+	t.collapsed = map[*collection.Folder]bool{}
+	t.draw(nil)
+}
+
+// draw fills the tree from the store. Every folder is open except those in
+// collapsed. The item of selected, a folder or a request, is made the
+// current one if it is given.
+func (t *requestTree) draw(selected any) {
+	defer func(prev bool) { t.updating = prev }(t.updating)
+	t.updating = true
+
 	t.tree.Clear()
-	for _, f := range store.Folders {
-		t.fill(t.newItem(nil, -1, f.Name, ""), f)
+
+	var current *qt.QTreeWidgetItem
+	note := func(item *qt.QTreeWidgetItem, of any) {
+		if of == selected {
+			current = item
+		}
+	}
+
+	// fill adds the contents of a folder beneath its item: its folders
+	// first, then its requests.
+	var fill func(item *qt.QTreeWidgetItem, folder *collection.Folder)
+	fill = func(item *qt.QTreeWidgetItem, folder *collection.Folder) {
+		note(item, folder)
+		for _, sub := range folder.Folders {
+			fill(t.newItem(item, -1, sub.Name, ""), sub)
+		}
+		for _, r := range folder.Requests {
+			note(t.newItem(item, -1, r.Name, r.Type), r)
+		}
+		item.SetExpanded(!t.collapsed[folder])
+	}
+
+	for _, f := range t.store.Folders {
+		fill(t.newItem(nil, -1, f.Name, ""), f)
+	}
+	if current != nil {
+		t.tree.SetCurrentItem(current)
 	}
 }
 
-// fill adds the contents of a folder beneath its item: its folders first,
-// then its requests.
-func (t *requestTree) fill(item *qt.QTreeWidgetItem, folder *collection.Folder) {
-	for _, sub := range folder.Folders {
-		t.fill(t.newItem(item, -1, sub.Name, ""), sub)
+// remember notes which folders are closed, so they can be drawn that way
+// again. It must be called while the tree still matches the store.
+func (t *requestTree) remember() {
+	clear(t.collapsed)
+
+	var walk func(item *qt.QTreeWidgetItem, folder *collection.Folder)
+	walk = func(item *qt.QTreeWidgetItem, folder *collection.Folder) {
+		if !item.IsExpanded() {
+			t.collapsed[folder] = true
+		}
+		for i, sub := range folder.Folders {
+			walk(item.Child(i), sub)
+		}
 	}
-	for _, r := range folder.Requests {
-		t.newItem(item, -1, r.Name, r.Type)
+	for i, f := range t.store.Folders {
+		walk(t.tree.TopLevelItem(i), f)
 	}
-	item.SetExpanded(true)
+}
+
+// dropPosition is where something dragged was let go, relative to an item.
+type dropPosition int
+
+const (
+	// dropNowhere is the empty space beneath the items.
+	dropNowhere dropPosition = iota
+	dropOn
+	dropAbove
+	dropBelow
+)
+
+// drop moves the folder or request that was dragged to where it was dropped:
+// on, above or below the target folder or request, or nowhere. It reports if
+// anything was moved.
+//
+// Dropping on a folder puts it inside, at the end. Dropping above or below
+// something puts it beside that, in the same folder, with the one limit that
+// folders always come before requests. Dropping in the empty space puts a
+// folder at the end of the top level; a request cannot go there, as requests
+// are always in a folder.
+func (t *requestTree) drop(folder *collection.Folder, request *collection.Request, targetFolder *collection.Folder, targetRequest *collection.Request, where dropPosition) bool {
+	after := 0
+	if where == dropBelow {
+		after = 1
+	}
+
+	// to is the folder to move into, which is nil for the top level, and
+	// index the position there among the things of the same kind.
+	var to *collection.Folder
+	index := 0
+
+	switch {
+	case where == dropNowhere || targetFolder == nil:
+		index = len(t.store.Folders)
+
+	case targetRequest != nil:
+		// Beside a request, in the folder that holds it.
+		to = targetFolder
+		index = len(to.Folders)
+		if request != nil {
+			index = slices.Index(to.Requests, targetRequest) + after
+		}
+
+	case where == dropOn:
+		to = targetFolder
+		index = len(to.Folders)
+		if request != nil {
+			index = len(to.Requests)
+		}
+
+	default:
+		// Beside a folder, in the folder that holds it. A request goes
+		// before the requests there, which is as near as it can be.
+		parent, ok := t.store.ParentOf(targetFolder)
+		if !ok {
+			return false
+		}
+		to = parent
+		if request == nil {
+			siblings := t.store.Folders
+			if to != nil {
+				siblings = to.Folders
+			}
+			index = slices.Index(siblings, targetFolder) + after
+		}
+	}
+
+	t.remember()
+
+	var moved any
+	switch {
+	case request != nil:
+		if !t.store.MoveRequest(request, to, index) {
+			return false
+		}
+		moved = request
+	default:
+		if !t.store.MoveFolder(folder, to, index) {
+			return false
+		}
+		moved = folder
+	}
+
+	// What something is dropped into is opened to show it.
+	if to != nil {
+		delete(t.collapsed, to)
+	}
+	t.draw(moved)
+	t.save()
+	return true
 }
 
 // folderIcon is the icon of a folder, once it has been drawn.
@@ -186,7 +367,12 @@ func (t *requestTree) newItem(parent *qt.QTreeWidgetItem, index int, name string
 		}
 		item.SetIcon(colName, folderIcon)
 	}
-	item.SetFlags(item.Flags() | qt.ItemIsEditable)
+	flags := item.Flags() | qt.ItemIsEditable
+	if typ != "" {
+		// Nothing can be dropped onto a request.
+		flags &^= qt.ItemIsDropEnabled
+	}
+	item.SetFlags(flags)
 
 	return item
 }

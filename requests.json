@@ -101,21 +101,67 @@
       "name": "em-ohip-hotel",
       "folders": [
         {
-          "name": "hotel"
-        }
-      ],
-      "requests": [
-        {
-          "name": "hotel -\u003e GetHotels",
-          "type": "grpc",
-          "grpc": {
-            "url": "localhost:3001",
-            "method": "ohip_hotel.v1.OhipHotelService/GetHotels",
-            "message": "{}",
-            "auth": {
-              "type": "none"
+          "name": "hotel",
+          "requests": [
+            {
+              "name": "GetHotels",
+              "type": "grpc",
+              "grpc": {
+                "url": "localhost:3001",
+                "method": "ohip_hotel.v1.OhipHotelService/GetHotels",
+                "message": "{}",
+                "auth": {
+                  "type": "none"
+                }
+              }
             }
-          }
+          ]
+        },
+        {
+          "name": "entcfg",
+          "requests": [
+            {
+              "name": "GetHotel",
+              "type": "grpc",
+              "grpc": {
+                "url": "localhost:3001",
+                "method": "property.entcfg.v1.EntcfgService/GetHotel",
+                "message": "{\n  \"fetchInstructions\": []\n}",
+                "auth": {
+                  "type": "none"
+                }
+              }
+            },
+            {
+              "name": "GetCurrencyExchangeRates",
+              "type": "grpc",
+              "grpc": {
+                "url": "localhost:3001",
+                "method": "property.entcfg.v1.EntcfgService/GetCurrencyExchangeRates",
+                "message": "{\n  \"currencyCodes\": []\n}",
+                "auth": {
+                  "type": "none"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "fofcfg",
+          "requests": [
+            {
+              "name": "GetTransactionCode",
+              "type": "grpc",
+              "grpc": {
+                "url": "localhost:3001",
+                "method": "property.fofcfg.v1.FofcfgService/GetTransactionCodes",
+                "message": "{\n  \"compTransactionCodes\": false,\n  \"includeInactive\": false,\n  \"transactionSubgroupsCodes\": []\n}",
+                "auth": {
+                  "type": "none"
+                }
+              }
+            }
+          ]
         }
       ]
     }

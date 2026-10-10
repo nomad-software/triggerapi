@@ -11,7 +11,8 @@ bindings.
   server reflection, so no protobuf files are needed.
 - JSON bodies, messages and responses are syntax highlighted, and their
   objects and arrays can be folded.
-- Save requests in folders, nested to any depth.
+- Save requests in folders, nested to any depth, and rearrange them by
+  dragging.
 - Define environments of variables and use them anywhere in a request as
   `{{name}}` placeholders.
 
