@@ -320,9 +320,9 @@ func TestRequests(t *testing.T) {
 		}
 
 		// Renaming updates the title.
-		tree.TopLevelItem(0).SetText(0, "Users")
-		tree.TopLevelItem(0).Child(0).SetText(0, "List")
-		if list.Name != "List" || w.request.header.request.Text() != "List" || w.requests.store.Folders[0].Name != "Users" {
+		tree.TopLevelItem(0).SetText(0, "Api")
+		tree.TopLevelItem(0).Child(0).SetText(0, "Fetch")
+		if list.Name != "Fetch" || w.request.header.request.Text() != "Fetch" || w.requests.store.Folders[0].Name != "Api" {
 			t.Errorf("rename: %q, title %q", list.Name, w.request.header.request.Text())
 		}
 
@@ -333,7 +333,7 @@ func TestRequests(t *testing.T) {
 		if w.open != create || w.request.url.Text() != "" || tree.TopLevelItem(0).ChildCount() != 2 {
 			t.Errorf("second request: open %+v, url %q", w.open, w.request.url.Text())
 		}
-		tree.TopLevelItem(0).Child(1).SetText(0, "Create")
+		tree.TopLevelItem(0).Child(1).SetText(0, "Post")
 
 		// Edits are written to the open request.
 		w.request.method.SetCurrentIndex(1) // POST
@@ -390,10 +390,10 @@ func TestRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(saved.Folders) != 2 || saved.Folders[0].Name != "Users" || len(saved.Folders[0].Requests) != 2 {
+	if len(saved.Folders) != 2 || saved.Folders[0].Name != "Api" || len(saved.Folders[0].Requests) != 2 {
 		t.Fatalf("saved %+v", saved.Folders)
 	}
-	if got := saved.Folders[0].Requests[1]; got.Name != "Create" || !reflect.DeepEqual(*got.Request, want) {
+	if got := saved.Folders[0].Requests[1]; got.Name != "Post" || !reflect.DeepEqual(*got.Request, want) {
 		t.Errorf("saved request %+v, want %+v", got, want)
 	}
 
@@ -402,7 +402,7 @@ func TestRequests(t *testing.T) {
 		w := NewWindow(files)
 		tree := w.requests.tree
 
-		if tree.TopLevelItemCount() != 2 || tree.TopLevelItem(0).Text(0) != "Users" || tree.TopLevelItem(0).Child(1).Text(0) != "Create" {
+		if tree.TopLevelItemCount() != 2 || tree.TopLevelItem(0).Text(0) != "Api" || tree.TopLevelItem(0).Child(1).Text(0) != "Post" {
 			t.Fatal("tree not restored")
 		}
 		if w.open != nil || !w.request.header.request.IsHidden() {
@@ -416,7 +416,7 @@ func TestRequests(t *testing.T) {
 
 		// Removing the open request opens its neighbour.
 		w.requests.remove()
-		if folder := w.requests.store.Folders[0]; len(folder.Requests) != 1 || w.open != folder.Requests[0] || w.request.header.request.Text() != "List" {
+		if folder := w.requests.store.Folders[0]; len(folder.Requests) != 1 || w.open != folder.Requests[0] || w.request.header.request.Text() != "Fetch" {
 			t.Errorf("after remove: open %+v", w.open)
 		}
 
@@ -1522,15 +1522,15 @@ func TestHeader(t *testing.T) {
 		w.editor.name.SetText("Local")
 		w.editor.variables.add("host", "local.test")
 		w.environments.add()
-		w.editor.name.SetText("Live")
-		w.editor.variables.add("host", "live.test")
+		w.editor.name.SetText("Remote")
+		w.editor.variables.add("host", "remote.test")
 		w.editor.close.Click()
 		w.requests.addRequest()
 
 		if h.request.IsHidden() || h.requestLabel.Text() != "Request:" || h.request.Text() != "New Request" {
 			t.Errorf("request = %q", h.request.Text())
 		}
-		if h.environment.Count() != 3 || h.environment.ItemText(1) != "Local" || h.environment.CurrentText() != "Live" {
+		if h.environment.Count() != 3 || h.environment.ItemText(1) != "Local" || h.environment.CurrentText() != "Remote" {
 			t.Errorf("environments = %d, selected %q", h.environment.Count(), h.environment.CurrentText())
 		}
 
@@ -1548,7 +1548,7 @@ func TestHeader(t *testing.T) {
 			t.Errorf("gRPC header = %q, %q", g.request.Text(), g.environment.CurrentText())
 		}
 		g.environment.SetCurrentIndex(2)
-		if w.environments.store.Active != 1 || h.environment.CurrentText() != "Live" {
+		if w.environments.store.Active != 1 || h.environment.CurrentText() != "Remote" {
 			t.Errorf("active = %d, REST header = %q", w.environments.store.Active, h.environment.CurrentText())
 		}
 
@@ -1842,31 +1842,68 @@ func TestJSONColourSettings(t *testing.T) {
 	})
 }
 
+// treeItem finds an item of the request tree by the names on the way to it
+// from the top. It returns nil if there is none.
+func treeItem(tree *qt.QTreeWidget, names ...string) *qt.QTreeWidgetItem {
+	var item *qt.QTreeWidgetItem
+	for depth, name := range names {
+		var found *qt.QTreeWidgetItem
+		if depth == 0 {
+			for i := range tree.TopLevelItemCount() {
+				if tree.TopLevelItem(i).Text(colName) == name {
+					found = tree.TopLevelItem(i)
+				}
+			}
+		} else {
+			for i := range item.ChildCount() {
+				if item.Child(i).Text(colName) == name {
+					found = item.Child(i)
+				}
+			}
+		}
+		if found == nil {
+			return nil
+		}
+		item = found
+	}
+	return item
+}
+
+// renameCurrent gives the selected item of the request tree a name, and puts
+// the tree back in order straight away, which otherwise happens a moment
+// later. Items found before it must be found again.
+func renameCurrent(rt *requestTree, name string) {
+	rt.tree.CurrentItem().SetText(colName, name)
+	rt.sort()
+}
+
 func TestNestedFolders(t *testing.T) {
 	files := testFiles(t)
 
 	mainthread.Wait(func() {
 		w := NewWindow(files)
 		w.Show()
-		tree := w.requests.tree
-		name := func(item *qt.QTreeWidgetItem, text string) { item.SetText(colName, text) }
+		rt := w.requests
+		tree := rt.tree
 
 		// A folder is added at the top level when nothing is selected, and
 		// inside the selected folder when one is.
-		w.requests.addFolder()
-		service := tree.TopLevelItem(0)
-		name(service, "em-ohip-hotel")
+		rt.addFolder()
+		renameCurrent(rt, "em-ohip-hotel")
+		tree.SetCurrentItem(treeItem(tree, "em-ohip-hotel"))
 
-		w.requests.addFolder()
-		name(service.Child(0), "ohip_hotel")
-		if tree.TopLevelItemCount() != 1 || service.ChildCount() != 1 || !service.IsExpanded() {
+		rt.addFolder()
+		renameCurrent(rt, "ohip_hotel")
+		service := treeItem(tree, "em-ohip-hotel")
+		if tree.TopLevelItemCount() != 1 || service.ChildCount() != 1 || !service.IsExpanded() || treeItem(tree, "em-ohip-hotel", "ohip_hotel") == nil {
 			t.Fatalf("subfolder not added: %d top level, %d children", tree.TopLevelItemCount(), service.ChildCount())
 		}
 
 		// A request goes in the selected folder, however deep.
+		tree.SetCurrentItem(treeItem(tree, "em-ohip-hotel", "ohip_hotel"))
 		addGRPCRequest(w)
-		name(service.Child(0).Child(0), "GetHotel")
-		folders := w.requests.store.Folders
+		renameCurrent(rt, "GetHotel")
+		folders := rt.store.Folders
 		if len(folders) != 1 || len(folders[0].Folders) != 1 || len(folders[0].Folders[0].Requests) != 1 {
 			t.Fatalf("store = %+v", folders[0])
 		}
@@ -1877,18 +1914,16 @@ func TestNestedFolders(t *testing.T) {
 
 		// With a request selected, a folder is added beside it, in the
 		// folder that holds it, and listed before the requests.
-		w.requests.addFolder()
-		name(service.Child(0).Child(0), "admin")
-		inner := service.Child(0)
-		if inner.ChildCount() != 2 || inner.Child(0).Text(colName) != "admin" || inner.Child(1).Text(colName) != "GetHotel" {
-			t.Errorf("children = %q, %q", inner.Child(0).Text(colName), inner.Child(1).Text(colName))
-		}
-		if itemType(inner.Child(0)) != "" || itemType(inner.Child(1)) != collection.TypeGRPC {
-			t.Errorf("icons = %q, %q", itemType(inner.Child(0)), itemType(inner.Child(1)))
+		tree.SetCurrentItem(treeItem(tree, "em-ohip-hotel", "ohip_hotel", "GetHotel"))
+		rt.addFolder()
+		renameCurrent(rt, "admin")
+		inner := treeItem(tree, "em-ohip-hotel", "ohip_hotel")
+		if got, want := treeNames(inner), []string{"admin/", "GetHotel"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("children = %q, want %q", got, want)
 		}
 
 		// The request is still found now that a folder comes before it.
-		tree.SetCurrentItem(inner.Child(1))
+		tree.SetCurrentItem(treeItem(tree, "em-ohip-hotel", "ohip_hotel", "GetHotel"))
 		if w.open != get {
 			t.Errorf("open = %+v", w.open)
 		}
@@ -1898,19 +1933,19 @@ func TestNestedFolders(t *testing.T) {
 		}
 
 		// A REST request three folders down.
-		tree.SetCurrentItem(inner.Child(0))
-		w.requests.addRequest()
-		name(inner.Child(0).Child(0), "Report")
+		tree.SetCurrentItem(treeItem(tree, "em-ohip-hotel", "ohip_hotel", "admin"))
+		rt.addRequest()
+		renameCurrent(rt, "Report")
 		report := folders[0].Folders[0].Folders[0].Requests[0]
-		if w.open != report || report.Type != collection.TypeREST || w.stack.CurrentIndex() != pageRequest {
+		if w.open != report || report.Name != "Report" || report.Type != collection.TypeREST || w.stack.CurrentIndex() != pageRequest {
 			t.Errorf("open = %+v", w.open)
 		}
 
 		// A second top level folder needs the selection cleared first.
-		w.requests.deselect()
-		w.requests.addFolder()
-		name(tree.TopLevelItem(1), "other")
-		if tree.TopLevelItemCount() != 2 || len(w.requests.store.Folders) != 2 {
+		rt.deselect()
+		rt.addFolder()
+		renameCurrent(rt, "other")
+		if tree.TopLevelItemCount() != 2 || len(rt.store.Folders) != 2 {
 			t.Errorf("top level folders = %d", tree.TopLevelItemCount())
 		}
 
@@ -1932,14 +1967,14 @@ func TestNestedFolders(t *testing.T) {
 	mainthread.Wait(func() {
 		w := NewWindow(files)
 		w.Show()
-		tree := w.requests.tree
+		rt := w.requests
+		tree := rt.tree
 
-		inner := tree.TopLevelItem(0).Child(0)
-		if tree.TopLevelItemCount() != 2 || inner.Text(colName) != "ohip_hotel" || inner.Child(0).Child(0).Text(colName) != "Report" || inner.Child(1).Text(colName) != "GetHotel" {
+		if tree.TopLevelItemCount() != 2 || treeItem(tree, "em-ohip-hotel", "ohip_hotel", "admin", "Report") == nil || treeItem(tree, "em-ohip-hotel", "ohip_hotel", "GetHotel") == nil {
 			t.Fatal("tree not restored")
 		}
 
-		tree.SetCurrentItem(inner.Child(0).Child(0))
+		tree.SetCurrentItem(treeItem(tree, "em-ohip-hotel", "ohip_hotel", "admin", "Report"))
 		report := w.open
 		if report == nil || report.Name != "Report" {
 			t.Fatalf("open = %+v", report)
@@ -1947,21 +1982,21 @@ func TestNestedFolders(t *testing.T) {
 
 		// Removing a folder asks first, saying what is in it.
 		var asked string
-		w.requests.confirm = func(question string) bool { asked = question; return false }
-		tree.SetCurrentItem(inner)
-		w.requests.remove()
+		rt.confirm = func(question string) bool { asked = question; return false }
+		tree.SetCurrentItem(treeItem(tree, "em-ohip-hotel", "ohip_hotel"))
+		rt.remove()
 		if !strings.Contains(asked, `"ohip_hotel"`) || !strings.Contains(asked, "1 folder and 2 requests") {
 			t.Errorf("asked %q", asked)
 		}
-		if tree.TopLevelItem(0).ChildCount() != 1 || w.open != report {
+		if treeItem(tree, "em-ohip-hotel").ChildCount() != 1 || w.open != report {
 			t.Error("folder removed without confirmation")
 		}
 
 		// It takes everything in it, and closes the request that was open.
-		w.requests.confirm = func(string) bool { return true }
-		w.requests.remove()
-		if tree.TopLevelItem(0).ChildCount() != 0 || len(w.requests.store.Folders[0].Folders) != 0 || w.open != nil {
-			t.Errorf("after remove: %d children, open %+v", tree.TopLevelItem(0).ChildCount(), w.open)
+		rt.confirm = func(string) bool { return true }
+		rt.remove()
+		if treeItem(tree, "em-ohip-hotel").ChildCount() != 0 || len(rt.store.Folders[0].Folders) != 0 || w.open != nil {
+			t.Errorf("after remove: %d children, open %+v", treeItem(tree, "em-ohip-hotel").ChildCount(), w.open)
 		}
 	})
 
@@ -1988,21 +2023,21 @@ func treeNames(item *qt.QTreeWidgetItem) []string {
 func TestDragAndDrop(t *testing.T) {
 	files := testFiles(t)
 
+	// other/
 	// service/
+	//   rest/
 	//   rpc/
 	//     Get
 	//     List
-	//   rest/
 	//   Health
-	// other/
 	store := &collection.Store{}
 	service := store.AddFolder("service")
 	rpcFolder := service.AddFolder("rpc")
-	get := rpcFolder.Add(collection.NewGRPC("Get", rpc.Request{}))
-	list := rpcFolder.Add(collection.NewGRPC("List", rpc.Request{}))
-	restFolder := service.AddFolder("rest")
-	health := service.Add(collection.NewREST("Health", rest.Request{Method: "GET"}))
-	other := store.AddFolder("other")
+	rpcFolder.Add(collection.NewGRPC("Get", rpc.Request{}))
+	rpcFolder.Add(collection.NewGRPC("List", rpc.Request{}))
+	service.AddFolder("rest")
+	service.Add(collection.NewREST("Health", rest.Request{Method: "GET"}))
+	store.AddFolder("other")
 	if err := store.Save(files.Requests); err != nil {
 		t.Fatal(err)
 	}
@@ -2013,74 +2048,81 @@ func TestDragAndDrop(t *testing.T) {
 		rt := w.requests
 		tree := rt.tree
 
-		// The folders and requests of the window are its own copies.
-		store = rt.store
-		service, other = store.Folders[0], store.Folders[1]
-		rpcFolder, restFolder = service.Folders[0], service.Folders[1]
-		get, list, health = rpcFolder.Requests[0], rpcFolder.Requests[1], service.Requests[0]
+		// The folders and requests of the window are its own copies, kept
+		// in alphabetical order.
+		other, service := rt.store.Folders[0], rt.store.Folders[1]
+		restFolder, rpcFolder := service.Folders[0], service.Folders[1]
+		get, list, health := rpcFolder.Requests[0], rpcFolder.Requests[1], service.Requests[0]
+		if other.Name != "other" || restFolder.Name != "rest" || get.Name != "Get" || health.Name != "Health" {
+			t.Fatalf("store is not as expected: %q %q %q %q", other.Name, restFolder.Name, get.Name, health.Name)
+		}
 
 		check := func(what string, item *qt.QTreeWidgetItem, want ...string) {
 			t.Helper()
+			if item == nil {
+				t.Errorf("%s: no such item", what)
+				return
+			}
 			if got := treeNames(item); !reflect.DeepEqual(got, want) {
 				t.Errorf("%s: %q, want %q", what, got, want)
 			}
 		}
 
 		// Nothing can be dropped onto a request, only beside it.
-		if tree.TopLevelItem(0).Child(2).Flags()&qt.ItemIsDropEnabled != 0 || tree.TopLevelItem(0).Flags()&qt.ItemIsDropEnabled == 0 {
+		if treeItem(tree, "service", "Health").Flags()&qt.ItemIsDropEnabled != 0 || treeItem(tree, "service").Flags()&qt.ItemIsDropEnabled == 0 {
 			t.Error("drop flags are wrong")
 		}
 
 		// Open a request, and close a folder, to see that both survive.
-		tree.SetCurrentItem(tree.TopLevelItem(0).Child(2))
+		tree.SetCurrentItem(treeItem(tree, "service", "Health"))
 		if w.open != health {
 			t.Fatalf("open = %+v", w.open)
 		}
-		tree.TopLevelItem(1).SetExpanded(false)
+		treeItem(tree, "other").SetExpanded(false)
 
-		// A request dropped on a folder goes inside it, at the end.
+		// A request dropped on a folder goes inside it, in its place in the
+		// alphabetical order.
 		if !rt.drop(nil, health, rpcFolder, nil, dropOn) {
 			t.Fatal("request not moved")
 		}
-		check("service", tree.TopLevelItem(0), "rpc/", "rest/")
-		check("rpc", tree.TopLevelItem(0).Child(0), "Get", "List", "Health")
+		check("service", treeItem(tree, "service"), "rest/", "rpc/")
+		check("rpc", treeItem(tree, "service", "rpc"), "Get", "Health", "List")
 		if tree.CurrentItem().Text(colName) != "Health" || w.open != health {
 			t.Errorf("selected %q, open %+v", tree.CurrentItem().Text(colName), w.open)
 		}
-		if tree.TopLevelItem(1).IsExpanded() || !tree.TopLevelItem(0).IsExpanded() {
+		if treeItem(tree, "other").IsExpanded() || !treeItem(tree, "service").IsExpanded() {
 			t.Error("folders did not stay open or closed")
 		}
 
-		// Dropped above another request it is put before it.
+		// Dropping it beside another request in the same folder leaves the
+		// order alphabetical.
 		rt.drop(nil, health, rpcFolder, get, dropAbove)
-		check("rpc", tree.TopLevelItem(0).Child(0), "Health", "Get", "List")
-		rt.drop(nil, get, rpcFolder, list, dropBelow)
-		check("rpc", tree.TopLevelItem(0).Child(0), "Health", "List", "Get")
+		check("rpc", treeItem(tree, "service", "rpc"), "Get", "Health", "List")
 
 		// Dropped beside a folder it goes in the folder that holds that one,
 		// with the requests, which come after the folders.
 		rt.drop(nil, list, restFolder, nil, dropAbove)
-		check("service", tree.TopLevelItem(0), "rpc/", "rest/", "List")
+		check("service", treeItem(tree, "service"), "rest/", "rpc/", "List")
 
 		// A request cannot be put at the top level.
 		if rt.drop(nil, list, nil, nil, dropNowhere) || rt.drop(nil, list, service, nil, dropBelow) {
 			t.Error("request moved to the top level")
 		}
-		check("service", tree.TopLevelItem(0), "rpc/", "rest/", "List")
+		check("service", treeItem(tree, "service"), "rest/", "rpc/", "List")
 
 		// A folder dropped on a closed folder goes inside it, which opens.
 		if !rt.drop(rpcFolder, nil, other, nil, dropOn) {
 			t.Fatal("folder not moved")
 		}
-		check("service", tree.TopLevelItem(0), "rest/", "List")
-		check("other", tree.TopLevelItem(1), "rpc/")
-		check("rpc", tree.TopLevelItem(1).Child(0), "Health", "Get")
-		if !tree.TopLevelItem(1).IsExpanded() || tree.CurrentItem().Text(colName) != "rpc" {
-			t.Errorf("other open %t, selected %q", tree.TopLevelItem(1).IsExpanded(), tree.CurrentItem().Text(colName))
+		check("service", treeItem(tree, "service"), "rest/", "List")
+		check("other", treeItem(tree, "other"), "rpc/")
+		check("rpc", treeItem(tree, "other", "rpc"), "Get", "Health")
+		if !treeItem(tree, "other").IsExpanded() || tree.CurrentItem().Text(colName) != "rpc" {
+			t.Errorf("other open %t, selected %q", treeItem(tree, "other").IsExpanded(), tree.CurrentItem().Text(colName))
 		}
 
 		// The open request is still found where it now is.
-		tree.SetCurrentItem(tree.TopLevelItem(1).Child(0).Child(0))
+		tree.SetCurrentItem(treeItem(tree, "other", "rpc", "Health"))
 		w.request.url.SetText("moved.test")
 		if health.URL != "moved.test" {
 			t.Errorf("edit went to %+v", health.Request)
@@ -2091,27 +2133,212 @@ func TestDragAndDrop(t *testing.T) {
 			t.Error("folder moved inside itself")
 		}
 
-		// Folders are reordered by dropping one above or below another, and
-		// dropping one in the empty space puts it last at the top level.
-		rt.drop(other, nil, service, nil, dropAbove)
-		if tree.TopLevelItem(0).Text(colName) != "other" || tree.TopLevelItem(1).Text(colName) != "service" {
-			t.Errorf("top level = %q, %q", tree.TopLevelItem(0).Text(colName), tree.TopLevelItem(1).Text(colName))
-		}
+		// A folder dropped in the empty space goes to the top level, in its
+		// place in the order.
 		rt.drop(restFolder, nil, nil, nil, dropNowhere)
-		if tree.TopLevelItemCount() != 3 || tree.TopLevelItem(2).Text(colName) != "rest" {
-			t.Errorf("top level has %d folders", tree.TopLevelItemCount())
+		var top []string
+		for i := range tree.TopLevelItemCount() {
+			top = append(top, tree.TopLevelItem(i).Text(colName))
+		}
+		if want := []string{"other", "rest", "service"}; !reflect.DeepEqual(top, want) {
+			t.Errorf("top level = %q, want %q", top, want)
 		}
 
 		// A folder dropped beside a request goes with the folders there.
 		rt.drop(restFolder, nil, rpcFolder, get, dropBelow)
-		check("rpc", tree.TopLevelItem(0).Child(0), "rest/", "Health", "Get")
+		check("rpc", treeItem(tree, "other", "rpc"), "rest/", "Get", "Health")
 	})
 
 	saved, err := collection.Load(files.Requests)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(saved.Folders) != 2 || saved.Folders[0].Name != "other" || saved.Folders[0].Folders[0].Folders[0].Name != "rest" || saved.Folders[0].Folders[0].Requests[0].URL != "moved.test" || saved.Folders[1].Requests[0].Name != "List" {
+	if len(saved.Folders) != 2 || saved.Folders[0].Name != "other" || saved.Folders[0].Folders[0].Folders[0].Name != "rest" || saved.Folders[0].Folders[0].Requests[1].URL != "moved.test" || saved.Folders[1].Requests[0].Name != "List" {
 		t.Errorf("saved %+v", saved.Folders)
+	}
+}
+
+func TestImportOpenAPI(t *testing.T) {
+	files := testFiles(t)
+	dir := filepath.Dir(files.Requests)
+
+	spec := filepath.Join(dir, "shop.yaml")
+	os.WriteFile(spec, []byte(`
+openapi: 3.0.3
+info:
+  title: Shop
+servers:
+  - url: https://shop.example.com
+paths:
+  /orders:
+    get:
+      tags: [orders]
+      summary: List orders
+      parameters:
+        - name: page
+          in: query
+          required: true
+          example: 2
+    post:
+      tags: [orders]
+      summary: Create order
+      requestBody:
+        content:
+          application/json:
+            example: {item: tea, quantity: 2}
+  /health:
+    get:
+      summary: Health
+`), 0o644)
+	bad := filepath.Join(dir, "bad.yaml")
+	os.WriteFile(bad, []byte("just: text"), 0o644)
+
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+		rt := w.requests
+		tree := rt.tree
+
+		var warned []string
+		rt.warn = func(message string) { warned = append(warned, message) }
+
+		// There is something already, which is left closed.
+		rt.addRequest()
+		tree.TopLevelItem(0).SetExpanded(false)
+
+		// Deciding against choosing a file does nothing.
+		rt.chooseFile = func() (string, bool) { return "", false }
+		rt.importDocument()
+		if tree.TopLevelItemCount() != 1 || len(warned) != 0 {
+			t.Fatalf("imported without a file: %d folders, warned %q", tree.TopLevelItemCount(), warned)
+		}
+
+		rt.chooseFile = func() (string, bool) { return spec, true }
+		rt.importDocument()
+		if len(warned) != 0 || tree.TopLevelItemCount() != 2 {
+			t.Fatalf("not imported: %d folders, warned %q", tree.TopLevelItemCount(), warned)
+		}
+
+		// The folder is added in its place in the order, open and selected.
+		shop := tree.TopLevelItem(1)
+		if shop.Text(colName) != "Shop" || !shop.IsExpanded() || tree.TopLevelItem(0).IsExpanded() || tree.CurrentItem().Text(colName) != "Shop" {
+			t.Errorf("folder = %q, open %t", shop.Text(colName), shop.IsExpanded())
+		}
+		if got, want := treeNames(shop), []string{"orders/", "Health"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("shop = %q, want %q", got, want)
+		}
+		if got, want := treeNames(shop.Child(0)), []string{"Create order", "List orders"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("orders = %q, want %q", got, want)
+		}
+
+		// An imported request opens like any other.
+		tree.SetCurrentItem(treeItem(tree, "Shop", "orders", "List orders"))
+		if w.open == nil || w.request.url.Text() != "https://shop.example.com/orders?page=2" || w.request.method.CurrentText() != "GET" {
+			t.Errorf("open = %+v, url %q", w.open, w.request.url.Text())
+		}
+		tree.SetCurrentItem(treeItem(tree, "Shop", "orders", "Create order"))
+		if w.request.method.CurrentText() != "POST" || !strings.Contains(w.request.bodyRaw.ToPlainText(), `"item": "tea"`) || !w.request.bodyIsJSON() {
+			t.Errorf("create: %q %q", w.request.method.CurrentText(), w.request.bodyRaw.ToPlainText())
+		}
+
+		// A file that cannot be imported is reported, and adds nothing.
+		for _, path := range []string{bad, filepath.Join(dir, "missing.yaml")} {
+			rt.chooseFile = func() (string, bool) { return path, true }
+			rt.importDocument()
+		}
+		if len(warned) != 2 || !strings.Contains(warned[0], "bad.yaml could not be imported") || !strings.Contains(warned[0], "not an OpenAPI document") || tree.TopLevelItemCount() != 2 {
+			t.Errorf("warned %q, %d folders", warned, tree.TopLevelItemCount())
+		}
+	})
+
+	saved, err := collection.Load(files.Requests)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.Folders) != 2 || saved.Folders[1].Name != "Shop" || saved.Folders[1].Folders[0].Requests[0].Name != "Create order" {
+		t.Errorf("saved %+v", saved.Folders)
+	}
+}
+
+func TestSidebarOrder(t *testing.T) {
+	files := testFiles(t)
+
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(files)
+		w.Show()
+
+		// Environments are listed alphabetically, whatever order they were
+		// added in, and the one being edited stays selected as it moves.
+		for _, name := range []string{"staging", "Local", "dev"} {
+			w.environments.add()
+			w.editor.name.SetText(name)
+		}
+		var names []string
+		for i := range w.environments.list.Count() {
+			names = append(names, w.environments.list.Item(i).Text())
+		}
+		if want := []string{"dev", "Local", "staging"}; !reflect.DeepEqual(names, want) {
+			t.Errorf("environments = %q, want %q", names, want)
+		}
+		if current, _ := w.environments.store.Current(); current == nil || current.Name != "dev" || w.environments.list.CurrentRow() != 0 || w.editor.name.Text() != "dev" {
+			t.Errorf("active = %+v, row %d", current, w.environments.list.CurrentRow())
+		}
+
+		// Renaming one moves it, and the header follows.
+		w.editor.name.SetText("zulu")
+		if w.environments.list.CurrentRow() != 2 || w.environments.list.Item(2).Text() != "zulu" || w.request.header.environment.CurrentText() != "zulu" {
+			t.Errorf("after rename: row %d, header %q", w.environments.list.CurrentRow(), w.request.header.environment.CurrentText())
+		}
+		w.editor.close.Click()
+
+		// Folders and requests are added in their place in the order.
+		rt := w.requests
+		rt.addFolder()
+		renameCurrent(rt, "zebra")
+		rt.deselect()
+		rt.addFolder()
+		renameCurrent(rt, "Apple")
+		if rt.tree.TopLevelItem(0).Text(colName) != "Apple" || rt.tree.TopLevelItem(1).Text(colName) != "zebra" {
+			t.Errorf("folders = %q, %q", rt.tree.TopLevelItem(0).Text(colName), rt.tree.TopLevelItem(1).Text(colName))
+		}
+
+		rt.tree.SetCurrentItem(treeItem(rt.tree, "Apple"))
+		for _, name := range []string{"update", "Create", "list"} {
+			rt.addRequest()
+			renameCurrent(rt, name)
+			rt.tree.SetCurrentItem(treeItem(rt.tree, "Apple"))
+		}
+		rt.addFolder()
+		renameCurrent(rt, "inner")
+		if got, want := treeNames(treeItem(rt.tree, "Apple")), []string{"inner/", "Create", "list", "update"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("Apple = %q, want %q", got, want)
+		}
+
+		// A rename made in the tree is put in order a moment later, once
+		// the tree has finished with the edit.
+		rt.tree.SetCurrentItem(treeItem(rt.tree, "Apple", "Create"))
+		rt.tree.CurrentItem().SetText(colName, "wipe")
+	})
+
+	waitFor(t, "the tree to be put in order", func() bool {
+		return reflect.DeepEqual(treeNames(treeItem(w.requests.tree, "Apple")), []string{"inner/", "list", "update", "wipe"})
+	})
+
+	mainthread.Wait(func() {
+		// The renamed request is still the selected and open one.
+		if w.requests.tree.CurrentItem().Text(colName) != "wipe" || w.open == nil || w.open.Name != "wipe" {
+			t.Errorf("selected %q, open %+v", w.requests.tree.CurrentItem().Text(colName), w.open)
+		}
+	})
+
+	// Both files are saved in the order shown.
+	envs, _ := env.Load(files.Environments)
+	if len(envs.Environments) != 3 || envs.Environments[0].Name != "Local" || envs.Environments[2].Name != "zulu" || envs.Active != 2 {
+		t.Errorf("saved environments = %+v", envs)
+	}
+	requests, _ := collection.Load(files.Requests)
+	if requests.Folders[0].Name != "Apple" || requests.Folders[0].Requests[2].Name != "wipe" {
+		t.Errorf("saved requests = %+v", requests.Folders[0])
 	}
 }

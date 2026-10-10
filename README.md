@@ -11,8 +11,10 @@ bindings.
   server reflection, so no protobuf files are needed.
 - JSON bodies, messages and responses are syntax highlighted, and their
   objects and arrays can be folded.
-- Save requests in folders, nested to any depth, and rearrange them by
-  dragging.
+- Save requests in folders, nested to any depth, and move them between
+  folders by dragging. Folders and requests are listed alphabetically.
+- Import an OpenAPI 3 or Swagger 2 document, as JSON or YAML, to create a
+  folder of requests for its operations.
 - Define environments of variables and use them anywhere in a request as
   `{{name}}` placeholders.
 

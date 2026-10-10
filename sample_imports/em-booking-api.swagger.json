@@ -1,0 +1,2132 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Booking API",
+    "version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "BookingApiService"
+    }
+  ],
+  "schemes": [
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/booking_api.v1.BookingApiService/CreateBooking": {
+      "post": {
+        "description": "This method is used to create the booking entry (not reserved yet).",
+        "operationId": "BookingApiService_CreateBooking",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CreateBookingResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateBookingRequest"
+            }
+          },
+          {
+            "name": "User-Agent",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "Accept-Language",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "X-Session-Id",
+            "in": "header",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookingApiService"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/booking_api.v1.BookingApiService/GetAvailability": {
+      "post": {
+        "description": "This method is used to check availability of rooms.",
+        "operationId": "BookingApiService_GetAvailability",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetAvailabilityResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetAvailabilityRequest"
+            }
+          },
+          {
+            "name": "Accept-Language",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "X-Session-Id",
+            "in": "header",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookingApiService"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/booking_api.v1.BookingApiService/GetAvailableAddOns": {
+      "post": {
+        "description": "This method returns all available add-ons for a booking.",
+        "operationId": "BookingApiService_GetAvailableAddOns",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetAvailableAddOnsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetAvailableAddOnsRequest"
+            }
+          },
+          {
+            "name": "Accept-Language",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "X-Session-Id",
+            "in": "header",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookingApiService"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/booking_api.v1.BookingApiService/GetBestAvailableRates": {
+      "post": {
+        "description": "This method is used to return best available rates across many hotels.",
+        "operationId": "BookingApiService_GetBestAvailableRates",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetBestAvailableRatesResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetBestAvailableRatesRequest"
+            }
+          },
+          {
+            "name": "Accept-Language",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "X-Session-Id",
+            "in": "header",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookingApiService"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/booking_api.v1.BookingApiService/GetBooking": {
+      "post": {
+        "description": "This method returns the booking summary given the booking id.",
+        "operationId": "BookingApiService_GetBooking",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetBookingResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetBookingRequest"
+            }
+          },
+          {
+            "name": "Accept-Language",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "X-Session-Id",
+            "in": "header",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookingApiService"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/booking_api.v1.BookingApiService/GetBookingPaymentMethodDetails": {
+      "post": {
+        "description": "This method gets details for a partcular payment method.",
+        "operationId": "BookingApiService_GetBookingPaymentMethodDetails",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetBookingPaymentMethodDetailsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetBookingPaymentMethodDetailsRequest"
+            }
+          },
+          {
+            "name": "Accept-Language",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "X-Session-Id",
+            "in": "header",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookingApiService"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/booking_api.v1.BookingApiService/GetBookingPaymentMethods": {
+      "post": {
+        "description": "This method gets available payment methods for a booking.",
+        "operationId": "BookingApiService_GetBookingPaymentMethods",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetBookingPaymentMethodsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetBookingPaymentMethodsRequest"
+            }
+          },
+          {
+            "name": "Accept-Language",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "X-Session-Id",
+            "in": "header",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookingApiService"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/booking_api.v1.BookingApiService/GetBookingStatus": {
+      "post": {
+        "description": "This method returns the booking status given the booking id.",
+        "operationId": "BookingApiService_GetBookingStatus",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetBookingStatusResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetBookingStatusRequest"
+            }
+          },
+          {
+            "name": "Accept-Language",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "X-Session-Id",
+            "in": "header",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookingApiService"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/booking_api.v1.BookingApiService/GetCalendar": {
+      "post": {
+        "description": "This method is used to return the calendar view of rooms.",
+        "operationId": "BookingApiService_GetCalendar",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetCalendarResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1GetCalendarRequest"
+            }
+          },
+          {
+            "name": "Accept-Language",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "X-Session-Id",
+            "in": "header",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookingApiService"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/booking_api.v1.BookingApiService/UpdateBookingAddOns": {
+      "post": {
+        "description": "This method adds or removes add-ons from a booking.",
+        "operationId": "BookingApiService_UpdateBookingAddOns",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateBookingAddOnsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1UpdateBookingAddOnsRequest"
+            }
+          },
+          {
+            "name": "Accept-Language",
+            "in": "header",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "X-Session-Id",
+            "in": "header",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "BookingApiService"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcErrorInfo": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "The reason of the error. This is a constant value that identifies the\nproximate cause of the error. Error reasons are unique within a particular\ndomain of errors. This should be at most 63 characters and match a\nregular expression of `[A-Z][A-Z0-9_]+[A-Z0-9]`, which represents\nUPPER_SNAKE_CASE."
+        },
+        "domain": {
+          "type": "string",
+          "description": "The logical grouping to which the \"reason\" belongs. The error domain\nis typically the registered service name of the tool or product that\ngenerates the error. Example: \"pubsub.googleapis.com\". If the error is\ngenerated by some common infrastructure, the error domain must be a\nglobally unique value that identifies the infrastructure. For Google API\ninfrastructure, the error domain is \"googleapis.com\"."
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Additional structured details about this error.\n\nKeys must match a regular expression of `[a-z][a-zA-Z0-9-_]+` but should\nideally be lowerCamelCase. Also, they must be limited to 64 characters in\nlength. When identifying the current value of an exceeded limit, the units\nshould be contained in the key, not the value.  For example, rather than\n`{\"instanceLimit\": \"100/request\"}`, should be returned as,\n`{\"instanceLimitPerRequest\": \"100\"}`, if the client exceeds the number of\ninstances that can be created in a single (batch) request."
+        }
+      },
+      "description": "Describes the cause of the error with structured details.\n\nExample of an error when contacting the \"pubsub.googleapis.com\" API when it\nis not enabled:\n\n    { \"reason\": \"API_DISABLED\"\n      \"domain\": \"googleapis.com\"\n      \"metadata\": {\n        \"resource\": \"projects/123\",\n        \"service\": \"pubsub.googleapis.com\"\n      }\n    }\n\nThis response indicates that the pubsub.googleapis.com API is not enabled.\n\nExample of an error that is returned when attempting to create a Spanner\ninstance in a region that is out of stock:\n\n    { \"reason\": \"STOCKOUT\"\n      \"domain\": \"spanner.googleapis.com\",\n      \"metadata\": {\n        \"availableRegions\": \"us-central1,us-east2\"\n      }\n    }"
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1AddOnDisplayType": {
+      "type": "string",
+      "enum": [
+        "ADD_ON_DISPLAY_TYPE_UNKNOWN",
+        "ADD_ON_DISPLAY_TYPE_TOGGLE",
+        "ADD_ON_DISPLAY_TYPE_ROCKER"
+      ],
+      "default": "ADD_ON_DISPLAY_TYPE_UNKNOWN"
+    },
+    "v1AddOnImage": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "altText": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "altText"
+      ]
+    },
+    "v1AdditionalInformation": {
+      "type": "object",
+      "properties": {
+        "flexyTime": {
+          "$ref": "#/definitions/v1FlexyTime"
+        },
+        "specialRequests": {
+          "type": "string"
+        },
+        "accessibleRoom": {
+          "type": "boolean"
+        },
+        "flexyTimeAvailable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "v1Address": {
+      "type": "object",
+      "properties": {
+        "addressLine": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "city": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "country": {
+          "type": "string"
+        },
+        "postcode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "addressLine",
+        "city",
+        "state",
+        "country",
+        "postcode"
+      ]
+    },
+    "v1AvailabilityRoom": {
+      "type": "object",
+      "properties": {
+        "room": {
+          "$ref": "#/definitions/v1RoomDetail"
+        },
+        "rates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1RoomRate"
+          }
+        }
+      },
+      "required": [
+        "room",
+        "rates"
+      ]
+    },
+    "v1AvailableAddOnDetail": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "displayType": {
+          "$ref": "#/definitions/v1AddOnDisplayType"
+        },
+        "image": {
+          "$ref": "#/definitions/v1AddOnImage"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "priceContent": {
+          "type": "string"
+        },
+        "controlLabel": {
+          "type": "string"
+        },
+        "cost": {
+          "$ref": "#/definitions/v1Cost"
+        }
+      },
+      "required": [
+        "id",
+        "displayType",
+        "image",
+        "name",
+        "description",
+        "priceContent",
+        "controlLabel",
+        "cost"
+      ]
+    },
+    "v1BestAvailableHotelRates": {
+      "type": "object",
+      "properties": {
+        "hotelReferenceId": {
+          "type": "string"
+        },
+        "rates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1RoomBestRate"
+          }
+        },
+        "error": {
+          "$ref": "#/definitions/v1RpcError"
+        }
+      },
+      "required": [
+        "hotelReferenceId",
+        "rates"
+      ]
+    },
+    "v1BookingAddOnDetail": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "id",
+        "quantity"
+      ]
+    },
+    "v1BookingAvailablePaymentMethod": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/definitions/v1BookingPaymentMethodType"
+        },
+        "profileRequired": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "description"
+      ]
+    },
+    "v1BookingPaymentMethodType": {
+      "type": "string",
+      "enum": [
+        "BOOKING_PAYMENT_METHOD_TYPE_UNSPECIFIED",
+        "BOOKING_PAYMENT_METHOD_TYPE_STRIPE",
+        "BOOKING_PAYMENT_METHOD_TYPE_HOSTED_PAGE",
+        "BOOKING_PAYMENT_METHOD_TYPE_EMBEDDED_IFRAME"
+      ],
+      "default": "BOOKING_PAYMENT_METHOD_TYPE_UNSPECIFIED"
+    },
+    "v1BookingRoom": {
+      "type": "object",
+      "properties": {
+        "checkInDate": {
+          "type": "string",
+          "pattern": "yyyy-MM-dd"
+        },
+        "checkOutDate": {
+          "type": "string",
+          "pattern": "yyyy-MM-dd"
+        },
+        "roomCode": {
+          "type": "string"
+        },
+        "rateCode": {
+          "type": "string"
+        },
+        "guests": {
+          "$ref": "#/definitions/v1GuestDetail"
+        },
+        "offerCode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkInDate",
+        "checkOutDate",
+        "roomCode",
+        "rateCode",
+        "guests"
+      ]
+    },
+    "v1CalendarDate": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "minimumNightsStay": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "cost": {
+          "$ref": "#/definitions/v1Cost"
+        }
+      },
+      "required": [
+        "date",
+        "available",
+        "minimumNightsStay",
+        "cost"
+      ]
+    },
+    "v1CompanyProfile": {
+      "type": "object",
+      "properties": {
+        "iataNumber": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "address": {
+          "$ref": "#/definitions/v1Address"
+        },
+        "contactDetails": {
+          "$ref": "#/definitions/v1ContactDetails"
+        },
+        "type": {
+          "$ref": "#/definitions/v1CompanyProfileType"
+        }
+      },
+      "required": [
+        "name",
+        "address",
+        "contactDetails",
+        "type"
+      ]
+    },
+    "v1CompanyProfileType": {
+      "type": "string",
+      "enum": [
+        "COMPANY_PROFILE_TYPE_UNSPECIFIED",
+        "COMPANY_PROFILE_TYPE_COMPANY",
+        "COMPANY_PROFILE_TYPE_TRAVEL_AGENT"
+      ],
+      "default": "COMPANY_PROFILE_TYPE_UNSPECIFIED"
+    },
+    "v1ContactDetails": {
+      "type": "object",
+      "properties": {
+        "phoneNumber": {
+          "type": "string"
+        },
+        "emailAddress": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "phoneNumber",
+        "emailAddress"
+      ]
+    },
+    "v1Cost": {
+      "type": "object",
+      "properties": {
+        "tax": {
+          "$ref": "#/definitions/v1Tax"
+        },
+        "amountBeforeTax": {
+          "$ref": "#/definitions/v1LargeAmount"
+        },
+        "amountAfterTax": {
+          "$ref": "#/definitions/v1LargeAmount"
+        },
+        "amountSubtotalDisplay": {
+          "$ref": "#/definitions/v1LargeAmount"
+        },
+        "amountSubtotalDisplayLabel": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tax",
+        "amountBeforeTax",
+        "amountAfterTax",
+        "amountSubtotalDisplay"
+      ]
+    },
+    "v1CreateBookingRequest": {
+      "type": "object",
+      "properties": {
+        "hotelReferenceId": {
+          "type": "string"
+        },
+        "rooms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1BookingRoom"
+          }
+        },
+        "discountCode": {
+          "type": "string"
+        },
+        "discountCodeType": {
+          "$ref": "#/definitions/v1DiscountCodeType"
+        },
+        "iataNumber": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "hotelReferenceId",
+        "rooms"
+      ]
+    },
+    "v1CreateBookingResponse": {
+      "type": "object",
+      "properties": {
+        "bookingId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "bookingId"
+      ]
+    },
+    "v1Deposit": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "$ref": "#/definitions/v1LargeAmount"
+        },
+        "policies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1DepositPolicyDetail"
+          }
+        }
+      },
+      "required": [
+        "amount",
+        "policies"
+      ]
+    },
+    "v1DepositPolicyDetail": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "amount": {
+          "$ref": "#/definitions/v1LargeAmount"
+        },
+        "timestampDeadline": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "description",
+        "amount",
+        "timestampDeadline"
+      ]
+    },
+    "v1DiscountCodeType": {
+      "type": "string",
+      "enum": [
+        "NONE",
+        "PROMO",
+        "CORPORATE",
+        "BLOCK"
+      ],
+      "default": "NONE"
+    },
+    "v1DiscountDetail": {
+      "type": "object",
+      "properties": {
+        "percentage": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "amountBeforeDiscountAfterTax": {
+          "$ref": "#/definitions/v1LargeAmount"
+        },
+        "membershipRateCode": {
+          "type": "boolean"
+        },
+        "amountSaved": {
+          "$ref": "#/definitions/v1LargeAmount"
+        },
+        "averageNightlyAmountBeforeDiscountAfterTax": {
+          "$ref": "#/definitions/v1LargeAmount"
+        }
+      }
+    },
+    "v1EmbeddedIframePaymentDetails": {
+      "type": "object",
+      "properties": {
+        "sourceUrl": {
+          "type": "string"
+        },
+        "paymentTransactionId": {
+          "type": "string"
+        }
+      }
+    },
+    "v1FlexyTime": {
+      "type": "object",
+      "properties": {
+        "checkInStart": {
+          "type": "string"
+        },
+        "checkInEnd": {
+          "type": "string"
+        },
+        "checkOutStart": {
+          "type": "string"
+        },
+        "checkOutEnd": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkInStart",
+        "checkInEnd",
+        "checkOutStart",
+        "checkOutEnd"
+      ]
+    },
+    "v1GetAvailabilityRequest": {
+      "type": "object",
+      "properties": {
+        "hotelReferenceId": {
+          "type": "string"
+        },
+        "checkInDate": {
+          "type": "string",
+          "pattern": "yyyy-MM-dd"
+        },
+        "checkOutDate": {
+          "type": "string",
+          "pattern": "yyyy-MM-dd"
+        },
+        "guests": {
+          "$ref": "#/definitions/v1GuestDetail"
+        },
+        "numberOfRooms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "roomCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rateCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "discountCode": {
+          "type": "string"
+        },
+        "discountCodeType": {
+          "$ref": "#/definitions/v1DiscountCodeType"
+        },
+        "iataNumber": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "hotelReferenceId",
+        "checkInDate",
+        "checkOutDate",
+        "guests",
+        "numberOfRooms"
+      ]
+    },
+    "v1GetAvailabilityResponse": {
+      "type": "object",
+      "properties": {
+        "rooms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1AvailabilityRoom"
+          }
+        },
+        "iata": {
+          "$ref": "#/definitions/v1IataDetail"
+        }
+      }
+    },
+    "v1GetAvailableAddOnsRequest": {
+      "type": "object",
+      "properties": {
+        "hotelReferenceId": {
+          "type": "string"
+        },
+        "bookingId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "hotelReferenceId",
+        "bookingId"
+      ]
+    },
+    "v1GetAvailableAddOnsResponse": {
+      "type": "object",
+      "properties": {
+        "addOns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1AvailableAddOnDetail"
+          }
+        }
+      }
+    },
+    "v1GetBestAvailableRatesRequest": {
+      "type": "object",
+      "properties": {
+        "hotelReferenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1
+        },
+        "checkInDate": {
+          "type": "string",
+          "pattern": "yyyy-MM-dd"
+        },
+        "checkOutDate": {
+          "type": "string",
+          "pattern": "yyyy-MM-dd"
+        },
+        "guests": {
+          "$ref": "#/definitions/v1GuestDetail"
+        },
+        "numberOfRooms": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "required": [
+        "hotelReferenceIds",
+        "checkInDate",
+        "checkOutDate",
+        "guests",
+        "numberOfRooms"
+      ]
+    },
+    "v1GetBestAvailableRatesResponse": {
+      "type": "object",
+      "properties": {
+        "hotelRates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1BestAvailableHotelRates"
+          }
+        }
+      }
+    },
+    "v1GetBookingPaymentMethodDetailsRequest": {
+      "type": "object",
+      "properties": {
+        "hotelReferenceId": {
+          "type": "string"
+        },
+        "bookingId": {
+          "type": "string"
+        },
+        "paymentMethodCode": {
+          "type": "string"
+        },
+        "guestProfile": {
+          "$ref": "#/definitions/v1GuestProfile"
+        }
+      },
+      "required": [
+        "hotelReferenceId",
+        "bookingId",
+        "paymentMethodCode"
+      ]
+    },
+    "v1GetBookingPaymentMethodDetailsResponse": {
+      "type": "object",
+      "properties": {
+        "stripeDetails": {
+          "$ref": "#/definitions/v1StripePaymentDetails"
+        },
+        "hostedPageDetails": {
+          "$ref": "#/definitions/v1HostedPagePaymentDetails"
+        },
+        "embeddedIframeDetails": {
+          "$ref": "#/definitions/v1EmbeddedIframePaymentDetails"
+        }
+      }
+    },
+    "v1GetBookingPaymentMethodsRequest": {
+      "type": "object",
+      "properties": {
+        "hotelReferenceId": {
+          "type": "string"
+        },
+        "bookingId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "hotelReferenceId",
+        "bookingId"
+      ]
+    },
+    "v1GetBookingPaymentMethodsResponse": {
+      "type": "object",
+      "properties": {
+        "paymentMethods": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1BookingAvailablePaymentMethod"
+          }
+        }
+      }
+    },
+    "v1GetBookingRequest": {
+      "type": "object",
+      "properties": {
+        "hotelReferenceId": {
+          "type": "string"
+        },
+        "bookingId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "hotelReferenceId",
+        "bookingId"
+      ]
+    },
+    "v1GetBookingResponse": {
+      "type": "object",
+      "properties": {
+        "bookingId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "rooms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ReservedRoom"
+          }
+        },
+        "totalCost": {
+          "$ref": "#/definitions/v1Cost"
+        },
+        "payment": {
+          "$ref": "#/definitions/v1PaymentDetail",
+          "description": "Deprecated. Use GetBookingPaymentMethodDetails instead."
+        },
+        "depositRequired": {
+          "type": "boolean"
+        },
+        "totalDeposit": {
+          "$ref": "#/definitions/v1Deposit"
+        },
+        "previousStatus": {
+          "type": "string"
+        },
+        "totalAverageNightlyAmountAfterTax": {
+          "$ref": "#/definitions/v1LargeAmount"
+        },
+        "costConfirmed": {
+          "type": "boolean",
+          "description": "Deprecated."
+        },
+        "totalDiscount": {
+          "$ref": "#/definitions/v1DiscountDetail"
+        },
+        "totalAverageNightlyAmountSubtotalDisplay": {
+          "$ref": "#/definitions/v1LargeAmount"
+        }
+      },
+      "required": [
+        "bookingId",
+        "status",
+        "rooms",
+        "totalCost",
+        "payment",
+        "depositRequired",
+        "previousStatus",
+        "totalAverageNightlyAmountAfterTax",
+        "totalAverageNightlyAmountSubtotalDisplay",
+        "costConfirmed"
+      ]
+    },
+    "v1GetBookingStatusRequest": {
+      "type": "object",
+      "properties": {
+        "hotelReferenceId": {
+          "type": "string"
+        },
+        "bookingId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "hotelReferenceId",
+        "bookingId"
+      ]
+    },
+    "v1GetBookingStatusResponse": {
+      "type": "object",
+      "properties": {
+        "bookingId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "previousStatus": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "bookingId",
+        "status",
+        "previousStatus"
+      ]
+    },
+    "v1GetCalendarRequest": {
+      "type": "object",
+      "properties": {
+        "hotelReferenceId": {
+          "type": "string"
+        },
+        "startDate": {
+          "type": "string",
+          "pattern": "yyyy-MM-dd"
+        },
+        "endDate": {
+          "type": "string",
+          "pattern": "yyyy-MM-dd"
+        },
+        "guests": {
+          "$ref": "#/definitions/v1GuestDetail"
+        },
+        "numberOfRooms": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "roomCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Not currently implemented."
+        },
+        "rateCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "discountCode": {
+          "type": "string",
+          "description": "Not currently implemented."
+        },
+        "discountCodeType": {
+          "$ref": "#/definitions/v1DiscountCodeType",
+          "description": "Not currently implemented."
+        }
+      },
+      "required": [
+        "hotelReferenceId",
+        "startDate",
+        "endDate",
+        "guests",
+        "numberOfRooms"
+      ]
+    },
+    "v1GetCalendarResponse": {
+      "type": "object",
+      "properties": {
+        "dates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1CalendarDate"
+          }
+        }
+      },
+      "required": [
+        "dates"
+      ]
+    },
+    "v1GuestDetail": {
+      "type": "object",
+      "properties": {
+        "adults": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "children": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "childrenAges": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "required": [
+        "adults"
+      ]
+    },
+    "v1GuestProfile": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "firstName": {
+          "type": "string"
+        },
+        "lastName": {
+          "type": "string"
+        },
+        "address": {
+          "$ref": "#/definitions/v1Address"
+        },
+        "contactDetails": {
+          "$ref": "#/definitions/v1ContactDetails"
+        },
+        "type": {
+          "$ref": "#/definitions/v1GuestProfileType"
+        }
+      },
+      "required": [
+        "title",
+        "firstName",
+        "lastName",
+        "address",
+        "contactDetails",
+        "type"
+      ]
+    },
+    "v1GuestProfileType": {
+      "type": "string",
+      "enum": [
+        "UNSPECIFIED",
+        "GUEST",
+        "BILLING"
+      ],
+      "default": "UNSPECIFIED"
+    },
+    "v1HostedPagePaymentDetails": {
+      "type": "object",
+      "properties": {
+        "redirectUrl": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "redirectUrl"
+      ]
+    },
+    "v1IataDetail": {
+      "type": "object",
+      "properties": {
+        "iataNumber": {
+          "type": "string"
+        },
+        "discountCodeAvailable": {
+          "type": "boolean"
+        },
+        "commissionAvailable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "iataNumber",
+        "discountCodeAvailable",
+        "commissionAvailable"
+      ]
+    },
+    "v1LargeAmount": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "format": "int64"
+        },
+        "decimal": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "currencyCode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "decimal",
+        "currencyCode"
+      ]
+    },
+    "v1PaymentDetail": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "clientSecret": {
+          "type": "string"
+        },
+        "connectedAccountId": {
+          "type": "string"
+        }
+      },
+      "description": "Deprecated. Use StripePaymentDetails instead.",
+      "required": [
+        "method",
+        "clientSecret"
+      ]
+    },
+    "v1PolicyDetail": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "timestampDeadline": {
+          "type": "string"
+        },
+        "amountPenalty": {
+          "$ref": "#/definitions/v1LargeAmount"
+        }
+      },
+      "title": "Cancellation policy detail",
+      "required": [
+        "code",
+        "description",
+        "timestampDeadline",
+        "amountPenalty"
+      ]
+    },
+    "v1ReservedRoom": {
+      "type": "object",
+      "properties": {
+        "pmsId": {
+          "type": "string",
+          "description": "Deprecated. Use guest confirmation id instead."
+        },
+        "room": {
+          "$ref": "#/definitions/v1RoomDetail"
+        },
+        "checkInDate": {
+          "type": "string"
+        },
+        "checkOutDate": {
+          "type": "string"
+        },
+        "rate": {
+          "$ref": "#/definitions/v1RoomRate"
+        },
+        "guests": {
+          "$ref": "#/definitions/v1GuestDetail"
+        },
+        "additionalInformation": {
+          "$ref": "#/definitions/v1AdditionalInformation"
+        },
+        "addOns": {
+          "$ref": "#/definitions/v1RoomAddOns"
+        },
+        "totalCost": {
+          "$ref": "#/definitions/v1Cost"
+        },
+        "guestProfiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1GuestProfile"
+          }
+        },
+        "companyProfiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1CompanyProfile"
+          }
+        },
+        "reservationId": {
+          "type": "string"
+        },
+        "guestConfirmationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pmsId",
+        "room",
+        "checkInDate",
+        "checkOutDate",
+        "rate",
+        "guests",
+        "cost",
+        "guestProfiles",
+        "reservationId"
+      ]
+    },
+    "v1RoomAddOnDetail": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "displayType": {
+          "$ref": "#/definitions/v1AddOnDisplayType"
+        },
+        "image": {
+          "$ref": "#/definitions/v1AddOnImage"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "priceContent": {
+          "type": "string"
+        },
+        "controlLabel": {
+          "type": "string"
+        },
+        "requestedQuantity": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "calculatedQuantity": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "cost": {
+          "$ref": "#/definitions/v1Cost"
+        }
+      },
+      "required": [
+        "id",
+        "displayType",
+        "image",
+        "name",
+        "description",
+        "priceContent",
+        "controlLabel",
+        "requestedQuantity",
+        "calculatedQuantity",
+        "cost"
+      ]
+    },
+    "v1RoomAddOns": {
+      "type": "object",
+      "properties": {
+        "detail": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1RoomAddOnDetail"
+          }
+        },
+        "cost": {
+          "$ref": "#/definitions/v1Cost"
+        }
+      }
+    },
+    "v1RoomBestRate": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "cost": {
+          "$ref": "#/definitions/v1Cost"
+        },
+        "type": {
+          "$ref": "#/definitions/v1RoomBestRateType"
+        },
+        "offerCode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "name",
+        "description",
+        "cost",
+        "offerCode"
+      ]
+    },
+    "v1RoomBestRateType": {
+      "type": "string",
+      "enum": [
+        "ROOM_BEST_RATE_TYPE_UNSPECIFIED",
+        "ROOM_BEST_RATE_TYPE_STANDARD",
+        "ROOM_BEST_RATE_TYPE_MEMBERSHIP"
+      ],
+      "default": "ROOM_BEST_RATE_TYPE_UNSPECIFIED"
+    },
+    "v1RoomDetail": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "strapline": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1RoomImages"
+          }
+        },
+        "extras": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1RoomExtras"
+          }
+        },
+        "filters": {
+          "$ref": "#/definitions/v1RoomFilters"
+        },
+        "equivalentNonAccessibleRoomCode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "name",
+        "strapline",
+        "description",
+        "images",
+        "extras",
+        "filters"
+      ]
+    },
+    "v1RoomExtras": {
+      "type": "object",
+      "properties": {
+        "typeId": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "typeId",
+        "type",
+        "text"
+      ]
+    },
+    "v1RoomFilters": {
+      "type": "object",
+      "properties": {
+        "accessible": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "accessible"
+      ]
+    },
+    "v1RoomImages": {
+      "type": "object",
+      "properties": {
+        "typeId": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "altText": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "typeId",
+        "url",
+        "altText"
+      ]
+    },
+    "v1RoomRate": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "cost": {
+          "$ref": "#/definitions/v1Cost"
+        },
+        "depositRequired": {
+          "type": "boolean"
+        },
+        "deposit": {
+          "$ref": "#/definitions/v1Deposit"
+        },
+        "averageNightlyAmountAfterTax": {
+          "$ref": "#/definitions/v1LargeAmount"
+        },
+        "costDetail": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1RoomRateCostDetail"
+          }
+        },
+        "cancellationPolicies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1PolicyDetail"
+          }
+        },
+        "containsFees": {
+          "type": "boolean"
+        },
+        "discountDetail": {
+          "$ref": "#/definitions/v1DiscountDetail"
+        },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1RoomRateAttribute"
+          }
+        },
+        "accessedByDiscountCode": {
+          "type": "boolean"
+        },
+        "averageNightlyAmountSubtotalDisplay": {
+          "$ref": "#/definitions/v1LargeAmount"
+        },
+        "accessedByMembership": {
+          "type": "boolean"
+        },
+        "offerCode": {
+          "type": "string"
+        },
+        "information": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1RoomRateInformation"
+          }
+        }
+      },
+      "required": [
+        "code",
+        "name",
+        "description",
+        "cost",
+        "depositRequired",
+        "averageNightlyAmountAfterTax",
+        "averageNightlyAmountSubtotalDisplay",
+        "containsFees",
+        "offerCode"
+      ]
+    },
+    "v1RoomRateAttribute": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        }
+      }
+    },
+    "v1RoomRateCostDetail": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "cost": {
+          "$ref": "#/definitions/v1Cost"
+        }
+      },
+      "required": [
+        "date",
+        "cost"
+      ]
+    },
+    "v1RoomRateInformation": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "v1RpcError": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1RpcErrorDetails"
+          }
+        }
+      }
+    },
+    "v1RpcErrorDetails": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "debug": {
+          "$ref": "#/definitions/rpcErrorInfo"
+        }
+      }
+    },
+    "v1StripePaymentDetails": {
+      "type": "object",
+      "properties": {
+        "paymentIntent": {
+          "$ref": "#/definitions/v1StripePaymentIntent"
+        },
+        "connectedAccountId": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "paymentIntent",
+        "connectedAccountId"
+      ]
+    },
+    "v1StripePaymentIntent": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "clientSecret": {
+          "type": "string"
+        },
+        "publicKey": {
+          "type": "string"
+        },
+        "country": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "clientSecret",
+        "publicKey",
+        "country"
+      ]
+    },
+    "v1Tax": {
+      "type": "object",
+      "properties": {
+        "detail": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1TaxDetail"
+          }
+        },
+        "amount": {
+          "$ref": "#/definitions/v1LargeAmount"
+        }
+      },
+      "required": [
+        "detail",
+        "amount"
+      ]
+    },
+    "v1TaxDetail": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "amount": {
+          "$ref": "#/definitions/v1LargeAmount"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "amount",
+        "name",
+        "description"
+      ]
+    },
+    "v1UpdateBookingAddOnsRequest": {
+      "type": "object",
+      "properties": {
+        "hotelReferenceId": {
+          "type": "string"
+        },
+        "bookingId": {
+          "type": "string"
+        },
+        "addOns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1BookingAddOnDetail"
+          }
+        }
+      },
+      "required": [
+        "hotelReferenceId",
+        "bookingId",
+        "addOns"
+      ]
+    },
+    "v1UpdateBookingAddOnsResponse": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ]
+    }
+  },
+  "securityDefinitions": {
+    "ApiKeyAuth": {
+      "type": "apiKey",
+      "description": "Your private api key",
+      "name": "X-Api-Key",
+      "in": "header"
+    }
+  }
+}

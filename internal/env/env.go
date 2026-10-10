@@ -4,6 +4,7 @@ package env
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/nomad-software/postie/internal/jsonfile"
@@ -82,6 +83,34 @@ func (s *Store) Expand(text string) string {
 	return text
 }
 
+// Sort puts the environments in alphabetical order, ignoring case. The
+// active environment stays the active one.
+func (s *Store) Sort() {
+	order := make([]int, len(s.Environments))
+	for i := range order {
+		order[i] = i
+	}
+	slices.SortStableFunc(order, func(a, b int) int {
+		return compareNames(s.Environments[a].Name, s.Environments[b].Name)
+	})
+
+	sorted := make([]Environment, len(order))
+	active := -1
+	for to, from := range order {
+		sorted[to] = s.Environments[from]
+		if from == s.Active {
+			active = to
+		}
+	}
+	s.Environments = sorted
+	s.Active = active
+}
+
+// compareNames orders names alphabetically, ignoring case.
+func compareNames(a, b string) int {
+	return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+}
+
 // Load reads a store from the JSON file at path. A missing file is not an
 // error and yields an empty store.
 func Load(path string) (*Store, error) {
@@ -92,6 +121,7 @@ func Load(path string) (*Store, error) {
 	if _, ok := store.Current(); !ok {
 		store.Active = -1
 	}
+	store.Sort()
 	return store, nil
 }
 

@@ -3,12 +3,15 @@ package ui
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/postie/internal/collection"
+	"github.com/nomad-software/postie/internal/openapi"
 	"github.com/nomad-software/postie/internal/rest"
 )
 
@@ -41,6 +44,11 @@ type requestTree struct {
 	// create returns the request to add, or false if the user decided
 	// against adding one.
 	create func() (*collection.Request, bool)
+	// chooseFile asks the user for an OpenAPI document to import. It reports
+	// false if they decide against choosing one.
+	chooseFile func() (string, bool)
+	// warn tells the user of a problem.
+	warn func(message string)
 	// onOpen is called when a request is selected.
 	onOpen func(*collection.Request)
 	// onRename is called after a request is renamed.
@@ -63,6 +71,14 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 		return collection.NewREST("New Request", rest.Request{Method: http.MethodGet}), true
 	}
 
+	t.chooseFile = func() (string, bool) {
+		path := qt.QFileDialog_GetOpenFileName4(t.root, "Import OpenAPI Document", "", "OpenAPI documents (*.json *.yaml *.yml);;All files (*)")
+		return path, path != ""
+	}
+	t.warn = func(message string) {
+		qt.QMessageBox_Warning(t.root, "Postie", message)
+	}
+
 	t.tree.SetHeaderHidden(true)
 	// Names are only edited through the Rename button.
 	t.tree.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
@@ -71,6 +87,9 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	addFolder.OnClicked(t.addFolder)
 	addRequest := qt.NewQPushButton3("Add Request")
 	addRequest.OnClicked(t.addRequest)
+	importButton := qt.NewQPushButton3("Import")
+	importButton.SetToolTip("Create a folder of requests from an OpenAPI document")
+	importButton.OnClicked(t.importDocument)
 	edit := qt.NewQPushButton3("Edit")
 	edit.OnClicked(t.open)
 	rename := qt.NewQPushButton3("Rename")
@@ -81,6 +100,7 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	add := qt.NewQHBoxLayout2()
 	add.AddWidget(addFolder.QWidget)
 	add.AddWidget(addRequest.QWidget)
+	add.AddWidget(importButton.QWidget)
 	change := qt.NewQHBoxLayout2()
 	change.AddWidget(edit.QWidget)
 	change.AddWidget(rename.QWidget)
@@ -168,6 +188,10 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 			folder.Name = item.Text(colName)
 		}
 		t.save()
+
+		// The new name may belong somewhere else in the order. The items
+		// must not be replaced while one of them is reporting its change.
+		mainthread.Start(t.sort)
 	})
 
 	return t
@@ -221,6 +245,73 @@ func (t *requestTree) draw(selected any) {
 	}
 	if current != nil {
 		t.tree.SetCurrentItem(current)
+	}
+}
+
+// sort puts the folders and requests in alphabetical order and draws the tree
+// again if that moved anything, keeping what is selected selected.
+func (t *requestTree) sort() {
+	var selected any
+	if item := t.tree.CurrentItem(); item != nil {
+		folder, request := t.locate(item)
+		selected = folder
+		if request != nil {
+			selected = request
+		}
+	}
+
+	before := t.order()
+	t.store.Sort()
+	if slices.Equal(before, t.order()) {
+		return
+	}
+
+	// The tree still shows the order from before.
+	t.rememberIn(before)
+	t.draw(selected)
+}
+
+// order lists every folder and request of the store in the order they are
+// shown.
+func (t *requestTree) order() []any {
+	var all []any
+	var walk func(f *collection.Folder)
+	walk = func(f *collection.Folder) {
+		all = append(all, f)
+		for _, sub := range f.Folders {
+			walk(sub)
+		}
+		for _, r := range f.Requests {
+			all = append(all, r)
+		}
+	}
+	for _, f := range t.store.Folders {
+		walk(f)
+	}
+	return all
+}
+
+// rememberIn notes which folders are closed, as remember does, for a tree
+// that shows the folders and requests in the given order, which is no longer
+// that of the store.
+func (t *requestTree) rememberIn(order []any) {
+	clear(t.collapsed)
+
+	// The items of the tree are in the same order, read from the top down.
+	i := 0
+	var walk func(item *qt.QTreeWidgetItem)
+	walk = func(item *qt.QTreeWidgetItem) {
+		of := order[i]
+		i++
+		if folder, ok := of.(*collection.Folder); ok && !item.IsExpanded() {
+			t.collapsed[folder] = true
+		}
+		for child := range item.ChildCount() {
+			walk(item.Child(child))
+		}
+	}
+	for top := range t.tree.TopLevelItemCount() {
+		walk(t.tree.TopLevelItem(top))
 	}
 }
 
@@ -330,6 +421,9 @@ func (t *requestTree) drop(folder *collection.Folder, request *collection.Reques
 	if to != nil {
 		delete(t.collapsed, to)
 	}
+	// Everything is kept in alphabetical order, so where exactly in a
+	// folder something was dropped makes no difference.
+	t.store.Sort()
 	t.draw(moved)
 	t.save()
 	return true
@@ -441,20 +535,19 @@ func (t *requestTree) open() {
 func (t *requestTree) addFolder() {
 	const name = "New Folder"
 
-	var item *qt.QTreeWidgetItem
-	if parent := t.folderItem(); parent != nil {
-		folder, _ := t.locate(parent)
-		folder.AddFolder(name)
-		item = t.newItem(parent, len(folder.Folders)-1, name, "")
-		parent.SetExpanded(true)
-	} else {
-		t.store.AddFolder(name)
-		item = t.newItem(nil, -1, name, "")
-	}
-	t.save()
+	parent := t.folderItem()
+	t.remember()
 
-	t.tree.SetCurrentItem(item)
-	t.tree.EditItem(item)
+	var added *collection.Folder
+	if parent != nil {
+		folder, _ := t.locate(parent)
+		added = folder.AddFolder(name)
+		delete(t.collapsed, folder)
+	} else {
+		added = t.store.AddFolder(name)
+	}
+
+	t.added(added)
 }
 
 // addRequest creates a request in the selected folder, or the folder of the
@@ -468,23 +561,67 @@ func (t *requestTree) addRequest() {
 	}
 
 	parent := t.folderItem()
+	t.remember()
+
+	var folder *collection.Folder
 	switch {
 	case parent != nil:
+		folder, _ = t.locate(parent)
 	case len(t.store.Folders) == 0:
-		t.store.AddFolder("New Folder")
-		parent = t.newItem(nil, -1, "New Folder", "")
+		folder = t.store.AddFolder("New Folder")
 	default:
-		parent = t.tree.TopLevelItem(len(t.store.Folders) - 1)
+		folder = t.store.Folders[len(t.store.Folders)-1]
 	}
-
-	folder, _ := t.locate(parent)
 	folder.Add(request)
-	child := t.newItem(parent, -1, request.Name, request.Type)
-	parent.SetExpanded(true)
+	delete(t.collapsed, folder)
+
+	t.added(request)
+	if t.onOpen != nil {
+		t.onOpen(request)
+	}
+}
+
+// added shows a folder or request that has just been put in the store, in
+// its place in the order, and starts editing its name.
+func (t *requestTree) added(what any) {
+	t.store.Sort()
+	t.draw(what)
 	t.save()
 
-	t.tree.SetCurrentItem(child)
-	t.tree.EditItem(child)
+	if item := t.tree.CurrentItem(); item != nil {
+		t.tree.EditItem(item)
+	}
+}
+
+// importDocument asks for an OpenAPI document and imports it.
+func (t *requestTree) importDocument() {
+	path, ok := t.chooseFile()
+	if !ok {
+		return
+	}
+	if err := t.importFile(path); err != nil {
+		t.warn(fmt.Sprintf("%s could not be imported: %v.", filepath.Base(path), err))
+	}
+}
+
+// importFile adds a folder of requests made from the OpenAPI document at
+// path, at the end of the top level, and selects it.
+func (t *requestTree) importFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	folder, err := openapi.Import(data)
+	if err != nil {
+		return err
+	}
+
+	t.remember()
+	t.store.Folders = append(t.store.Folders, folder)
+	t.store.Sort()
+	t.draw(folder)
+	t.save()
+	return nil
 }
 
 // rename starts editing the name of the selected folder or request.

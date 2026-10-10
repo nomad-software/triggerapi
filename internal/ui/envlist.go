@@ -94,9 +94,17 @@ func (s *envList) selected() {
 // add creates an environment, selects it and opens it for editing.
 func (s *envList) add() {
 	s.store.Environments = append(s.store.Environments, env.Environment{Name: "New Environment"})
-	s.list.AddItem("New Environment")
-	s.list.SetCurrentRow(s.list.Count() - 1)
+	s.store.Active = len(s.store.Environments) - 1
+	s.sort()
+	s.selected()
 	s.edit()
+}
+
+// sort puts the environments in alphabetical order and lists them again,
+// keeping the active one selected.
+func (s *envList) sort() {
+	s.store.Sort()
+	s.load(s.store, s.path)
 }
 
 func (s *envList) edit() {
@@ -127,9 +135,12 @@ func (s *envList) update(name string, variables []env.Variable) {
 	if !ok {
 		return
 	}
+	renamed := e.Name != name
 	e.Name = name
 	e.Variables = variables
-	s.list.Item(s.store.Active).SetText(name)
+	if renamed {
+		s.sort()
+	}
 	s.save()
 }
 

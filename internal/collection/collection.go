@@ -4,6 +4,7 @@ package collection
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/nomad-software/postie/internal/jsonfile"
 	"github.com/nomad-software/postie/internal/rest"
@@ -125,6 +126,28 @@ func (f *Folder) Descendants() int {
 		n += sub.Descendants()
 	}
 	return n
+}
+
+// compareNames orders names alphabetically, ignoring case.
+func compareNames(a, b string) int {
+	return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+}
+
+// Sort puts the folders of the store, and the folders and requests inside
+// each of them, in alphabetical order, ignoring case.
+func (s *Store) Sort() {
+	slices.SortStableFunc(s.Folders, func(a, b *Folder) int { return compareNames(a.Name, b.Name) })
+	for _, f := range s.Folders {
+		f.sort()
+	}
+}
+
+func (f *Folder) sort() {
+	slices.SortStableFunc(f.Folders, func(a, b *Folder) int { return compareNames(a.Name, b.Name) })
+	slices.SortStableFunc(f.Requests, func(a, b *Request) int { return compareNames(a.Name, b.Name) })
+	for _, sub := range f.Folders {
+		sub.sort()
+	}
 }
 
 // contains reports if other is the folder itself or is inside it.
@@ -261,6 +284,7 @@ func Load(path string) (*Store, error) {
 	for _, f := range store.Folders {
 		f.normalise()
 	}
+	store.Sort()
 
 	return store, nil
 }

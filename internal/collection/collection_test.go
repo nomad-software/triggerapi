@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -36,6 +37,8 @@ func TestSaveLoad(t *testing.T) {
 	}))
 	want.AddFolder("Empty")
 
+	// A store is put in alphabetical order when it is loaded.
+	want.Sort()
 	if err := want.Save(path); err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +113,11 @@ func TestLoadNormalises(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	requests := s.Folders[0].Requests
+	// The requests are loaded in alphabetical order, so are found by name.
+	requests := map[int]*Request{}
+	for _, r := range s.Folders[0].Requests {
+		requests[slices.Index([]string{"old", "empty", "rpc", "bare rpc"}, r.Name)] = r
+	}
 
 	// A request saved before there were types is a REST request.
 	if r := requests[0]; r.Type != TypeREST || r.GRPC != nil || r.Method != "POST" || r.URL != "example.com" {
@@ -146,6 +153,8 @@ func TestNestedFolders(t *testing.T) {
 		t.Errorf("Descendants = %d, want 4", got)
 	}
 
+	// A store is put in alphabetical order when it is loaded.
+	want.Sort()
 	if err := want.Save(path); err != nil {
 		t.Fatal(err)
 	}
@@ -290,5 +299,29 @@ func TestMoveFolder(t *testing.T) {
 	}
 	if !s.MoveFolder(a, nil, 0) || !reflect.DeepEqual(top(), []string{"a", "d", "b"}) {
 		t.Errorf("top = %v", top())
+	}
+}
+
+func TestSort(t *testing.T) {
+	s := &Store{}
+	b := s.AddFolder("beta")
+	s.AddFolder("Alpha")
+	b.AddFolder("zeta")
+	inner := b.AddFolder("Eta")
+	b.Add(NewREST("list", rest.Request{}))
+	b.Add(NewREST("Create", rest.Request{}))
+	inner.Add(NewREST("b", rest.Request{}))
+	inner.Add(NewREST("A", rest.Request{}))
+
+	s.Sort()
+
+	if s.Folders[0].Name != "Alpha" || s.Folders[1] != b {
+		t.Errorf("top = %q, %q", s.Folders[0].Name, s.Folders[1].Name)
+	}
+	if got, want := names(b), []string{"Eta/", "zeta/", "Create", "list"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("beta = %v, want %v", got, want)
+	}
+	if got, want := names(inner), []string{"A", "b"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Eta = %v, want %v", got, want)
 	}
 }

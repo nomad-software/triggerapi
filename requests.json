@@ -164,6 +164,276 @@
           ]
         }
       ]
+    },
+    {
+      "name": "em-booking-api",
+      "requests": [
+        {
+          "name": "BookingApiService_CreateBooking",
+          "type": "rest",
+          "method": "POST",
+          "url": "{{baseUrl}}/booking_api.v1.BookingApiService/CreateBooking",
+          "headers": [
+            {
+              "key": "User-Agent",
+              "value": "",
+              "enabled": true
+            },
+            {
+              "key": "Accept-Language",
+              "value": "",
+              "enabled": true
+            },
+            {
+              "key": "X-Session-Id",
+              "value": "",
+              "enabled": false
+            },
+            {
+              "key": "X-Api-Key",
+              "value": "{{apiKey}}",
+              "enabled": true
+            }
+          ],
+          "auth": {},
+          "bodyType": "json",
+          "body": "{\n  \"discountCode\": \"string\",\n  \"discountCodeType\": \"NONE\",\n  \"hotelReferenceId\": \"string\",\n  \"iataNumber\": \"string\",\n  \"rooms\": [\n    {\n      \"checkInDate\": \"string\",\n      \"checkOutDate\": \"string\",\n      \"guests\": {\n        \"adults\": 0,\n        \"children\": 0,\n        \"childrenAges\": [\n          0\n        ]\n      },\n      \"offerCode\": \"string\",\n      \"rateCode\": \"string\",\n      \"roomCode\": \"string\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "BookingApiService_GetAvailability",
+          "type": "rest",
+          "method": "POST",
+          "url": "{{baseUrl}}/booking_api.v1.BookingApiService/GetAvailability",
+          "headers": [
+            {
+              "key": "Accept-Language",
+              "value": "",
+              "enabled": true
+            },
+            {
+              "key": "X-Session-Id",
+              "value": "",
+              "enabled": false
+            },
+            {
+              "key": "X-Api-Key",
+              "value": "{{apiKey}}",
+              "enabled": true
+            }
+          ],
+          "auth": {},
+          "bodyType": "json",
+          "body": "{\n  \"checkInDate\": \"string\",\n  \"checkOutDate\": \"string\",\n  \"discountCode\": \"string\",\n  \"discountCodeType\": \"NONE\",\n  \"guests\": {\n    \"adults\": 0,\n    \"children\": 0,\n    \"childrenAges\": [\n      0\n    ]\n  },\n  \"hotelReferenceId\": \"string\",\n  \"iataNumber\": \"string\",\n  \"numberOfRooms\": 0,\n  \"rateCodes\": [\n    \"string\"\n  ],\n  \"roomCodes\": [\n    \"string\"\n  ]\n}"
+        },
+        {
+          "name": "BookingApiService_GetAvailableAddOns",
+          "type": "rest",
+          "method": "POST",
+          "url": "{{baseUrl}}/booking_api.v1.BookingApiService/GetAvailableAddOns",
+          "headers": [
+            {
+              "key": "Accept-Language",
+              "value": "",
+              "enabled": true
+            },
+            {
+              "key": "X-Session-Id",
+              "value": "",
+              "enabled": false
+            },
+            {
+              "key": "X-Api-Key",
+              "value": "{{apiKey}}",
+              "enabled": true
+            }
+          ],
+          "auth": {},
+          "bodyType": "json",
+          "body": "{\n  \"bookingId\": \"string\",\n  \"hotelReferenceId\": \"string\"\n}"
+        },
+        {
+          "name": "BookingApiService_GetBestAvailableRates",
+          "type": "rest",
+          "method": "POST",
+          "url": "{{baseUrl}}/booking_api.v1.BookingApiService/GetBestAvailableRates",
+          "headers": [
+            {
+              "key": "Accept-Language",
+              "value": "",
+              "enabled": true
+            },
+            {
+              "key": "X-Session-Id",
+              "value": "",
+              "enabled": false
+            },
+            {
+              "key": "X-Api-Key",
+              "value": "{{apiKey}}",
+              "enabled": true
+            }
+          ],
+          "auth": {},
+          "bodyType": "json",
+          "body": "{\n  \"checkInDate\": \"string\",\n  \"checkOutDate\": \"string\",\n  \"guests\": {\n    \"adults\": 0,\n    \"children\": 0,\n    \"childrenAges\": [\n      0\n    ]\n  },\n  \"hotelReferenceIds\": [\n    \"string\"\n  ],\n  \"numberOfRooms\": 0\n}"
+        },
+        {
+          "name": "BookingApiService_GetBooking",
+          "type": "rest",
+          "method": "POST",
+          "url": "{{baseUrl}}/booking_api.v1.BookingApiService/GetBooking",
+          "headers": [
+            {
+              "key": "Accept-Language",
+              "value": "",
+              "enabled": true
+            },
+            {
+              "key": "X-Session-Id",
+              "value": "",
+              "enabled": false
+            },
+            {
+              "key": "X-Api-Key",
+              "value": "{{apiKey}}",
+              "enabled": true
+            }
+          ],
+          "auth": {},
+          "bodyType": "json",
+          "body": "{\n  \"bookingId\": \"string\",\n  \"hotelReferenceId\": \"string\"\n}"
+        },
+        {
+          "name": "BookingApiService_GetBookingPaymentMethodDetails",
+          "type": "rest",
+          "method": "POST",
+          "url": "{{baseUrl}}/booking_api.v1.BookingApiService/GetBookingPaymentMethodDetails",
+          "headers": [
+            {
+              "key": "Accept-Language",
+              "value": "",
+              "enabled": true
+            },
+            {
+              "key": "X-Session-Id",
+              "value": "",
+              "enabled": false
+            },
+            {
+              "key": "X-Api-Key",
+              "value": "{{apiKey}}",
+              "enabled": true
+            }
+          ],
+          "auth": {},
+          "bodyType": "json",
+          "body": "{\n  \"bookingId\": \"string\",\n  \"guestProfile\": {\n    \"address\": {\n      \"addressLine\": [\n        \"string\"\n      ],\n      \"city\": \"string\",\n      \"country\": \"string\",\n      \"postcode\": \"string\",\n      \"state\": \"string\"\n    },\n    \"contactDetails\": {\n      \"emailAddress\": \"string\",\n      \"phoneNumber\": \"string\"\n    },\n    \"firstName\": \"string\",\n    \"lastName\": \"string\",\n    \"title\": \"string\",\n    \"type\": \"UNSPECIFIED\"\n  },\n  \"hotelReferenceId\": \"string\",\n  \"paymentMethodCode\": \"string\"\n}"
+        },
+        {
+          "name": "BookingApiService_GetBookingPaymentMethods",
+          "type": "rest",
+          "method": "POST",
+          "url": "{{baseUrl}}/booking_api.v1.BookingApiService/GetBookingPaymentMethods",
+          "headers": [
+            {
+              "key": "Accept-Language",
+              "value": "",
+              "enabled": true
+            },
+            {
+              "key": "X-Session-Id",
+              "value": "",
+              "enabled": false
+            },
+            {
+              "key": "X-Api-Key",
+              "value": "{{apiKey}}",
+              "enabled": true
+            }
+          ],
+          "auth": {},
+          "bodyType": "json",
+          "body": "{\n  \"bookingId\": \"string\",\n  \"hotelReferenceId\": \"string\"\n}"
+        },
+        {
+          "name": "BookingApiService_GetBookingStatus",
+          "type": "rest",
+          "method": "POST",
+          "url": "{{baseUrl}}/booking_api.v1.BookingApiService/GetBookingStatus",
+          "headers": [
+            {
+              "key": "Accept-Language",
+              "value": "",
+              "enabled": true
+            },
+            {
+              "key": "X-Session-Id",
+              "value": "",
+              "enabled": false
+            },
+            {
+              "key": "X-Api-Key",
+              "value": "{{apiKey}}",
+              "enabled": true
+            }
+          ],
+          "auth": {},
+          "bodyType": "json",
+          "body": "{\n  \"bookingId\": \"string\",\n  \"hotelReferenceId\": \"string\"\n}"
+        },
+        {
+          "name": "BookingApiService_GetCalendar",
+          "type": "rest",
+          "method": "POST",
+          "url": "{{baseUrl}}/booking_api.v1.BookingApiService/GetCalendar",
+          "headers": [
+            {
+              "key": "Accept-Language",
+              "value": "",
+              "enabled": true
+            },
+            {
+              "key": "X-Session-Id",
+              "value": "",
+              "enabled": false
+            },
+            {
+              "key": "X-Api-Key",
+              "value": "{{apiKey}}",
+              "enabled": true
+            }
+          ],
+          "auth": {},
+          "bodyType": "json",
+          "body": "{\n  \"discountCode\": \"string\",\n  \"discountCodeType\": \"NONE\",\n  \"endDate\": \"string\",\n  \"guests\": {\n    \"adults\": 0,\n    \"children\": 0,\n    \"childrenAges\": [\n      0\n    ]\n  },\n  \"hotelReferenceId\": \"string\",\n  \"numberOfRooms\": 0,\n  \"rateCodes\": [\n    \"string\"\n  ],\n  \"roomCodes\": [\n    \"string\"\n  ],\n  \"startDate\": \"string\"\n}"
+        },
+        {
+          "name": "BookingApiService_UpdateBookingAddOns",
+          "type": "rest",
+          "method": "POST",
+          "url": "{{baseUrl}}/booking_api.v1.BookingApiService/UpdateBookingAddOns",
+          "headers": [
+            {
+              "key": "Accept-Language",
+              "value": "",
+              "enabled": true
+            },
+            {
+              "key": "X-Session-Id",
+              "value": "",
+              "enabled": false
+            },
+            {
+              "key": "X-Api-Key",
+              "value": "{{apiKey}}",
+              "enabled": true
+            }
+          ],
+          "auth": {},
+          "bodyType": "json",
+          "body": "{\n  \"addOns\": [\n    {\n      \"id\": \"string\",\n      \"quantity\": 0\n    }\n  ],\n  \"bookingId\": \"string\",\n  \"hotelReferenceId\": \"string\"\n}"
+        }
+      ]
     }
   ]
 }
