@@ -9,7 +9,7 @@ import (
 func TestSaveLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 
-	want := Settings{Width: 900, Height: 600, Maximized: true, ResponseFont: "Hack"}
+	want := Settings{Width: 900, Height: 600, Maximized: true, SidebarWidth: 310, ResponseHeight: 240, ResponseFont: "Hack", EnvironmentsFile: "/a/e.json", RequestsFile: "r.json"}
 	if err := want.Save(path); err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestLoadDefaults(t *testing.T) {
 		t.Errorf("invalid file: got %+v", got)
 	}
 
-	os.WriteFile(path, []byte(`{"width": 5, "height": 9000, "maximized": true}`), 0o644)
+	os.WriteFile(path, []byte(`{"width": 5, "height": 9000, "maximized": true, "sidebarWidth": -4, "responseHeight": -1}`), 0o644)
 	if got := Load(path); got != (Settings{Width: defaultWidth, Height: defaultHeight, Maximized: true, ResponseFont: defaultResponseFont}) {
 		t.Errorf("bad size: got %+v", got)
 	}

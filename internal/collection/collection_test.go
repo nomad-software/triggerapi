@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/nomad-software/postie/internal/rest"
+	"github.com/nomad-software/postie/internal/rpc"
 )
 
 func TestSaveLoad(t *testing.T) {
@@ -15,8 +16,8 @@ func TestSaveLoad(t *testing.T) {
 
 	want := &Store{}
 	users := want.AddFolder("Users")
-	users.Add("List", rest.Request{Method: "GET", URL: "{{host}}/users"})
-	users.Add("Create", rest.Request{
+	users.Add(NewREST("List", rest.Request{Method: "GET", URL: "{{host}}/users"}))
+	users.Add(NewREST("Create", rest.Request{
 		Method:   "POST",
 		URL:      "{{host}}/users",
 		Params:   []rest.KeyValue{{Key: "dry", Value: "1"}},
@@ -24,7 +25,15 @@ func TestSaveLoad(t *testing.T) {
 		Auth:     rest.Auth{Type: rest.AuthBearer, Token: "{{token}}"},
 		BodyType: rest.BodyJSON,
 		Body:     `{"name": "a"}`,
-	})
+	}))
+	users.Add(NewGRPC("Say", rpc.Request{
+		URL:      "{{host}}:50051",
+		TLS:      true,
+		Method:   "test.v1.Echo/Say",
+		Message:  `{"text": "hi"}`,
+		Metadata: []rest.KeyValue{{Key: "x-trace", Value: "1", Enabled: true}},
+		Auth:     rest.Auth{Type: rest.AuthBasic, Username: "u", Password: "p"},
+	}))
 	want.AddFolder("Empty")
 
 	if err := want.Save(path); err != nil {
@@ -33,7 +42,7 @@ func TestSaveLoad(t *testing.T) {
 
 	// The request fields are stored alongside the name, not nested.
 	data, _ := os.ReadFile(path)
-	for _, s := range []string{`"name": "Create"`, `"method": "POST"`, `"type": "bearer"`, `"bodyType": "json"`} {
+	for _, s := range []string{`"name": "Create"`, `"method": "POST"`, `"type": "bearer"`, `"bodyType": "json"`, `"type": "rest"`, `"type": "grpc"`, `"method": "test.v1.Echo/Say"`} {
 		if !strings.Contains(string(data), s) {
 			t.Errorf("file does not contain %s:\n%s", s, data)
 		}
@@ -52,8 +61,8 @@ func TestRemove(t *testing.T) {
 	s := &Store{}
 	a := s.AddFolder("a")
 	s.AddFolder("b")
-	first := a.Add("1", rest.Request{})
-	second := a.Add("2", rest.Request{})
+	first := a.Add(NewREST("1", rest.Request{}))
+	second := a.Add(NewREST("2", rest.Request{}))
 
 	a.Remove(0)
 	if len(a.Requests) != 1 || a.Requests[0] != second || first.Name != "1" {
@@ -85,5 +94,35 @@ func TestLoadMissingAndInvalid(t *testing.T) {
 	s, err = Load(path)
 	if err != nil || len(s.Folders) != 1 || len(s.Folders[0].Requests) != 0 {
 		t.Errorf("nulls: %+v, %v", s, err)
+	}
+}
+
+func TestLoadNormalises(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "requests.json")
+	os.WriteFile(path, []byte(`{"folders": [{"name": "a", "requests": [
+		{"name": "old", "method": "POST", "url": "example.com", "auth": {}},
+		{"name": "empty"},
+		{"name": "rpc", "type": "grpc", "grpc": {"url": "localhost:1", "method": "a.B/C", "auth": {}}},
+		{"name": "bare rpc", "type": "grpc", "url": "ignored"}
+	]}]}`), 0o644)
+
+	s, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests := s.Folders[0].Requests
+
+	// A request saved before there were types is a REST request.
+	if r := requests[0]; r.Type != TypeREST || r.GRPC != nil || r.Method != "POST" || r.URL != "example.com" {
+		t.Errorf("old = %+v", r)
+	}
+	if r := requests[1]; r.Type != TypeREST || r.Request == nil {
+		t.Errorf("empty = %+v", r)
+	}
+	if r := requests[2]; r.Type != TypeGRPC || r.Request != nil || r.GRPC.Method != "a.B/C" {
+		t.Errorf("rpc = %+v", r)
+	}
+	if r := requests[3]; r.Type != TypeGRPC || r.Request != nil || r.GRPC == nil {
+		t.Errorf("bare rpc = %+v", r)
 	}
 }

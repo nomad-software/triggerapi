@@ -28,10 +28,8 @@ type envList struct {
 
 func newEnvList(store *env.Store, path string) *envList {
 	s := &envList{
-		root:  qt.NewQWidget2(),
-		list:  qt.NewQListWidget2(),
-		store: store,
-		path:  path,
+		root: qt.NewQWidget2(),
+		list: qt.NewQListWidget2(),
 	}
 
 	add := qt.NewQPushButton3("Add")
@@ -55,10 +53,7 @@ func newEnvList(store *env.Store, path string) *envList {
 	layout.AddLayout(buttons.QLayout)
 	layout.AddWidget(hint.QWidget)
 
-	for _, e := range store.Environments {
-		s.list.AddItem(e.Name)
-	}
-	s.list.SetCurrentRow(store.Active)
+	s.load(store, path)
 
 	s.list.OnCurrentRowChanged(func(row int) {
 		if s.updating {
@@ -70,6 +65,22 @@ func newEnvList(store *env.Store, path string) *envList {
 	s.list.OnItemDoubleClicked(func(*qt.QListWidgetItem) { s.edit() })
 
 	return s
+}
+
+// load replaces the environments with those of the store, which is saved to
+// path, without calling onSelect or onChange.
+func (s *envList) load(store *env.Store, path string) {
+	defer func(prev bool) { s.updating = prev }(s.updating)
+	s.updating = true
+
+	s.store = store
+	s.path = path
+
+	s.list.Clear()
+	for _, e := range store.Environments {
+		s.list.AddItem(e.Name)
+	}
+	s.list.SetCurrentRow(store.Active)
 }
 
 // selected reports a change of the active environment and saves it.

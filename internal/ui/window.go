@@ -5,8 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
@@ -14,6 +17,7 @@ import (
 	"github.com/nomad-software/postie/internal/collection"
 	"github.com/nomad-software/postie/internal/env"
 	"github.com/nomad-software/postie/internal/rest"
+	"github.com/nomad-software/postie/internal/rpc"
 	"github.com/nomad-software/postie/internal/settings"
 )
 
@@ -21,13 +25,35 @@ import (
 const (
 	pageRequest = iota
 	pageEditor
+	pageGRPC
 )
+
+// reflectTimeout limits how long a server is given to describe its services.
+const reflectTimeout = 15 * time.Second
+
+// askRequestType asks the user what type of request to create. It reports
+// false if they decide against creating one. It is a variable so that tests
+// can answer without a dialog being shown.
+var askRequestType = func(parent *qt.QWidget) (collection.Type, bool) {
+	dialog := newRequestTypeDialog(parent)
+	// A dialog is not destroyed by being closed.
+	defer dialog.DeleteLater()
+
+	accepted := dialog.Exec() == int(qt.QDialog__Accepted)
+	return dialog.chosen, accepted
+}
 
 // aboutText returns the contents of the about box, which carries the notice
 // the LGPL asks of programs that use Qt.
 func aboutText() string {
-	return "<b>Postie</b>" +
-		"<p>A desktop client for making REST API calls.</p>" +
+	// The licence notices are set apart from the description of the program
+	// in a bordered box of smaller text. Qt's rich text draws a border
+	// around a table but not around a paragraph.
+	return "<h3>Postie</h3>" +
+		"<p>A desktop client for making REST API and gRPC calls.</p>" +
+		"<table style=\"border: 1px solid #888888; border-collapse: collapse;\" cellpadding=\"10\" width=\"100%\">" +
+		"<tr><td style=\"font-size: small;\">" +
+		"<p><b>Third party licences</b></p>" +
 		"<p>This program uses Qt version " + qt.QLibraryInfo_Version().ToString() + ".</p>" +
 		"<p>Qt is a C++ toolkit for cross-platform application development, used here under the " +
 		"terms of the <a href=\"https://www.gnu.org/licenses/lgpl-3.0.html\">GNU Lesser General " +
@@ -39,7 +65,8 @@ func aboutText() string {
 		"<p>Copyright (C) The Qt Company Ltd. and other contributors. Qt and the Qt logo are " +
 		"trademarks of The Qt Company Ltd.</p>" +
 		"<p>The Go bindings for Qt are provided by <a href=\"https://github.com/mappu/miqt\">miqt</a>, " +
-		"used under the MIT licence.</p>"
+		"used under the MIT licence.</p>" +
+		"</td></tr></table>"
 }
 
 // Files are the paths of the JSON files the program's data is kept in.
@@ -53,24 +80,57 @@ type Files struct {
 type Window struct {
 	*qt.QMainWindow
 
-	// quit and about are the menu bar actions.
-	quit  *qt.QAction
-	about *qt.QAction
+	// preferences, quit and about are the menu bar actions.
+	preferences *qt.QAction
+	quit        *qt.QAction
+	about       *qt.QAction
+
+	// files are the default locations of the saved data, and config the
+	// settings in effect, which can move the environments and requests
+	// elsewhere.
+	files  Files
+	config settings.Settings
 
 	client *http.Client
 	// sidebar has a tab for the environments and one for the requests.
 	sidebar      *qt.QTabWidget
 	environments *envList
 	requests     *requestTree
-	// stack shows either the request UI or the environment editor.
+	// split divides the sidebar from the rest of the window, and splits
+	// divide the request from the response on each page that has them.
+	split  *qt.QSplitter
+	splits map[int]*qt.QSplitter
+	// responseHeight is the height the response was last dragged to, which
+	// every page with a response is given. It is zero if it never was.
+	responseHeight int
+	// laidOut is set once the saved layout has been restored.
+	laidOut bool
+
+	// stack shows the REST request UI, the gRPC request UI or the
+	// environment editor.
 	stack    *qt.QStackedWidget
 	editor   *envEditor
 	request  *requestPanel
 	response *responsePanel
+	// grpc and grpcResponse are the gRPC request UI.
+	grpc         *grpcPanel
+	grpcResponse *responsePanel
 
-	// open is the saved request shown in the request UI, which edits are
-	// written back to. It is nil when the request UI holds an unsaved request.
+	// open is the saved request shown in the request UI for its type, which
+	// edits are written back to. It is nil when the REST request UI holds an
+	// unsaved request.
 	open *collection.Request
+	// shown counts the requests that have been shown, so that results which
+	// arrive after another request has been shown can be told apart and
+	// dropped.
+	shown int
+
+	// schemas are the service definitions of the gRPC servers that have been
+	// asked for them, by target.
+	schemas map[string]*rpc.Schema
+	// reflecting counts the times a service definition has been asked for,
+	// so that only the answer to the latest is used.
+	reflecting int
 
 	// cancel aborts the request in flight. It is nil when idle and must only
 	// be accessed from the main thread.
@@ -84,20 +144,30 @@ func NewWindow(files Files) *Window {
 		QMainWindow: qt.NewQMainWindow2(),
 		client:      &http.Client{},
 		request:     newRequestPanel(),
+		grpc:        newGRPCPanel(),
 		editor:      newEnvEditor(),
+		schemas:     map[string]*rpc.Schema{},
 	}
 
 	w.SetWindowTitle("Postie")
+	w.SetWindowIcon(appIcon())
+	// Dialogs take their icon from the application.
+	qt.QGuiApplication_SetWindowIcon(appIcon())
+
+	// The status bar has a handle at its right to resize the window by.
+	w.StatusBar().SetSizeGripEnabled(true)
 
 	// Restore the window size, and remember it again when the window closes.
-	saved := settings.Load(files.Settings)
-	w.response = newResponsePanel(saved.ResponseFont)
-	w.Resize(saved.Width, saved.Height)
-	if saved.Maximized {
+	w.files = files
+	w.config = settings.Load(files.Settings)
+	w.response = newResponsePanel(w.config.ResponseFont)
+	w.grpcResponse = newResponsePanel(w.config.ResponseFont)
+	w.Resize(w.config.Width, w.config.Height)
+	if w.config.Maximized {
 		w.SetWindowState(qt.WindowMaximized)
 	}
 	w.OnCloseEvent(func(super func(*qt.QCloseEvent), event *qt.QCloseEvent) {
-		if err := w.settings(saved).Save(files.Settings); err != nil {
+		if err := w.settings().Save(files.Settings); err != nil {
 			// The window is going away, so there is nowhere to show this.
 			fmt.Fprintln(os.Stderr, "postie: settings could not be saved:", err)
 		}
@@ -108,33 +178,34 @@ func NewWindow(files Files) *Window {
 	// overwritten.
 	var failed []error
 
-	envs, err := env.Load(files.Environments)
+	envPath, requestsPath := w.environmentsFile(), w.requestsFile()
+
+	envs, err := env.Load(envPath)
 	if err != nil {
-		files.Environments = ""
+		envPath = ""
 		failed = append(failed, err)
 	}
-	requests, err := collection.Load(files.Requests)
+	requests, err := collection.Load(requestsPath)
 	if err != nil {
-		files.Requests = ""
+		requestsPath = ""
 		failed = append(failed, err)
 	}
 	if len(failed) > 0 {
-		w.StatusBar().ShowMessage("Saved data could not be loaded, changes will not be saved: " + errors.Join(failed...).Error())
+		w.status("Saved data could not be loaded, changes will not be saved: " + errors.Join(failed...).Error())
 	}
 
 	saveFailed := func(err error) {
-		w.StatusBar().ShowMessage("Changes could not be saved: " + err.Error())
+		w.status("Changes could not be saved: " + err.Error())
 	}
 
-	w.request.highlight.expand = envs.Expand
+	// The environments can be replaced by ones from another file, so the
+	// current store is looked up each time.
+	w.request.highlight.expand = w.expand
+	w.grpc.highlight.expand = w.expand
 
-	w.environments = newEnvList(envs, files.Environments)
+	w.environments = newEnvList(envs, envPath)
 	w.environments.onError = saveFailed
-	w.environments.onChange = func() {
-		// What the placeholders in the request resolve to may have changed.
-		w.updatePreview()
-		w.request.refreshPlaceholders()
-	}
+	w.environments.onChange = w.environmentChanged
 	w.environments.onEdit = w.openEditor
 	w.environments.onSelect = func() {
 		// The editor follows the selection while it is open.
@@ -146,7 +217,7 @@ func NewWindow(files Files) *Window {
 	w.editor.onChange = w.environments.update
 	w.editor.close.OnClicked(w.closeEditor)
 
-	w.requests = newRequestTree(requests, files.Requests)
+	w.requests = newRequestTree(requests, requestsPath)
 	w.requests.onError = saveFailed
 	w.requests.onOpen = w.openRequest
 	w.requests.onRemove = func(r *collection.Request) {
@@ -156,27 +227,55 @@ func NewWindow(files Files) *Window {
 	}
 	w.requests.onRename = func(r *collection.Request) {
 		if w.open == r {
-			w.request.setTitle(r.Name)
+			w.updateHeaders()
 		}
 	}
-	w.requests.initial = func() rest.Request {
-		// An unsaved request being composed becomes the new request.
-		if w.open == nil {
-			return w.request.request()
+	w.requests.create = func() (*collection.Request, bool) {
+		switch typ, ok := askRequestType(w.QWidget); {
+		case !ok:
+			return nil, false
+		case typ == collection.TypeGRPC:
+			return collection.NewGRPC("New Request", rpc.Request{}), true
+		case w.open == nil:
+			// An unsaved request being composed becomes the new request.
+			return collection.NewREST("New Request", w.request.request()), true
+		default:
+			return collection.NewREST("New Request", rest.Request{Method: http.MethodGet}), true
 		}
-		return rest.Request{Method: http.MethodGet}
 	}
 
 	w.request.onChange = func() {
 		w.updatePreview()
-		if w.open != nil {
-			w.open.Request = w.request.request()
+		if w.open != nil && w.open.Type == collection.TypeREST {
+			request := w.request.request()
+			w.open.Request = &request
 			w.requests.save()
 		}
 	}
 	w.request.send.OnClicked(w.send)
 	w.request.url.OnReturnPressed(w.send)
-	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+Return"), w.QObject).OnActivated(w.send)
+
+	w.grpc.onChange = func() {
+		if w.open != nil && w.open.Type == collection.TypeGRPC {
+			request := w.grpc.request()
+			w.open.GRPC = &request
+			w.requests.save()
+		}
+	}
+	w.grpc.onTarget = func() { w.reflect(false) }
+	w.grpc.reload.OnClicked(func() { w.reflect(true) })
+	w.grpc.example.OnClicked(w.useExample)
+	w.grpc.invoke.OnClicked(w.invoke)
+	w.grpc.url.OnReturnPressed(w.invoke)
+
+	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+Return"), w.QObject).OnActivated(func() {
+		switch w.stack.CurrentIndex() {
+		case pageRequest:
+			w.send()
+		case pageGRPC:
+			w.invoke()
+		}
+	})
 
 	main := qt.NewQSplitter3(qt.Vertical)
 	main.AddWidget(w.request.root)
@@ -185,23 +284,64 @@ func NewWindow(files Files) *Window {
 	main.SetStretchFactor(0, 1)
 	main.SetStretchFactor(1, 1)
 
+	grpc := qt.NewQSplitter3(qt.Vertical)
+	grpc.AddWidget(w.grpc.root)
+	grpc.AddWidget(w.grpcResponse.root)
+	grpc.SetChildrenCollapsible(false)
+	grpc.SetStretchFactor(0, 1)
+	grpc.SetStretchFactor(1, 1)
+
+	// The order matches the page constants.
 	w.stack = qt.NewQStackedWidget2()
 	w.stack.AddWidget(main.QWidget)
 	w.stack.AddWidget(w.editor.root)
+	w.stack.AddWidget(grpc.QWidget)
+
+	// Dragging the response on one page sets its height on the others, which
+	// are given it when they are next shown.
+	w.responseHeight = w.config.ResponseHeight
+	w.splits = map[int]*qt.QSplitter{pageRequest: main, pageGRPC: grpc}
+	for _, split := range w.splits {
+		split.OnSplitterMoved(func(int, int) { w.responseHeight = split.Sizes()[1] })
+	}
+	w.stack.OnCurrentChanged(func(page int) {
+		if split, ok := w.splits[page]; ok {
+			w.later(func() { w.restoreResponseHeight(split) })
+		}
+	})
 
 	w.sidebar = qt.NewQTabWidget2()
 	w.sidebar.AddTab(w.environments.root, "Environments")
 	w.sidebar.AddTab(w.requests.root, "Requests")
+	// The requests are what is wanted first.
+	w.sidebar.SetCurrentIndex(1)
 
-	splitter := qt.NewQSplitter3(qt.Horizontal)
-	splitter.AddWidget(w.sidebar.QWidget)
-	splitter.AddWidget(w.stack.QWidget)
-	splitter.SetStretchFactor(0, 0)
-	splitter.SetStretchFactor(1, 1)
-	splitter.SetSizes([]int{280, 744})
-	w.SetCentralWidget(splitter.QWidget)
+	w.split = qt.NewQSplitter3(qt.Horizontal)
+	w.split.AddWidget(w.sidebar.QWidget)
+	w.split.AddWidget(w.stack.QWidget)
+	w.split.SetStretchFactor(0, 0)
+	w.split.SetStretchFactor(1, 1)
+	w.split.SetSizes([]int{280, 744})
+	w.SetCentralWidget(w.split.QWidget)
+
+	// The saved layout is restored the first time the window is shown, as
+	// the sizes to divide up are not known before then.
+	w.OnShowEvent(func(super func(*qt.QShowEvent), event *qt.QShowEvent) {
+		super(event)
+		if !w.laidOut {
+			w.laidOut = true
+			w.later(w.restoreLayout)
+		}
+	})
+
+	// Selecting an environment above a request selects it in the sidebar,
+	// which is what makes it the active one.
+	for _, h := range []*header{w.request.header, w.grpc.header} {
+		h.onEnvironment = w.environments.list.SetCurrentRow
+	}
 
 	w.newMenuBar()
+	w.updateHeaders()
 
 	w.request.url.SetFocus()
 
@@ -210,6 +350,12 @@ func NewWindow(files Files) *Window {
 
 func (w *Window) newMenuBar() {
 	file := w.MenuBar().AddMenuWithTitle("&File")
+	w.preferences = file.AddActionWithText("&Settings…")
+	w.preferences.SetShortcut(qt.NewQKeySequence2("Ctrl+,"))
+	w.preferences.SetMenuRole(qt.QAction__PreferencesRole)
+	w.preferences.OnTriggered(w.openSettings)
+
+	file.AddSeparator()
 	w.quit = file.AddActionWithText("&Quit")
 	w.quit.SetShortcut(qt.NewQKeySequence2("Ctrl+Q"))
 	w.quit.SetMenuRole(qt.QAction__QuitRole)
@@ -218,30 +364,198 @@ func (w *Window) newMenuBar() {
 
 	help := w.MenuBar().AddMenuWithTitle("&Help")
 	w.about = help.AddActionWithText("&About")
+	w.about.SetShortcut(qt.NewQKeySequence2("Ctrl+I"))
 	w.about.SetMenuRole(qt.QAction__AboutRole)
 	w.about.OnTriggered(func() {
 		qt.QMessageBox_About(w.QWidget, "About Postie", aboutText())
 	})
 }
 
+// environmentsFile returns the path the settings keep the environments at.
+func (w *Window) environmentsFile() string {
+	if w.config.EnvironmentsFile != "" {
+		return w.config.EnvironmentsFile
+	}
+	return w.files.Environments
+}
+
+// requestsFile returns the path the settings keep the requests at.
+func (w *Window) requestsFile() string {
+	if w.config.RequestsFile != "" {
+		return w.config.RequestsFile
+	}
+	return w.files.Requests
+}
+
+// later runs f once the events already waiting have been handled, by which
+// time a widget that has just been shown has been given its size.
+func (w *Window) later(f func()) {
+	mainthread.Start(f)
+}
+
+// restoreLayout gives the sidebar and the response their saved sizes.
+func (w *Window) restoreLayout() {
+	if width, sizes := w.config.SidebarWidth, w.split.Sizes(); width > 0 && sizes[0]+sizes[1] > width {
+		w.split.SetSizes([]int{width, sizes[0] + sizes[1] - width})
+	}
+	if split, ok := w.splits[w.stack.CurrentIndex()]; ok {
+		w.restoreResponseHeight(split)
+	}
+}
+
+// restoreResponseHeight gives the response of a page the height it was last
+// dragged to, taking the space from or giving it to the request.
+func (w *Window) restoreResponseHeight(split *qt.QSplitter) {
+	sizes := split.Sizes()
+	if total := sizes[0] + sizes[1]; w.responseHeight > 0 && total > w.responseHeight {
+		split.SetSizes([]int{total - w.responseHeight, w.responseHeight})
+	}
+}
+
 // settings returns the state to remember for the next run. The size of a
 // maximised window is that of the window before it was maximised, falling
 // back to the previous setting if the platform does not report one.
-func (w *Window) settings(previous settings.Settings) settings.Settings {
-	s := previous
+func (w *Window) settings() settings.Settings {
+	s := w.config
+
+	// The layout is only known once the window has been shown. The response
+	// is measured on the page in view, as resizing the window changes its
+	// height without it being dragged.
+	if w.laidOut {
+		if width := w.split.Sizes()[0]; width > 0 {
+			s.SidebarWidth = width
+		}
+		s.ResponseHeight = w.responseHeight
+		if split, ok := w.splits[w.stack.CurrentIndex()]; ok && split.Sizes()[1] > 0 {
+			s.ResponseHeight = split.Sizes()[1]
+		}
+	}
 	s.Width, s.Height, s.Maximized = w.Width(), w.Height(), w.IsMaximized()
 	if s.Maximized {
 		normal := w.NormalGeometry()
 		s.Width, s.Height = normal.Width(), normal.Height()
 		if s.Width <= 0 || s.Height <= 0 {
-			s.Width, s.Height = previous.Width, previous.Height
+			s.Width, s.Height = w.config.Width, w.config.Height
 		}
 	}
 	return s
 }
 
+// openSettings lets the user edit the settings in a dialog.
+func (w *Window) openSettings() {
+	dialog := newSettingsDialog(w.QWidget, w.config, w.files)
+	// A dialog is not destroyed by being closed.
+	defer dialog.DeleteLater()
+
+	if dialog.Exec() != int(qt.QDialog__Accepted) {
+		return
+	}
+	if err := w.applySettings(dialog.settings(w.config)); err != nil {
+		qt.QMessageBox_Warning(w.QWidget, "Settings", err.Error())
+	}
+}
+
+// applySettings puts the settings into effect and saves them. A setting that
+// cannot be applied is left as it was, and reported in the error.
+//
+// Moving the environments or the requests to a file that exists loads what
+// is in it. Moving them to a file that does not exist saves them there.
+func (w *Window) applySettings(s settings.Settings) error {
+	var failed []error
+
+	w.config.ResponseFont = s.ResponseFont
+	w.response.setBodyFont(s.ResponseFont)
+	w.grpcResponse.setBodyFont(s.ResponseFont)
+
+	previous := w.environmentsFile()
+	w.config.EnvironmentsFile = s.EnvironmentsFile
+	if path := w.environmentsFile(); path != previous {
+		if err := w.moveEnvironments(path); err != nil {
+			w.config.EnvironmentsFile = previous
+			failed = append(failed, fmt.Errorf("the environments were not moved to %s: %w", path, err))
+		}
+	}
+
+	previous = w.requestsFile()
+	w.config.RequestsFile = s.RequestsFile
+	if path := w.requestsFile(); path != previous {
+		if err := w.moveRequests(path); err != nil {
+			w.config.RequestsFile = previous
+			failed = append(failed, fmt.Errorf("the requests were not moved to %s: %w", path, err))
+		}
+	}
+
+	if err := w.settings().Save(w.files.Settings); err != nil {
+		failed = append(failed, fmt.Errorf("the settings were not saved: %w", err))
+	}
+
+	return errors.Join(failed...)
+}
+
+// exists reports if there is a file at path.
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return !errors.Is(err, fs.ErrNotExist)
+}
+
+// moveEnvironments keeps the environments at path from now on.
+func (w *Window) moveEnvironments(path string) error {
+	if !exists(path) {
+		if err := w.environments.store.Save(path); err != nil {
+			return err
+		}
+		w.environments.path = path
+		return nil
+	}
+
+	store, err := env.Load(path)
+	if err != nil {
+		return err
+	}
+
+	w.closeEditor()
+	w.environments.load(store, path)
+	w.environmentChanged()
+	return nil
+}
+
+// moveRequests keeps the requests at path from now on.
+func (w *Window) moveRequests(path string) error {
+	if !exists(path) {
+		if err := w.requests.store.Save(path); err != nil {
+			return err
+		}
+		w.requests.path = path
+		return nil
+	}
+
+	store, err := collection.Load(path)
+	if err != nil {
+		return err
+	}
+
+	// The open request belongs to the requests being replaced.
+	w.show(nil)
+	w.requests.load(store, path)
+	return nil
+}
+
+// expand substitutes the variables of the active environment into text.
+func (w *Window) expand(text string) string {
+	return w.environments.store.Expand(text)
+}
+
+// environmentChanged refreshes what depends on the active environment, as
+// what the placeholders in the request resolve to may have changed.
+func (w *Window) environmentChanged() {
+	w.updateHeaders()
+	w.updatePreview()
+	w.request.refreshPlaceholders()
+	w.grpc.refreshPlaceholders()
+}
+
 func (w *Window) updatePreview() {
-	w.request.updatePreview(w.environments.store.Expand)
+	w.request.updatePreview(w.expand)
 }
 
 // openEditor shows the selected environment in place of the request UI. The
@@ -256,9 +570,17 @@ func (w *Window) openEditor() {
 	w.stack.SetCurrentIndex(pageEditor)
 }
 
+// requestPage returns the page of the request UI for the open request.
+func (w *Window) requestPage() int {
+	if w.open != nil && w.open.Type == collection.TypeGRPC {
+		return pageGRPC
+	}
+	return pageRequest
+}
+
 // closeEditor returns to the request UI.
 func (w *Window) closeEditor() {
-	w.stack.SetCurrentIndex(pageRequest)
+	w.stack.SetCurrentIndex(w.requestPage())
 }
 
 // openRequest shows a saved request in the request UI.
@@ -270,56 +592,196 @@ func (w *Window) openRequest(r *collection.Request) {
 }
 
 // show replaces the contents of the request UI with a saved request, or with
-// an empty unsaved one if r is nil.
+// an empty unsaved REST request if r is nil. The environment editor is left
+// open if it is.
 func (w *Window) show(r *collection.Request) {
 	if w.cancel != nil {
 		w.cancel()
 	}
+	w.shown++
 
 	w.open = r
-	if r != nil {
-		w.request.load(r.Request)
-		w.request.setTitle(r.Name)
-	} else {
+	switch {
+	case r == nil:
 		w.request.load(rest.Request{Method: http.MethodGet})
-		w.request.setTitle("")
+	case r.Type == collection.TypeGRPC:
+		w.grpc.load(*r.GRPC)
+		w.grpcResponse.clear()
+		w.reflect(false)
+	default:
+		w.request.load(*r.Request)
 	}
-	w.updatePreview()
-	w.response.clear(responseIdle)
+
+	w.updateHeaders()
+
+	if w.requestPage() == pageRequest {
+		w.updatePreview()
+		w.response.clear()
+	}
+	if w.stack.CurrentIndex() != pageEditor {
+		w.stack.SetCurrentIndex(w.requestPage())
+	}
 }
 
-// send starts the request, or cancels it if one is already in flight.
-func (w *Window) send() {
+// status shows a message in the status bar until another replaces it. Line
+// breaks are removed as the bar has one line. The bar is kept for problems
+// with the saved data, which have nowhere else to be shown; requests and
+// their responses are not reported in it.
+func (w *Window) status(message string) {
+	w.StatusBar().ShowMessage(strings.Join(strings.Fields(message), " "))
+}
+
+// updateHeaders names the open request above each request UI, and lists the
+// environments there with the active one selected.
+func (w *Window) updateHeaders() {
+	request := ""
+	if w.open != nil {
+		request = w.open.Name
+	}
+
+	store := w.environments.store
+	names := make([]string, len(store.Environments))
+	for i, e := range store.Environments {
+		names[i] = e.Name
+	}
+
+	for _, h := range []*header{w.request.header, w.grpc.header} {
+		h.setRequest(request)
+		h.setEnvironments(names, store.Active)
+	}
+}
+
+// run does the work of the Send or Invoke button in the background, or
+// cancels the work already in flight. The work returns a function to show
+// its result, which is called on the main thread.
+func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(context.Context) (show func(), err error)) {
 	if w.cancel != nil {
 		w.cancel()
 		return
 	}
 
-	req := w.request.request().Expand(w.environments.store.Expand)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	w.cancel = cancel
-	w.request.send.SetText("Cancel")
-	w.response.clear("Sending…")
+	shown := w.shown
+
+	label := button.Text()
+	button.SetText("Cancel")
+	response.clear()
+	start := time.Now()
 
 	// Qt widgets may only be touched from the main thread, so the result is
 	// handed back to it.
 	go func() {
-		res, err := rest.Send(ctx, w.client, req)
+		show, err := work(ctx)
+		elapsed := time.Since(start)
 
 		mainthread.Start(func() {
 			cancel()
 			w.cancel = nil
-			w.request.send.SetText("Send")
+			button.SetText(label)
 
 			switch {
+			case shown != w.shown:
+				// Another request has been shown since, so the result is
+				// no longer wanted.
 			case errors.Is(err, context.Canceled):
-				w.response.clear("Cancelled")
+				response.showCancelled(elapsed)
 			case err != nil:
-				w.response.showError(err)
+				response.showError(err, elapsed)
 			default:
-				w.response.show(res)
+				show()
 			}
 		})
 	}()
+}
+
+// send starts the REST request, or cancels the request in flight.
+func (w *Window) send() {
+	req := w.request.request().Expand(w.expand)
+
+	w.run(w.request.send, w.response, func(ctx context.Context) (func(), error) {
+		res, err := rest.Send(ctx, w.client, req)
+		return func() { w.response.show(res) }, err
+	})
+}
+
+// invoke starts the gRPC request, or cancels the request in flight.
+func (w *Window) invoke() {
+	req := w.grpc.request().Expand(w.expand)
+
+	// The service definition is loaded by the call if it has not been yet.
+	var schema *rpc.Schema
+	if target, err := req.Target(); err == nil {
+		schema = w.schemas[target]
+	}
+
+	w.run(w.grpc.invoke, w.grpcResponse, func(ctx context.Context) (func(), error) {
+		res, err := rpc.Invoke(ctx, req, schema)
+		return func() { w.grpcResponse.showRPC(res) }, err
+	})
+}
+
+// reflect loads the service definition of the server the gRPC request is
+// for, to offer its methods. One loaded before is used again unless force is
+// set.
+func (w *Window) reflect(force bool) {
+	w.reflecting++
+	reflecting := w.reflecting
+
+	req := w.grpc.request().Expand(w.expand)
+	target, err := req.Target()
+	if err != nil {
+		// There is no server to ask yet.
+		w.grpc.setStatus("", "")
+		return
+	}
+
+	if schema, ok := w.schemas[target]; ok && !force {
+		w.grpc.setSchema(schema)
+		return
+	}
+
+	w.grpc.setStatus("", "")
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), reflectTimeout)
+		defer cancel()
+
+		schema, err := rpc.Reflect(ctx, req)
+
+		mainthread.Start(func() {
+			if err == nil {
+				w.schemas[target] = schema
+			}
+			// A later request for a definition has replaced this one.
+			if reflecting != w.reflecting {
+				return
+			}
+			if err != nil {
+				w.grpc.setSchemaError(err)
+				return
+			}
+			w.grpc.setSchema(schema)
+		})
+	}()
+}
+
+// useExample replaces the message of the gRPC request with an example for
+// the selected method.
+func (w *Window) useExample() {
+	req := w.grpc.request().Expand(w.expand)
+
+	target, _ := req.Target()
+	schema, ok := w.schemas[target]
+	if !ok {
+		w.grpc.setStatus("An example needs the service definition, which has not been loaded. Enter the server address and press Reload.", statusColour(400))
+		return
+	}
+
+	example, err := schema.Example(req.Method)
+	if err != nil {
+		w.grpc.setStatus("An example could not be made: "+err.Error(), statusColour(400))
+		return
+	}
+	w.grpc.message.SetPlainText(example)
 }

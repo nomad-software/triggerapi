@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,8 @@ import (
 	"github.com/nomad-software/postie/internal/collection"
 	"github.com/nomad-software/postie/internal/env"
 	"github.com/nomad-software/postie/internal/rest"
+	"github.com/nomad-software/postie/internal/rpc"
+	"github.com/nomad-software/postie/internal/rpc/rpctest"
 	"github.com/nomad-software/postie/internal/settings"
 )
 
@@ -28,6 +31,10 @@ func TestMain(m *testing.M) {
 	qt.NewQApplication(os.Args[:1])
 	// Tests close windows, which must not end the event loop.
 	qt.QGuiApplication_SetQuitOnLastWindowClosed(false)
+	// Answer the request type dialog rather than show it.
+	askRequestType = func(*qt.QWidget) (collection.Type, bool) {
+		return testRequestType, testRequestType != ""
+	}
 
 	code := 0
 	go func() {
@@ -38,6 +45,10 @@ func TestMain(m *testing.M) {
 	qt.QApplication_Exec()
 	os.Exit(code)
 }
+
+// testRequestType is the type given to requests added by a test. An empty
+// type stands for the user cancelling the dialog.
+var testRequestType = collection.TypeREST
 
 func testFiles(t *testing.T) Files {
 	dir := t.TempDir()
@@ -79,8 +90,8 @@ func TestSendRequest(t *testing.T) {
 		w.request.url.SetText(srv.URL)
 		w.request.params.add("page", "2")
 		w.request.headers.add("X-Test", "yes")
-		w.request.authType.SetCurrentIndex(2) // Bearer Token
-		w.request.token.SetText("secret")
+		w.request.auth.typ.SetCurrentIndex(2) // Bearer Token
+		w.request.auth.token.SetText("secret")
 		w.request.bodyType.SetCurrentIndex(1) // JSON
 		w.request.bodyRaw.SetPlainText(`{"name":"postie"}`)
 
@@ -97,17 +108,9 @@ func TestSendRequest(t *testing.T) {
 		t.Fatal("request was not sent")
 	}
 
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		status := mainthread.Wait2(func() string { return w.response.status.Text() })
-		if status == "201 Created" {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("status = %q", status)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitFor(t, "the response", func() bool {
+		return fieldValue(w.response, "Code") == "201 Created"
+	})
 
 	mainthread.Wait(func() {
 		if want := "{\n  \"id\": 1\n}"; w.response.body.ToPlainText() != want {
@@ -285,7 +288,7 @@ func TestEnvironmentsUnreadableFile(t *testing.T) {
 
 	mainthread.Wait(func() {
 		w := NewWindow(Files{Environments: path, Requests: filepath.Join(filepath.Dir(path), "requests.json")})
-		if w.StatusBar().CurrentMessage() == "" {
+		if !strings.Contains(w.StatusBar().CurrentMessage(), "could not be loaded") {
 			t.Error("no error shown")
 		}
 		w.environments.add()
@@ -312,15 +315,15 @@ func TestRequests(t *testing.T) {
 			t.Fatal("folder and request not created")
 		}
 		list := w.requests.store.Folders[0].Requests[0]
-		if w.open != list || list.URL != "{{host}}/users" || w.request.title.Text() != "New Request" {
-			t.Errorf("open = %+v, title %q", w.open, w.request.title.Text())
+		if w.open != list || list.URL != "{{host}}/users" || w.request.header.request.Text() != "New Request" {
+			t.Errorf("open = %+v, title %q", w.open, w.request.header.request.Text())
 		}
 
 		// Renaming updates the title.
 		tree.TopLevelItem(0).SetText(0, "Users")
 		tree.TopLevelItem(0).Child(0).SetText(0, "List")
-		if list.Name != "List" || w.request.title.Text() != "List" || w.requests.store.Folders[0].Name != "Users" {
-			t.Errorf("rename: %q, title %q", list.Name, w.request.title.Text())
+		if list.Name != "List" || w.request.header.request.Text() != "List" || w.requests.store.Folders[0].Name != "Users" {
+			t.Errorf("rename: %q, title %q", list.Name, w.request.header.request.Text())
 		}
 
 		// Adding with a request open starts from an empty request in the
@@ -337,16 +340,16 @@ func TestRequests(t *testing.T) {
 		w.request.url.SetText("{{host}}/users")
 		w.request.params.add("dry", "1")
 		w.request.headers.add("X-Test", "yes")
-		w.request.authType.SetCurrentIndex(1) // Basic Auth
-		w.request.username.SetText("me")
-		w.request.password.SetText("pw")
+		w.request.auth.typ.SetCurrentIndex(1) // Basic Auth
+		w.request.auth.username.SetText("me")
+		w.request.auth.password.SetText("pw")
 		w.request.bodyType.SetCurrentIndex(1) // JSON
 		w.request.bodyRaw.SetPlainText(`{"name":"a"}`)
 		w.request.bodyForm.add("f", "1")
 
 		// Switching between requests swaps the contents of the request UI.
 		tree.SetCurrentItem(tree.TopLevelItem(0).Child(0))
-		if w.open != list || w.request.method.CurrentText() != "GET" || w.request.bodyRaw.ToPlainText() != "" || len(w.request.headers.items()) != 0 || w.request.authType.CurrentIndex() != 0 {
+		if w.open != list || w.request.method.CurrentText() != "GET" || w.request.bodyRaw.ToPlainText() != "" || len(w.request.headers.items()) != 0 || w.request.auth.typ.CurrentIndex() != 0 {
 			t.Errorf("first request not shown: %+v", w.request.request())
 		}
 		if list.Method != "GET" || create.Method != "POST" {
@@ -388,7 +391,7 @@ func TestRequests(t *testing.T) {
 	if len(saved.Folders) != 2 || saved.Folders[0].Name != "Users" || len(saved.Folders[0].Requests) != 2 {
 		t.Fatalf("saved %+v", saved.Folders)
 	}
-	if got := saved.Folders[0].Requests[1]; got.Name != "Create" || !reflect.DeepEqual(got.Request, want) {
+	if got := saved.Folders[0].Requests[1]; got.Name != "Create" || !reflect.DeepEqual(*got.Request, want) {
 		t.Errorf("saved request %+v, want %+v", got, want)
 	}
 
@@ -400,7 +403,7 @@ func TestRequests(t *testing.T) {
 		if tree.TopLevelItemCount() != 2 || tree.TopLevelItem(0).Text(0) != "Users" || tree.TopLevelItem(0).Child(1).Text(0) != "Create" {
 			t.Fatal("tree not restored")
 		}
-		if w.open != nil || !w.request.title.IsHidden() {
+		if w.open != nil || !w.request.header.request.IsHidden() {
 			t.Error("a request is open at startup")
 		}
 
@@ -411,7 +414,7 @@ func TestRequests(t *testing.T) {
 
 		// Removing the open request opens its neighbour.
 		w.requests.remove()
-		if folder := w.requests.store.Folders[0]; len(folder.Requests) != 1 || w.open != folder.Requests[0] || w.request.title.Text() != "List" {
+		if folder := w.requests.store.Folders[0]; len(folder.Requests) != 1 || w.open != folder.Requests[0] || w.request.header.request.Text() != "List" {
 			t.Errorf("after remove: open %+v", w.open)
 		}
 
@@ -428,7 +431,7 @@ func TestRequests(t *testing.T) {
 		if tree.TopLevelItemCount() != 1 || len(w.requests.store.Folders) != 1 {
 			t.Error("folder not removed")
 		}
-		if w.open != nil || w.request.url.Text() != "" || !w.request.title.IsHidden() {
+		if w.open != nil || w.request.url.Text() != "" || !w.request.header.request.IsHidden() {
 			t.Errorf("removed request still open: %+v", w.open)
 		}
 
@@ -452,7 +455,7 @@ func TestRequestsUnreadableFile(t *testing.T) {
 
 	mainthread.Wait(func() {
 		w := NewWindow(files)
-		if w.StatusBar().CurrentMessage() == "" {
+		if !strings.Contains(w.StatusBar().CurrentMessage(), "could not be loaded") {
 			t.Error("no error shown")
 		}
 		w.requests.addRequest()
@@ -480,7 +483,7 @@ func TestWindowSizeRemembered(t *testing.T) {
 		w.Close()
 	})
 
-	if got, want := settings.Load(files.Settings), (settings.Settings{Width: 900, Height: 650, ResponseFont: "Iosevka Term Curly"}); got != want {
+	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, ResponseFont: "Iosevka Term Curly"}); got != want {
 		t.Errorf("saved %+v, want %+v", got, want)
 	}
 
@@ -501,7 +504,7 @@ func TestWindowSizeRemembered(t *testing.T) {
 		}
 		w.Close()
 	})
-	if got, want := settings.Load(files.Settings), (settings.Settings{Width: 900, Height: 650, Maximized: true, ResponseFont: "Iosevka Term Curly"}); got != want {
+	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, Maximized: true, ResponseFont: "Iosevka Term Curly"}); got != want {
 		t.Errorf("saved %+v, want %+v", got, want)
 	}
 }
@@ -643,7 +646,7 @@ func TestPlaceholderColouringLeavesRequestAlone(t *testing.T) {
 		w.request.bodyRaw.SetPlainText(`{"url": "{{host}}"}`)
 		w.requests.addRequest()
 		request := w.requests.store.Folders[0].Requests[0]
-		before := request.Request
+		before := *request.Request
 
 		// Changing the environment recolours the fields, which must not
 		// alter them or the saved request.
@@ -651,7 +654,7 @@ func TestPlaceholderColouringLeavesRequestAlone(t *testing.T) {
 		w.editor.variables.add("host", "example.com")
 		w.editor.close.Click()
 
-		if !reflect.DeepEqual(request.Request, before) || !reflect.DeepEqual(w.request.request(), before) {
+		if !reflect.DeepEqual(*request.Request, before) || !reflect.DeepEqual(w.request.request(), before) {
 			t.Errorf("request changed: %+v", request.Request)
 		}
 		if got := w.request.url.Text(); got != "{{host}}/users?id={{id}}" {
@@ -686,4 +689,914 @@ func TestAboutText(t *testing.T) {
 			t.Errorf("about text does not mention %q", want)
 		}
 	}
+}
+
+// withoutLayout returns the settings without the sizes of the sidebar and
+// the response, for tests that are not about them.
+func withoutLayout(s settings.Settings) settings.Settings {
+	s.SidebarWidth, s.ResponseHeight = 0, 0
+	return s
+}
+
+// fieldValue returns the value shown for a label in the bar beneath a
+// response, or an empty string if the bar does not have it.
+func fieldValue(p *responsePanel, label string) string {
+	for _, f := range p.fields {
+		if f.label == label {
+			return f.value
+		}
+	}
+	return ""
+}
+
+// isFailure reports if the bar beneath a response shows a failure, which is
+// in red.
+func isFailure(p *responsePanel) bool {
+	return strings.Contains(p.result.Text(), failureColour)
+}
+
+// itemType returns the type whose icon an item of the request tree has, or
+// an empty type if it has no icon.
+func itemType(item *qt.QTreeWidgetItem) collection.Type {
+	icon := item.Icon(colName)
+	if icon.IsNull() {
+		return ""
+	}
+	for typ, known := range requestTypeIcons {
+		if known.CacheKey() == icon.CacheKey() && item.ToolTip(colName) == typeLabels[typ] {
+			return typ
+		}
+	}
+	return "unknown"
+}
+
+// waitFor polls a condition on the main thread until it holds.
+func waitFor(t *testing.T, what string, condition func() bool) {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for !mainthread.Wait2(condition) {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// addGRPCRequest adds a gRPC request to the window. It must be called on the
+// main thread.
+func addGRPCRequest(w *Window) *collection.Request {
+	testRequestType = collection.TypeGRPC
+	defer func() { testRequestType = collection.TypeREST }()
+
+	w.requests.addRequest()
+	return w.open
+}
+
+func TestGRPCRequest(t *testing.T) {
+	srv := rpctest.NewServer(rpctest.ReflectionAll)
+	defer srv.Close()
+
+	files := testFiles(t)
+	var w *Window
+	var request *collection.Request
+
+	mainthread.Wait(func() {
+		w = NewWindow(files)
+		w.Show()
+
+		request = addGRPCRequest(w)
+		if request == nil || request.Type != collection.TypeGRPC || request.Request != nil {
+			t.Fatalf("request = %+v", request)
+		}
+		if w.stack.CurrentIndex() != pageGRPC || w.grpc.header.request.Text() != "New Request" {
+			t.Errorf("page = %d, title %q", w.stack.CurrentIndex(), w.grpc.header.request.Text())
+		}
+		if got := itemType(w.requests.tree.TopLevelItem(0).Child(0)); got != collection.TypeGRPC {
+			t.Errorf("type shown as %q", got)
+		}
+
+		// An example needs the service definition.
+		w.grpc.example.Click()
+		if w.grpc.status.IsHidden() || w.grpc.message.ToPlainText() != "" {
+			t.Errorf("example without a definition: status %q", w.grpc.status.Text())
+		}
+
+		// The server address is a variable of the environment.
+		w.environments.add()
+		w.editor.variables.add("server", srv.URL)
+		w.editor.close.Click()
+		if w.stack.CurrentIndex() != pageGRPC {
+			t.Error("closing the editor did not return to the gRPC request")
+		}
+
+		w.grpc.url.SetText("{{server}}")
+		w.grpc.targetChanged()
+	})
+
+	waitFor(t, "the methods", func() bool { return w.grpc.method.count() == 4 })
+
+	mainthread.Wait(func() {
+		// A request with no method takes the first one.
+		if request.GRPC.Method != "test.v1.Echo/Fail" || request.GRPC.URL != "{{server}}" {
+			t.Errorf("request = %+v", request.GRPC)
+		}
+		if !strings.Contains(w.grpc.definition.ToPlainText(), "rpc Say(test.v1.EchoRequest) returns (test.v1.EchoResponse);") {
+			t.Errorf("definition = %q", w.grpc.definition.ToPlainText())
+		}
+		// Loading the definition is only reported if it fails.
+		if !w.grpc.status.IsHidden() || w.grpc.status.Text() != "" {
+			t.Errorf("status = %q", w.grpc.status.Text())
+		}
+
+		w.grpc.method.selectMethod("test.v1.Echo/Say")
+		w.grpc.example.Click()
+		if got := w.grpc.message.ToPlainText(); !strings.Contains(got, `"text": ""`) || !strings.Contains(got, `"flag": false`) {
+			t.Errorf("example = %q", got)
+		}
+
+		w.grpc.message.SetPlainText(`{"text": "hello"}`)
+		w.grpc.metadata.add("x-trace", "abc")
+		w.grpc.auth.typ.SetCurrentIndex(2) // Bearer Token
+		w.grpc.auth.token.SetText("secret")
+		w.grpc.invoke.Click()
+	})
+
+	waitFor(t, "the response", func() bool {
+		return fieldValue(w.grpcResponse, "Code") == "0 OK"
+	})
+
+	mainthread.Wait(func() {
+		want := "{\n  \"text\": \"hello\",\n  \"authorization\": \"Bearer secret\",\n  \"trace\": \"abc\"\n}"
+		if got := w.grpcResponse.body.ToPlainText(); got != want {
+			t.Errorf("body = %q, want %q", got, want)
+		}
+		if w.grpc.invoke.Text() != "Invoke" {
+			t.Errorf("invoke button = %q", w.grpc.invoke.Text())
+		}
+
+		// The server's header and trailer are both listed.
+		var names []string
+		for row := range w.grpcResponse.headers.RowCount() {
+			names = append(names, w.grpcResponse.headers.Item(row, 0).Text())
+		}
+		if !slices.Contains(names, "X-Server") || !slices.Contains(names, "X-Done (trailer)") {
+			t.Errorf("headers = %v", names)
+		}
+
+		// A status other than OK is a response, not an error.
+		w.grpc.method.selectMethod("test.v1.Echo/Fail")
+		w.grpc.invoke.Click()
+	})
+
+	waitFor(t, "the failure", func() bool { return fieldValue(w.grpcResponse, "Code") == "5 NOT_FOUND" })
+
+	mainthread.Wait(func() {
+		// The failure is in the bar beneath the response, not in it.
+		if !isFailure(w.grpcResponse) || w.grpcResponse.body.ToPlainText() != "" || fieldValue(w.grpcResponse, "Error") != "no such thing" || fieldValue(w.grpcResponse, "Time") == "" {
+			t.Errorf("response = %q, bar = %+v", w.grpcResponse.body.ToPlainText(), w.grpcResponse.fields)
+		}
+		if got := w.StatusBar().CurrentMessage(); got != "" {
+			t.Errorf("status bar = %q", got)
+		}
+	})
+
+	mainthread.Wait(func() {
+		// A message that is not valid is reported as an error.
+		w.grpc.method.selectMethod("test.v1.Echo/Say")
+		w.grpc.message.SetPlainText("{oops")
+		w.grpc.invoke.Click()
+	})
+
+	waitFor(t, "the error", func() bool { return strings.Contains(fieldValue(w.grpcResponse, "Error"), "invalid message") })
+
+	mainthread.Wait(func() {
+		if got := w.grpcResponse.body.ToPlainText(); got != "" || !isFailure(w.grpcResponse) {
+			t.Errorf("response = %q", got)
+		}
+		w.grpc.message.SetPlainText(`{"text": "saved"}`)
+		w.grpc.tls.SetChecked(true)
+		w.grpc.tls.SetChecked(false)
+	})
+
+	want := rpc.Request{
+		URL:      "{{server}}",
+		Method:   "test.v1.Echo/Say",
+		Message:  `{"text": "saved"}`,
+		Metadata: []rest.KeyValue{{Key: "x-trace", Value: "abc", Enabled: true}},
+		Auth:     rest.Auth{Type: rest.AuthBearer, Token: "secret"},
+	}
+
+	saved, err := collection.Load(files.Requests)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := saved.Folders[0].Requests[0]; got.Type != collection.TypeGRPC || got.Request != nil || !reflect.DeepEqual(*got.GRPC, want) {
+		t.Errorf("saved %+v %+v, want %+v", got, got.GRPC, want)
+	}
+
+	// A new window restores the request, and loads the methods when it is
+	// opened without changing the one that was saved.
+	mainthread.Wait(func() {
+		w = NewWindow(files)
+		w.Show()
+
+		tree := w.requests.tree
+		tree.SetCurrentItem(tree.TopLevelItem(0).Child(0))
+		if w.stack.CurrentIndex() != pageGRPC || w.grpc.method.current() != "test.v1.Echo/Say" {
+			t.Errorf("page = %d, method = %q", w.stack.CurrentIndex(), w.grpc.method.current())
+		}
+	})
+
+	waitFor(t, "the methods", func() bool { return w.grpc.method.count() == 4 })
+
+	mainthread.Wait(func() {
+		if got := w.grpc.request(); !reflect.DeepEqual(got, want) {
+			t.Errorf("loaded %+v, want %+v", got, want)
+		}
+	})
+}
+
+func TestGRPCAndRESTRequests(t *testing.T) {
+	mainthread.Wait(func() {
+		w := NewWindow(testFiles(t))
+		w.Show()
+		tree := w.requests.tree
+
+		w.request.url.SetText("example.com")
+		w.requests.addRequest()
+		restRequest := w.open
+
+		grpcRequest := addGRPCRequest(w)
+		w.grpc.url.SetText("localhost:1")
+
+		if restRequest.Type != collection.TypeREST || restRequest.URL != "example.com" || grpcRequest.GRPC.URL != "localhost:1" {
+			t.Errorf("requests = %+v, %+v", restRequest.Request, grpcRequest.GRPC)
+		}
+		if got := itemType(tree.TopLevelItem(0).Child(0)); got != collection.TypeREST {
+			t.Errorf("type shown as %q", got)
+		}
+		if tree.ColumnCount() != 1 || itemType(tree.TopLevelItem(0)) != "" {
+			t.Errorf("columns = %d, folder shown as %q", tree.ColumnCount(), itemType(tree.TopLevelItem(0)))
+		}
+
+		// Each type of request opens in its own UI, and leaves the other
+		// request alone.
+		tree.SetCurrentItem(tree.TopLevelItem(0).Child(0))
+		if w.stack.CurrentIndex() != pageRequest || w.open != restRequest || w.request.url.Text() != "example.com" {
+			t.Errorf("REST request not shown: page %d", w.stack.CurrentIndex())
+		}
+		w.request.url.SetText("changed.test")
+
+		tree.SetCurrentItem(tree.TopLevelItem(0).Child(1))
+		if w.stack.CurrentIndex() != pageGRPC || w.open != grpcRequest || w.grpc.url.Text() != "localhost:1" {
+			t.Errorf("gRPC request not shown: page %d", w.stack.CurrentIndex())
+		}
+		if restRequest.URL != "changed.test" || grpcRequest.GRPC.URL != "localhost:1" || grpcRequest.Request != nil || restRequest.GRPC != nil {
+			t.Errorf("requests = %+v, %+v", restRequest.Request, grpcRequest.GRPC)
+		}
+
+		// Renaming a gRPC request updates its title.
+		tree.TopLevelItem(0).Child(1).SetText(colName, "Say")
+		if grpcRequest.Name != "Say" || w.grpc.header.request.Text() != "Say" {
+			t.Errorf("name = %q, title = %q", grpcRequest.Name, w.grpc.header.request.Text())
+		}
+
+		// Removing the open gRPC request returns to the REST one beside it.
+		w.requests.remove()
+		if w.stack.CurrentIndex() != pageRequest || w.open != restRequest {
+			t.Errorf("after remove: page %d, open %+v", w.stack.CurrentIndex(), w.open)
+		}
+
+		// Cancelling the type dialog adds nothing.
+		testRequestType = ""
+		w.requests.addRequest()
+		testRequestType = collection.TypeREST
+		if n := len(w.requests.store.Folders[0].Requests); n != 1 {
+			t.Errorf("requests = %d, want 1", n)
+		}
+	})
+}
+
+func TestGRPCDefinitionError(t *testing.T) {
+	srv := rpctest.NewServer(rpctest.ReflectionNone)
+	defer srv.Close()
+
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(testFiles(t))
+		w.Show()
+
+		addGRPCRequest(w)
+		w.grpc.url.SetText(srv.URL)
+		w.grpc.reload.Click()
+	})
+
+	waitFor(t, "the error", func() bool { return strings.Contains(w.grpc.status.Text(), "does not support reflection") })
+
+	mainthread.Wait(func() {
+		if w.grpc.method.count() != 0 {
+			t.Errorf("methods = %d", w.grpc.method.count())
+		}
+	})
+}
+
+func TestGRPCCancel(t *testing.T) {
+	srv := rpctest.NewServer(rpctest.ReflectionAll)
+	defer srv.Close()
+
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(testFiles(t))
+		w.Show()
+
+		addGRPCRequest(w)
+		w.grpc.url.SetText(srv.URL)
+		w.grpc.reload.Click()
+	})
+
+	waitFor(t, "the methods", func() bool { return w.grpc.method.count() == 4 })
+
+	mainthread.Wait(func() {
+		w.grpc.method.selectMethod("test.v1.Echo/Forever")
+		w.grpc.message.SetPlainText(`{"text": "one"}`)
+		w.grpc.invoke.Click()
+		if w.grpc.invoke.Text() != "Cancel" {
+			t.Errorf("invoke button = %q", w.grpc.invoke.Text())
+		}
+	})
+
+	// Give the server time to send its one message before cancelling.
+	time.Sleep(300 * time.Millisecond)
+	mainthread.Wait(func() { w.grpc.invoke.Click() })
+
+	// The message received before the cancel is still shown.
+	waitFor(t, "the cancel", func() bool { return fieldValue(w.grpcResponse, "Code") == "1 CANCELED" })
+
+	mainthread.Wait(func() {
+		// The response holds the message alone.
+		got := w.grpcResponse.body.ToPlainText()
+		if !strings.HasPrefix(got, "{\n  \"text\": \"one\"") || strings.Contains(got, "CANCELED") {
+			t.Errorf("body = %q", got)
+		}
+	})
+}
+
+func TestRequestTypeDialog(t *testing.T) {
+	mainthread.Wait(func() {
+		w := NewWindow(testFiles(t))
+
+		for _, typ := range []collection.Type{collection.TypeREST, collection.TypeGRPC} {
+			dialog := newRequestTypeDialog(w.QWidget)
+			dialog.Show()
+
+			button := dialog.buttons[typ]
+			if button == nil || button.Text() != typeLabels[typ] {
+				t.Fatalf("no button labelled %q", typeLabels[typ])
+			}
+
+			button.Click()
+			if dialog.chosen != typ || dialog.Result() != int(qt.QDialog__Accepted) || dialog.IsVisible() {
+				t.Errorf("clicking %s chose %q with result %d", typ, dialog.chosen, dialog.Result())
+			}
+		}
+	})
+}
+
+func TestMethodCombo(t *testing.T) {
+	mainthread.Wait(func() {
+		c := newMethodCombo()
+		changes := 0
+		c.OnCurrentIndexChanged(func(int) { changes++ })
+
+		// Before the methods are known only the saved one is listed.
+		c.setMethods(nil, "a.Users/Get")
+		if c.current() != "a.Users/Get" || c.count() != 1 {
+			t.Errorf("current = %q, count = %d", c.current(), c.count())
+		}
+
+		// Methods are listed by their short names under their services.
+		c.setMethods([]string{"a.Orders/List", "a.Users/Get", "a.Users/List"}, "a.Users/Get")
+		var rows []string
+		for row := range c.Count() {
+			rows = append(rows, c.ItemText(row))
+		}
+		want := []string{"a.Orders", "    List", "a.Users", "    Get", "    List"}
+		if !reflect.DeepEqual(rows, want) {
+			t.Errorf("rows = %q, want %q", rows, want)
+		}
+		if c.current() != "a.Users/Get" || c.count() != 3 {
+			t.Errorf("current = %q, count = %d", c.current(), c.count())
+		}
+
+		// Two methods with the same short name are told apart.
+		c.selectMethod("a.Orders/List")
+		if c.current() != "a.Orders/List" {
+			t.Errorf("current = %q", c.current())
+		}
+		c.selectMethod("a.Users/List")
+		if c.current() != "a.Users/List" {
+			t.Errorf("current = %q", c.current())
+		}
+
+		// A heading cannot be chosen.
+		c.selectMethod("")
+		c.selectMethod("a.Users")
+		if c.current() != "a.Users/List" {
+			t.Errorf("current = %q", c.current())
+		}
+
+		// With nothing to keep, the first method is selected, not its heading.
+		c.setMethods([]string{"a.Orders/List"}, "")
+		if c.current() != "a.Orders/List" {
+			t.Errorf("current = %q", c.current())
+		}
+
+		// A selected method the server does not have stays, on its own.
+		c.setMethods([]string{"a.Orders/List"}, "a.Gone/Old")
+		if c.current() != "a.Gone/Old" || c.count() != 2 || c.ItemText(0) != "a.Gone/Old" {
+			t.Errorf("current = %q, count = %d", c.current(), c.count())
+		}
+
+		c.setMethods(nil, "")
+		if c.current() != "" || c.count() != 0 {
+			t.Errorf("current = %q, count = %d", c.current(), c.count())
+		}
+		if changes == 0 {
+			t.Error("changes were not reported")
+		}
+	})
+}
+
+func TestSettingsDialog(t *testing.T) {
+	mainthread.Wait(func() {
+		defaults := Files{Environments: "environments.json", Requests: "requests.json"}
+		current := settings.Settings{Width: 900, Height: 650, ResponseFont: "A Font That Is Not Installed", RequestsFile: "/data/r.json"}
+
+		d := newSettingsDialog(nil, current, defaults)
+		if d.environments.Text() != "environments.json" || d.requests.Text() != "/data/r.json" {
+			t.Errorf("locations shown as %q and %q", d.environments.Text(), d.requests.Text())
+		}
+
+		// Accepting without changing anything changes nothing, even though
+		// the font is not one the selector could show.
+		if got := d.settings(current); got != current {
+			t.Errorf("unchanged dialog gave %+v, want %+v", got, current)
+		}
+
+		d.environments.SetText("  /data/e.json ")
+		d.requests.SetText("requests.json")
+		d.font.SetCurrentFont(qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont))
+
+		got := d.settings(current)
+		want := current
+		want.EnvironmentsFile = "/data/e.json"
+		// A location put back to its default is not recorded.
+		want.RequestsFile = ""
+		want.ResponseFont = d.font.CurrentFont().Family()
+		if got != want || got.ResponseFont == current.ResponseFont {
+			t.Errorf("got %+v, want %+v", got, want)
+		}
+
+		d.buttons.Button(qt.QDialogButtonBox__Ok).Click()
+		if d.Result() != int(qt.QDialog__Accepted) {
+			t.Error("OK did not accept the dialog")
+		}
+	})
+}
+
+func TestApplySettings(t *testing.T) {
+	files := testFiles(t)
+	dir := filepath.Dir(files.Settings)
+	movedEnvs := filepath.Join(dir, "moved", "environments.json")
+	otherRequests := filepath.Join(dir, "other-requests.json")
+	os.Mkdir(filepath.Join(dir, "moved"), 0o755)
+
+	// Another set of requests already exists.
+	other := &collection.Store{}
+	other.AddFolder("Other").Add(collection.NewREST("Elsewhere", rest.Request{Method: "GET", URL: "other.test"}))
+	if err := other.Save(otherRequests); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+
+		w.environments.add()
+		w.editor.name.SetText("Local")
+		w.editor.variables.add("host", "example.com")
+		w.request.url.SetText("{{host}}/users")
+		w.requests.addRequest()
+
+		s := w.config
+		s.ResponseFont = "Some Font"
+		s.EnvironmentsFile = movedEnvs
+		s.RequestsFile = otherRequests
+		if err := w.applySettings(s); err != nil {
+			t.Fatal(err)
+		}
+
+		if got := w.response.body.Font().Families()[0]; got != "Some Font" {
+			t.Errorf("response font = %q", got)
+		}
+		if got := w.grpcResponse.body.Font().Families()[0]; got != "Some Font" {
+			t.Errorf("gRPC response font = %q", got)
+		}
+
+		// The environments are kept, as their new file did not exist, and
+		// later changes go to it.
+		if w.environments.list.Count() != 1 || w.environments.store.Environments[0].Name != "Local" {
+			t.Errorf("environments = %+v", w.environments.store.Environments)
+		}
+		w.editor.variables.add("token", "abc")
+
+		// The requests are replaced by those in the file that existed, and
+		// the request that was open is closed.
+		tree := w.requests.tree
+		if tree.TopLevelItemCount() != 1 || tree.TopLevelItem(0).Text(colName) != "Other" || tree.TopLevelItem(0).Child(0).Text(colName) != "Elsewhere" {
+			t.Error("requests not loaded from the other file")
+		}
+		if w.open != nil || w.request.url.Text() != "" {
+			t.Errorf("request still open: %+v", w.open)
+		}
+		tree.SetCurrentItem(tree.TopLevelItem(0).Child(0))
+		w.request.url.SetText("changed.test")
+	})
+
+	moved, err := env.Load(movedEnvs)
+	if err != nil || len(moved.Environments) != 1 || len(moved.Environments[0].Variables) != 2 {
+		t.Errorf("moved environments = %+v, %v", moved, err)
+	}
+	if old, _ := env.Load(files.Environments); len(old.Environments[0].Variables) != 1 {
+		t.Errorf("old environments file still written to: %+v", old.Environments)
+	}
+	if reloaded, _ := collection.Load(otherRequests); reloaded.Folders[0].Requests[0].URL != "changed.test" {
+		t.Errorf("other requests = %+v", reloaded.Folders[0].Requests[0].Request)
+	}
+	if old, _ := collection.Load(files.Requests); len(old.Folders) != 1 || old.Folders[0].Requests[0].URL != "{{host}}/users" {
+		t.Errorf("old requests file changed: %+v", old.Folders)
+	}
+
+	saved := settings.Load(files.Settings)
+	if saved.ResponseFont != "Some Font" || saved.EnvironmentsFile != movedEnvs || saved.RequestsFile != otherRequests {
+		t.Errorf("saved settings = %+v", saved)
+	}
+
+	// The next run uses the new locations.
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		if w.environments.list.Count() != 1 || len(w.environments.store.Environments[0].Variables) != 2 {
+			t.Errorf("environments = %+v", w.environments.store.Environments)
+		}
+		if w.requests.tree.TopLevelItem(0).Text(colName) != "Other" {
+			t.Error("requests not loaded from the other file")
+		}
+
+		// A file that cannot be used is refused and the setting left alone.
+		bad := filepath.Join(dir, "bad.json")
+		os.WriteFile(bad, []byte("{oops"), 0o644)
+
+		s := w.config
+		s.RequestsFile = bad
+		s.EnvironmentsFile = filepath.Join(dir, "missing-directory", "e.json")
+		err := w.applySettings(s)
+		if err == nil || !strings.Contains(err.Error(), "requests were not moved") || !strings.Contains(err.Error(), "environments were not moved") {
+			t.Errorf("err = %v", err)
+		}
+		if w.config.RequestsFile != otherRequests || w.config.EnvironmentsFile != movedEnvs || w.requests.path != otherRequests || w.environments.path != movedEnvs {
+			t.Errorf("settings changed: %+v", w.config)
+		}
+
+		// Going back to the defaults loads the original files.
+		s = w.config
+		s.EnvironmentsFile, s.RequestsFile = "", ""
+		if err := w.applySettings(s); err != nil {
+			t.Fatal(err)
+		}
+		if len(w.environments.store.Environments[0].Variables) != 1 || w.requests.tree.TopLevelItem(0).Text(colName) != "New Folder" {
+			t.Error("default files not loaded")
+		}
+	})
+
+	if data, _ := os.ReadFile(filepath.Join(dir, "bad.json")); string(data) != "{oops" {
+		t.Errorf("bad file was overwritten: %q", data)
+	}
+}
+
+func TestMenuShortcuts(t *testing.T) {
+	mainthread.Wait(func() {
+		w := NewWindow(testFiles(t))
+		if got := w.about.Shortcut().ToString(); got != "Ctrl+I" {
+			t.Errorf("about shortcut = %q", got)
+		}
+		if got := w.preferences.Shortcut().ToString(); got != "Ctrl+," || w.preferences.Text() != "&Settings…" {
+			t.Errorf("settings action = %q %q", w.preferences.Text(), got)
+		}
+	})
+}
+
+func TestStatusBar(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(testFiles(t))
+		w.Show()
+
+		if !w.StatusBar().IsVisible() || !w.StatusBar().IsSizeGripEnabled() || w.StatusBar().CurrentMessage() != "" {
+			t.Errorf("status bar: visible %t, grip %t, message %q", w.StatusBar().IsVisible(), w.StatusBar().IsSizeGripEnabled(), w.StatusBar().CurrentMessage())
+		}
+		if got := w.response.tabs.TabText(0); got != "Response" {
+			t.Errorf("first response tab = %q", got)
+		}
+
+		w.request.url.SetText(srv.URL + "/users")
+		w.request.send.Click()
+		// Requests are not reported in the status bar.
+		if got := w.StatusBar().CurrentMessage(); got != "" {
+			t.Errorf("status bar = %q", got)
+		}
+	})
+
+	close(release)
+	waitFor(t, "the response", func() bool {
+		return fieldValue(w.response, "Code") == "204 No Content"
+	})
+
+	// A request that fails is reported in the bar and in the response.
+	srv.Close()
+	mainthread.Wait(func() { w.request.send.Click() })
+	waitFor(t, "the failure", func() bool { return fieldValue(w.response, "Error") != "" })
+
+	mainthread.Wait(func() {
+		if w.StatusBar().CurrentMessage() != "" || w.response.body.ToPlainText() != "" || !isFailure(w.response) || fieldValue(w.response, "Time") == "" || fieldValue(w.response, "Code") != "" {
+			t.Errorf("response = %q, bar = %+v", w.response.body.ToPlainText(), w.response.fields)
+		}
+	})
+}
+
+func TestIcons(t *testing.T) {
+	mainthread.Wait(func() {
+		w := NewWindow(testFiles(t))
+		if w.WindowIcon().IsNull() || appIcon().IsNull() {
+			t.Error("the window has no icon")
+		}
+	})
+}
+
+func TestRESTErrorStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/missing":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			io.WriteString(w, `{"error":"no such user"}`)
+		case "/empty":
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			io.WriteString(w, "fine")
+		}
+	}))
+	defer srv.Close()
+
+	var w *Window
+	send := func(path, code string) {
+		t.Helper()
+		mainthread.Wait(func() {
+			w.request.url.SetText(srv.URL + path)
+			w.request.send.Click()
+		})
+		waitFor(t, "the response to "+path, func() bool { return fieldValue(w.response, "Code") == code })
+	}
+
+	mainthread.Wait(func() {
+		w = NewWindow(testFiles(t))
+		w.Show()
+		// The response is empty until there is one, with no hint in it.
+		if w.response.body.PlaceholderText() != "" || w.response.body.ToPlainText() != "" || len(w.response.fields) != 0 {
+			t.Errorf("response starts with %q, bar %+v", w.response.body.PlaceholderText(), w.response.fields)
+		}
+	})
+
+	// An error status goes in the bar beneath the response, in red, with
+	// the time taken. The response holds the body alone.
+	send("/missing", "404 Not Found")
+	mainthread.Wait(func() {
+		if got, want := w.response.body.ToPlainText(), "{\n  \"error\": \"no such user\"\n}"; got != want {
+			t.Errorf("body = %q, want %q", got, want)
+		}
+		if fieldValue(w.response, "Code") != "404 Not Found" || !isFailure(w.response) || !strings.Contains(fieldValue(w.response, "Time"), "ms") || fieldValue(w.response, "Size") != "24 B" {
+			t.Errorf("bar = %+v", w.response.fields)
+		}
+		// The code is at the left of the bar and the rest at the right.
+		left, right := w.response.result.Text(), w.response.details.Text()
+		if !strings.Contains(left, "<b>Code:</b>") || strings.Contains(left, "Time") || strings.Contains(left, "Error") {
+			t.Errorf("left of the bar = %q", left)
+		}
+		if !strings.Contains(right, "<b>Time:</b>") || !strings.Contains(right, "<b>Size:</b>") || !strings.Contains(right, "<b>Protocol:</b>") || strings.Contains(right, "Code") {
+			t.Errorf("right of the bar = %q", right)
+		}
+	})
+
+	send("/empty", "500 Internal Server Error")
+	mainthread.Wait(func() {
+		if w.response.body.ToPlainText() != "" || fieldValue(w.response, "Code") != "500 Internal Server Error" || !isFailure(w.response) {
+			t.Errorf("body = %q, bar = %+v", w.response.body.ToPlainText(), w.response.fields)
+		}
+	})
+
+	// A success has its status in the bar too, but not as a failure.
+	send("/ok", "200 OK")
+	mainthread.Wait(func() {
+		if w.response.body.ToPlainText() != "fine" || fieldValue(w.response, "Code") != "200 OK" || isFailure(w.response) {
+			t.Errorf("body = %q, bar = %+v", w.response.body.ToPlainText(), w.response.fields)
+		}
+
+		// Starting another request empties the bar.
+		w.request.send.Click()
+		// Nothing is put in the response while it is awaited either.
+		if w.response.result.Text() != "" || w.response.details.Text() != "" || len(w.response.fields) != 0 || w.response.body.PlaceholderText() != "" || w.response.body.ToPlainText() != "" {
+			t.Errorf("bar = %q", w.response.result.Text())
+		}
+	})
+	waitFor(t, "the last response", func() bool { return fieldValue(w.response, "Code") == "200 OK" })
+}
+
+func TestLayoutRemembered(t *testing.T) {
+	files := testFiles(t)
+
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(files)
+		w.Resize(1000, 700)
+		w.Show()
+		addGRPCRequest(w)
+		w.requests.addRequest()
+	})
+
+	// Let the window be laid out before the handles are moved.
+	waitFor(t, "the layout", func() bool { return w.split.Sizes()[0] == 280 })
+
+	var total int
+	mainthread.Wait(func() {
+		sizes := w.split.Sizes()
+		w.split.SetSizes([]int{350, sizes[0] + sizes[1] - 350})
+
+		rest := w.splits[pageRequest]
+		sizes = rest.Sizes()
+		total = sizes[0] + sizes[1]
+		rest.SetSizes([]int{total - 210, 210})
+
+		w.Close()
+	})
+
+	saved := settings.Load(files.Settings)
+	if saved.SidebarWidth != 350 || saved.ResponseHeight != 210 {
+		t.Fatalf("saved %+v", saved)
+	}
+
+	mainthread.Wait(func() {
+		w = NewWindow(files)
+		w.Show()
+	})
+	waitFor(t, "the sidebar width", func() bool { return w.split.Sizes()[0] == 350 })
+	waitFor(t, "the response height", func() bool { return w.splits[pageRequest].Sizes()[1] == 210 })
+
+	// The other page with a response is given the same height when shown.
+	mainthread.Wait(func() {
+		tree := w.requests.tree
+		tree.SetCurrentItem(tree.TopLevelItem(0).Child(0))
+		if w.stack.CurrentIndex() != pageGRPC {
+			t.Fatal("gRPC request not shown")
+		}
+	})
+	waitFor(t, "the gRPC response height", func() bool { return w.splits[pageGRPC].Sizes()[1] == 210 })
+
+	// Closing from the other page saves the height it has.
+	mainthread.Wait(func() {
+		split := w.splits[pageGRPC]
+		sizes := split.Sizes()
+		split.SetSizes([]int{sizes[0] + sizes[1] - 260, 260})
+		w.Close()
+	})
+	if saved := settings.Load(files.Settings); saved.SidebarWidth != 350 || saved.ResponseHeight != 260 {
+		t.Errorf("saved %+v", saved)
+	}
+}
+
+func TestHeader(t *testing.T) {
+	files := testFiles(t)
+
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+
+		// The requests are shown first.
+		if w.sidebar.CurrentIndex() != 1 || w.sidebar.TabText(1) != "Requests" {
+			t.Errorf("sidebar tab = %d", w.sidebar.CurrentIndex())
+		}
+
+		// With nothing saved open no request is named, and there are no
+		// environments to select.
+		h := w.request.header
+		if !h.request.IsHidden() || !h.requestLabel.IsHidden() || h.environment.Count() != 1 || h.environment.CurrentText() != "None" {
+			t.Errorf("header = %q, %q", h.request.Text(), h.environment.CurrentText())
+		}
+
+		w.environments.add()
+		w.editor.name.SetText("Local")
+		w.editor.variables.add("host", "local.test")
+		w.environments.add()
+		w.editor.name.SetText("Live")
+		w.editor.variables.add("host", "live.test")
+		w.editor.close.Click()
+		w.requests.addRequest()
+
+		if h.request.IsHidden() || h.requestLabel.Text() != "Request:" || h.request.Text() != "New Request" {
+			t.Errorf("request = %q", h.request.Text())
+		}
+		if h.environment.Count() != 3 || h.environment.ItemText(1) != "Local" || h.environment.CurrentText() != "Live" {
+			t.Errorf("environments = %d, selected %q", h.environment.Count(), h.environment.CurrentText())
+		}
+
+		// Selecting an environment in the header makes it the active one.
+		w.request.url.SetText("{{host}}/users")
+		h.environment.SetCurrentIndex(1)
+		if w.environments.store.Active != 0 || w.environments.list.CurrentRow() != 0 || w.request.preview.Text() != "→ local.test/users" {
+			t.Errorf("active = %d, preview = %q", w.environments.store.Active, w.request.preview.Text())
+		}
+
+		// The gRPC request UI has the same header, kept in step.
+		addGRPCRequest(w)
+		g := w.grpc.header
+		if g.request.Text() != "New Request" || g.environment.CurrentText() != "Local" {
+			t.Errorf("gRPC header = %q, %q", g.request.Text(), g.environment.CurrentText())
+		}
+		g.environment.SetCurrentIndex(2)
+		if w.environments.store.Active != 1 || h.environment.CurrentText() != "Live" {
+			t.Errorf("active = %d, REST header = %q", w.environments.store.Active, h.environment.CurrentText())
+		}
+
+		// It follows the sidebar, and a rename.
+		w.environments.list.SetCurrentRow(0)
+		if g.environment.CurrentText() != "Local" {
+			t.Errorf("environment = %q", g.environment.CurrentText())
+		}
+		w.environments.edit()
+		w.editor.name.SetText("Dev")
+		w.editor.close.Click()
+		if g.environment.CurrentText() != "Dev" || g.environment.ItemText(1) != "Dev" {
+			t.Errorf("environment = %q", g.environment.CurrentText())
+		}
+
+		// None can be selected.
+		g.environment.SetCurrentIndex(0)
+		if w.environments.store.Active != -1 || w.environments.list.CurrentRow() != -1 || h.environment.CurrentText() != "None" {
+			t.Errorf("active = %d", w.environments.store.Active)
+		}
+		g.environment.SetCurrentIndex(2)
+	})
+
+	// The selection made in the header is saved.
+	if saved, err := env.Load(files.Environments); err != nil || saved.Active != 1 || saved.Environments[0].Name != "Dev" {
+		t.Errorf("saved %+v, %v", saved, err)
+	}
+}
+
+func TestGRPCRequestBarOrder(t *testing.T) {
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(testFiles(t))
+		w.Show()
+		addGRPCRequest(w)
+	})
+
+	// The positions are only known once the page has been laid out.
+	waitFor(t, "the layout", func() bool { return w.grpc.url.Width() > 0 && w.grpc.invoke.X() > 0 })
+
+	mainthread.Wait(func() {
+		g := w.grpc
+		row := []*qt.QWidget{g.url.QWidget, g.method.QWidget, g.reload.QWidget, g.tls.QWidget, g.invoke.QWidget}
+
+		// The method is given three times the width of the address.
+		if ratio := float64(g.method.Width()) / float64(g.url.Width()); ratio < 2.8 || ratio > 3.2 {
+			t.Errorf("address is %d wide and the method %d", g.url.Width(), g.method.Width())
+		}
+
+		// Everything is on one line, in order from the left.
+		for i := 1; i < len(row); i++ {
+			if row[i].X() <= row[i-1].X() {
+				t.Errorf("widget %d is not to the right of widget %d", i, i-1)
+			}
+			if overlap := row[i].Geometry().Intersects(row[0].Geometry()); overlap || row[i].Geometry().Bottom() < row[0].Y() || row[i].Y() > row[0].Geometry().Bottom() {
+				t.Errorf("widget %d is not on the line of the address", i)
+			}
+		}
+	})
 }

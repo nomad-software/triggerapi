@@ -10,6 +10,15 @@ import (
 	"github.com/nomad-software/postie/internal/rest"
 )
 
+// colName is the column of the request tree, which holds the names.
+const colName = 0
+
+// typeLabels are the names the request types are shown by.
+var typeLabels = map[collection.Type]string{
+	collection.TypeREST: "REST",
+	collection.TypeGRPC: "gRPC",
+}
+
 // requestTree lists the saved requests in their folders. Clicking a request
 // or pressing Edit opens it, and every change is saved. Tree items are in the same order as the
 // store, so an item is mapped to its folder or request by position.
@@ -24,8 +33,9 @@ type requestTree struct {
 
 	// confirm asks the user a yes/no question.
 	confirm func(question string) bool
-	// initial returns the contents for a newly added request.
-	initial func() rest.Request
+	// create returns the request to add, or false if the user decided
+	// against adding one.
+	create func() (*collection.Request, bool)
 	// onOpen is called when a request is selected.
 	onOpen func(*collection.Request)
 	// onRename is called after a request is renamed.
@@ -37,17 +47,15 @@ type requestTree struct {
 
 func newRequestTree(store *collection.Store, path string) *requestTree {
 	t := &requestTree{
-		root:  qt.NewQWidget2(),
-		tree:  qt.NewQTreeWidget2(),
-		store: store,
-		path:  path,
+		root: qt.NewQWidget2(),
+		tree: qt.NewQTreeWidget2(),
 	}
 
 	t.confirm = func(question string) bool {
 		return qt.QMessageBox_Question(t.root, "Postie", question) == qt.QMessageBox__Yes
 	}
-	t.initial = func() rest.Request {
-		return rest.Request{Method: http.MethodGet}
+	t.create = func() (*collection.Request, bool) {
+		return collection.NewREST("New Request", rest.Request{Method: http.MethodGet}), true
 	}
 
 	t.tree.SetHeaderHidden(true)
@@ -78,13 +86,7 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	layout.AddLayout(add.QLayout)
 	layout.AddLayout(change.QLayout)
 
-	for _, f := range store.Folders {
-		folder := t.newItem(nil, f.Name)
-		for _, r := range f.Requests {
-			t.newItem(folder, r.Name)
-		}
-		folder.SetExpanded(true)
-	}
+	t.load(store, path)
 
 	t.tree.OnCurrentItemChanged(func(*qt.QTreeWidgetItem, *qt.QTreeWidgetItem) {
 		if !t.updating {
@@ -96,18 +98,18 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	// selection changing does not cover.
 	t.tree.OnItemClicked(func(*qt.QTreeWidgetItem, int) { t.open() })
 
-	t.tree.OnItemChanged(func(item *qt.QTreeWidgetItem, _ int) {
-		if t.updating {
+	t.tree.OnItemChanged(func(item *qt.QTreeWidgetItem, column int) {
+		if t.updating || column != colName {
 			return
 		}
 		folder, request := t.locate(item)
 		if request != nil {
-			request.Name = item.Text(0)
+			request.Name = item.Text(colName)
 			if t.onRename != nil {
 				t.onRename(request)
 			}
 		} else {
-			folder.Name = item.Text(0)
+			folder.Name = item.Text(colName)
 		}
 		t.save()
 	})
@@ -115,9 +117,29 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	return t
 }
 
+// load replaces the requests with those of the store, which is saved to path,
+// without calling onOpen. Nothing is selected afterwards.
+func (t *requestTree) load(store *collection.Store, path string) {
+	defer func(prev bool) { t.updating = prev }(t.updating)
+	t.updating = true
+
+	t.store = store
+	t.path = path
+
+	t.tree.Clear()
+	for _, f := range store.Folders {
+		folder := t.newItem(nil, f.Name, "")
+		for _, r := range f.Requests {
+			t.newItem(folder, r.Name, r.Type)
+		}
+		folder.SetExpanded(true)
+	}
+}
+
 // newItem appends an item to the folder item, or to the top level if it is
-// nil.
-func (t *requestTree) newItem(folder *qt.QTreeWidgetItem, name string) *qt.QTreeWidgetItem {
+// nil. A request has the icon of its type before its name. A folder has no
+// type.
+func (t *requestTree) newItem(folder *qt.QTreeWidgetItem, name string, typ collection.Type) *qt.QTreeWidgetItem {
 	defer func(prev bool) { t.updating = prev }(t.updating)
 	t.updating = true
 
@@ -127,7 +149,11 @@ func (t *requestTree) newItem(folder *qt.QTreeWidgetItem, name string) *qt.QTree
 	} else {
 		item = qt.NewQTreeWidgetItem6(folder)
 	}
-	item.SetText(0, name)
+	item.SetText(colName, name)
+	if icon := requestTypeIcon(typ); icon != nil {
+		item.SetIcon(colName, icon)
+		item.SetToolTip(colName, typeLabels[typ])
+	}
 	item.SetFlags(item.Flags() | qt.ItemIsEditable)
 
 	return item
@@ -157,7 +183,7 @@ func (t *requestTree) open() {
 // addFolder creates a folder and starts editing its name.
 func (t *requestTree) addFolder() {
 	t.store.AddFolder("New Folder")
-	item := t.newItem(nil, "New Folder")
+	item := t.newItem(nil, "New Folder", "")
 	t.save()
 
 	t.tree.SetCurrentItem(item)
@@ -168,25 +194,30 @@ func (t *requestTree) addFolder() {
 // selected request, then opens it and starts editing its name. Without a
 // selection the last folder is used, which is created if there are none.
 func (t *requestTree) addRequest() {
+	request, ok := t.create()
+	if !ok {
+		return
+	}
+
 	item := t.tree.CurrentItem()
 	switch {
 	case item != nil && item.Parent() != nil:
 		item = item.Parent()
 	case item == nil && len(t.store.Folders) == 0:
 		t.store.AddFolder("New Folder")
-		item = t.newItem(nil, "New Folder")
+		item = t.newItem(nil, "New Folder", "")
 	case item == nil:
 		item = t.tree.TopLevelItem(len(t.store.Folders) - 1)
 	}
 
 	folder, _ := t.locate(item)
-	folder.Add("New Request", t.initial())
-	request := t.newItem(item, "New Request")
+	folder.Add(request)
+	child := t.newItem(item, request.Name, request.Type)
 	item.SetExpanded(true)
 	t.save()
 
-	t.tree.SetCurrentItem(request)
-	t.tree.EditItem(request)
+	t.tree.SetCurrentItem(child)
+	t.tree.EditItem(child)
 }
 
 // rename starts editing the name of the selected folder or request.

@@ -4,6 +4,7 @@ package rest
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -103,25 +104,46 @@ type Response struct {
 	Duration   time.Duration
 }
 
+// Expand returns a copy of the credentials with f applied to each of them.
+func (a Auth) Expand(f func(string) string) Auth {
+	a.Username = f(a.Username)
+	a.Password = f(a.Password)
+	a.Token = f(a.Token)
+	return a
+}
+
+// Header returns the value of the Authorization header for the credentials.
+// It reports false if the auth type does not use one.
+func (a Auth) Header() (string, bool) {
+	switch a.Type {
+	case AuthBasic:
+		credentials := base64.StdEncoding.EncodeToString([]byte(a.Username + ":" + a.Password))
+		return "Basic " + credentials, true
+	case AuthBearer:
+		return "Bearer " + a.Token, true
+	}
+	return "", false
+}
+
+// ExpandPairs returns a copy of the pairs with f applied to every key and
+// value.
+func ExpandPairs(pairs []KeyValue, f func(string) string) []KeyValue {
+	out := make([]KeyValue, len(pairs))
+	for i, p := range pairs {
+		out[i] = KeyValue{Key: f(p.Key), Value: f(p.Value), Enabled: p.Enabled}
+	}
+	return out
+}
+
 // Expand returns a copy of the request with f applied to every field the user
 // can type into. It is used to substitute environment variables.
 func (r Request) Expand(f func(string) string) Request {
-	expand := func(pairs []KeyValue) []KeyValue {
-		out := make([]KeyValue, len(pairs))
-		for i, p := range pairs {
-			out[i] = KeyValue{Key: f(p.Key), Value: f(p.Value), Enabled: p.Enabled}
-		}
-		return out
-	}
-
 	r.URL = f(r.URL)
-	r.Params = expand(r.Params)
-	r.Headers = expand(r.Headers)
-	r.Auth.Username = f(r.Auth.Username)
-	r.Auth.Password = f(r.Auth.Password)
-	r.Auth.Token = f(r.Auth.Token)
+	r.Params = ExpandPairs(r.Params, f)
+	r.Headers = ExpandPairs(r.Headers, f)
+	r.Auth = r.Auth.Expand(f)
 	r.Body = f(r.Body)
-	r.Form = expand(r.Form)
+	r.Form = ExpandPairs(r.Form, f)
 
 	return r
 }
@@ -148,11 +170,8 @@ func (r Request) Build(ctx context.Context) (*http.Request, error) {
 		req.Header.Set("Content-Type", r.BodyType.ContentType())
 	}
 
-	switch r.Auth.Type {
-	case AuthBasic:
-		req.SetBasicAuth(r.Auth.Username, r.Auth.Password)
-	case AuthBearer:
-		req.Header.Set("Authorization", "Bearer "+r.Auth.Token)
+	if value, ok := r.Auth.Header(); ok {
+		req.Header.Set("Authorization", value)
 	}
 
 	// User supplied headers take precedence over generated ones.

@@ -7,12 +7,53 @@ import (
 
 	"github.com/nomad-software/postie/internal/jsonfile"
 	"github.com/nomad-software/postie/internal/rest"
+	"github.com/nomad-software/postie/internal/rpc"
 )
 
-// Request is a saved request.
+// Type is the kind of a saved request.
+type Type string
+
+const (
+	TypeREST Type = "rest"
+	TypeGRPC Type = "grpc"
+)
+
+// Request is a saved request. Only the field for its type is set: Request for
+// TypeREST, whose fields are stored alongside the name, and GRPC for
+// TypeGRPC.
 type Request struct {
 	Name string `json:"name"`
-	rest.Request
+	Type Type   `json:"type"`
+	*rest.Request
+	GRPC *rpc.Request `json:"grpc,omitempty"`
+}
+
+// NewREST returns a REST request.
+func NewREST(name string, request rest.Request) *Request {
+	return &Request{Name: name, Type: TypeREST, Request: &request}
+}
+
+// NewGRPC returns a gRPC request.
+func NewGRPC(name string, request rpc.Request) *Request {
+	return &Request{Name: name, Type: TypeGRPC, GRPC: &request}
+}
+
+// normalise makes the request hold exactly the field for its type. Requests
+// saved before there were types are REST requests.
+func (r *Request) normalise() {
+	if r.Type == TypeGRPC {
+		r.Request = nil
+		if r.GRPC == nil {
+			r.GRPC = &rpc.Request{}
+		}
+		return
+	}
+
+	r.Type = TypeREST
+	r.GRPC = nil
+	if r.Request == nil {
+		r.Request = &rest.Request{}
+	}
 }
 
 // Folder is a named group of requests.
@@ -40,9 +81,8 @@ func (s *Store) RemoveFolder(index int) {
 	s.Folders = slices.Delete(s.Folders, index, index+1)
 }
 
-// Add appends a new request to the folder.
-func (f *Folder) Add(name string, request rest.Request) *Request {
-	r := &Request{Name: name, Request: request}
+// Add appends a request to the folder.
+func (f *Folder) Add(r *Request) *Request {
 	f.Requests = append(f.Requests, r)
 	return r
 }
@@ -64,6 +104,9 @@ func Load(path string) (*Store, error) {
 	store.Folders = slices.DeleteFunc(store.Folders, func(f *Folder) bool { return f == nil })
 	for _, f := range store.Folders {
 		f.Requests = slices.DeleteFunc(f.Requests, func(r *Request) bool { return r == nil })
+		for _, r := range f.Requests {
+			r.normalise()
+		}
 	}
 
 	return store, nil

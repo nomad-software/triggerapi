@@ -10,17 +10,8 @@ import (
 	"github.com/nomad-software/postie/internal/rest"
 )
 
-// authTypes and bodyTypes are the entries of the auth and body type
-// selectors, in the order they are shown.
-var authTypes = []struct {
-	label string
-	typ   rest.AuthType
-}{
-	{"No Auth", rest.AuthNone},
-	{"Basic Auth", rest.AuthBasic},
-	{"Bearer Token", rest.AuthBearer},
-}
-
+// bodyTypes are the entries of the body type selector, in the order they are
+// shown.
 var bodyTypes = []struct {
 	label string
 	typ   rest.BodyType
@@ -43,8 +34,8 @@ const (
 type requestPanel struct {
 	root *qt.QWidget
 
-	// title names the saved request being edited.
-	title  *qt.QLabel
+	// header names the saved request being edited and the environment.
+	header *header
 	method *qt.QComboBox
 	url    *qt.QLineEdit
 	send   *qt.QPushButton
@@ -54,10 +45,7 @@ type requestPanel struct {
 	params  *keyValueTable
 	headers *keyValueTable
 
-	authType *qt.QComboBox
-	username *qt.QLineEdit
-	password *qt.QLineEdit
-	token    *qt.QLineEdit
+	auth *authEditor
 
 	bodyType *qt.QComboBox
 	bodyRaw  *qt.QPlainTextEdit
@@ -78,10 +66,7 @@ type requestPanel struct {
 func newRequestPanel() *requestPanel {
 	p := &requestPanel{root: qt.NewQWidget2(), highlight: newPlaceholderHighlighter()}
 
-	p.title = qt.NewQLabel2()
-	p.title.SetTextFormat(qt.PlainText)
-	p.title.SetStyleSheet("font-weight: bold")
-	p.title.SetVisible(false)
+	p.header = newHeader()
 
 	p.method = qt.NewQComboBox2()
 	p.method.AddItems(rest.Methods)
@@ -94,6 +79,7 @@ func newRequestPanel() *requestPanel {
 	p.highlight.lineEdit(p.url)
 
 	p.send = qt.NewQPushButton3("Send")
+	makePrimary(p.send)
 	p.send.SetToolTip("Ctrl+Return")
 
 	bar := qt.NewQHBoxLayout2()
@@ -110,63 +96,25 @@ func newRequestPanel() *requestPanel {
 
 	p.params = newKeyValueTable("Key", "Value")
 	p.params.onChange = p.paramsChanged
+	p.auth = newAuthEditor(p.highlight)
+	p.auth.onChange = p.changed
+
 	p.headers = newKeyValueTable("Header", "Value")
 	p.headers.onChange = p.changed
 
 	tabs := qt.NewQTabWidget2()
 	tabs.AddTab(p.params.panel(), "Params")
-	tabs.AddTab(p.newAuthTab(), "Authorization")
+	tabs.AddTab(p.auth.root, "Authorization")
 	tabs.AddTab(p.headers.panel(), "Headers")
 	tabs.AddTab(p.newBodyTab(), "Body")
 
 	layout := qt.NewQVBoxLayout(p.root)
-	layout.AddWidget(p.title.QWidget)
+	layout.AddWidget(p.header.root)
 	layout.AddLayout(bar.QLayout)
 	layout.AddWidget(p.preview.QWidget)
 	layout.AddWidget(tabs.QWidget)
 
 	return p
-}
-
-func (p *requestPanel) newAuthTab() *qt.QWidget {
-	p.authType = qt.NewQComboBox2()
-	for _, t := range authTypes {
-		p.authType.AddItem(t.label)
-	}
-
-	p.username = qt.NewQLineEdit2()
-	p.password = qt.NewQLineEdit2()
-	p.password.SetEchoMode(qt.QLineEdit__Password)
-	p.token = qt.NewQLineEdit2()
-
-	for _, edit := range []*qt.QLineEdit{p.username, p.password, p.token} {
-		edit.OnTextChanged(func(string) { p.changed() })
-	}
-	// The password is masked, so there is nothing to colour in it.
-	p.highlight.lineEdit(p.username)
-	p.highlight.lineEdit(p.token)
-
-	basic := qt.NewQWidget2()
-	basicForm := qt.NewQFormLayout(basic)
-	basicForm.AddRow3("Username", p.username.QWidget)
-	basicForm.AddRow3("Password", p.password.QWidget)
-
-	bearer := qt.NewQWidget2()
-	bearerForm := qt.NewQFormLayout(bearer)
-	bearerForm.AddRow3("Token", p.token.QWidget)
-
-	// Page order matches authTypes.
-	stack := qt.NewQStackedWidget2()
-	stack.AddWidget(newHint("This request does not use any authorization."))
-	stack.AddWidget(basic)
-	stack.AddWidget(bearer)
-
-	p.authType.OnCurrentIndexChanged(func(index int) {
-		stack.SetCurrentIndex(index)
-		p.changed()
-	})
-
-	return newSelectorTab("Type", p.authType, stack)
 }
 
 func (p *requestPanel) newBodyTab() *qt.QWidget {
@@ -264,29 +212,17 @@ func (p *requestPanel) paramsChanged() {
 	p.changed()
 }
 
-// setTitle shows the name of the saved request being edited, or hides it if
-// name is empty.
-func (p *requestPanel) setTitle(name string) {
-	p.title.SetText(name)
-	p.title.SetVisible(name != "")
-}
-
 // request reads the widgets into a rest.Request. The query string shown in
 // the URL field is left out of the URL as the params table holds it.
 func (p *requestPanel) request() rest.Request {
 	base, _ := rest.SplitURL(p.url.Text())
 
 	return rest.Request{
-		Method:  p.method.CurrentText(),
-		URL:     base,
-		Params:  p.params.items(),
-		Headers: p.headers.items(),
-		Auth: rest.Auth{
-			Type:     authTypes[p.authType.CurrentIndex()].typ,
-			Username: p.username.Text(),
-			Password: p.password.Text(),
-			Token:    p.token.Text(),
-		},
+		Method:   p.method.CurrentText(),
+		URL:      base,
+		Params:   p.params.items(),
+		Headers:  p.headers.items(),
+		Auth:     p.auth.auth(),
 		BodyType: bodyTypes[p.bodyType.CurrentIndex()].typ,
 		Body:     p.bodyRaw.ToPlainText(),
 		Form:     p.bodyForm.items(),
@@ -307,16 +243,7 @@ func (p *requestPanel) load(r rest.Request) {
 	p.params.setItems(params)
 	p.headers.setItems(r.Headers)
 
-	authIndex := 0
-	for i, t := range authTypes {
-		if t.typ == r.Auth.Type {
-			authIndex = i
-		}
-	}
-	p.authType.SetCurrentIndex(authIndex)
-	p.username.SetText(r.Auth.Username)
-	p.password.SetText(r.Auth.Password)
-	p.token.SetText(r.Auth.Token)
+	p.auth.load(r.Auth)
 
 	bodyIndex := 0
 	for i, t := range bodyTypes {

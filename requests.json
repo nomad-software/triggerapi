@@ -5,6 +5,7 @@
       "requests": [
         {
           "name": "Get random task",
+          "type": "rest",
           "method": "GET",
           "url": "{{host}}",
           "params": [
@@ -26,15 +27,17 @@
       "requests": [
         {
           "name": "List of all objects",
+          "type": "rest",
           "method": "GET",
           "url": "{{host}}",
           "auth": {
             "type": "none"
           },
-          "bodyType": "none"
+          "bodyType": "json"
         },
         {
           "name": "Single object",
+          "type": "rest",
           "method": "GET",
           "url": "{{host}}",
           "params": [
@@ -51,6 +54,7 @@
         },
         {
           "name": "Add a new object",
+          "type": "rest",
           "method": "POST",
           "url": "{{host}}",
           "auth": {
@@ -61,6 +65,7 @@
         },
         {
           "name": "Update an object",
+          "type": "rest",
           "method": "PUT",
           "url": "{{host}}/ff808181a09d98f701a121db91a93010",
           "auth": {
@@ -71,6 +76,7 @@
         },
         {
           "name": "Partially update an object",
+          "type": "rest",
           "method": "PATCH",
           "url": "{{host}}/ff808181a09d98f701a121db91a93010",
           "auth": {
@@ -81,12 +87,30 @@
         },
         {
           "name": "Delete an object",
+          "type": "rest",
           "method": "DELETE",
           "url": "{{host}}/ff808181a09d98f701a121db91a93010",
           "auth": {
             "type": "none"
           },
           "bodyType": "none"
+        }
+      ]
+    },
+    {
+      "name": "em-ohip-hotel",
+      "requests": [
+        {
+          "name": "hotel -\u003e GetHotels",
+          "type": "grpc",
+          "grpc": {
+            "url": "localhost:3001",
+            "method": "ohip_hotel.v1.OhipHotelService/GetHotels",
+            "message": "{}",
+            "auth": {
+              "type": "none"
+            }
+          }
         }
       ]
     }

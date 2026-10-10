@@ -1,5 +1,5 @@
 {
-  "active": 1,
+  "active": 0,
   "environments": [
     {
       "name": "Random task API",
