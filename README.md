@@ -18,6 +18,8 @@ bindings.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically, and
   can be searched by name.
+- Pin requests to keep them open in tabs, which are reopened the next time
+  TriggerAPI is run.
 - Import an OpenAPI 3 or Swagger 2 document, as JSON or YAML, or a Postman
   collection, to create a folder of requests.
 - Keep separate sets of environments and requests in workspaces, and switch
@@ -132,7 +134,7 @@ from:
 
 | Path | Contents |
 | --- | --- |
-| `settings.json` | Window size and layout, the response font, colours, the workspaces folder and the workspace in use |
+| `settings.json` | Window size and layout, the response font, colours, the workspaces folder, the workspace in use and the pinned requests |
 | `workspaces/<name>/environments.json` | The environments of a workspace and their variables |
 | `workspaces/<name>/requests.json` | The saved requests of a workspace and their folders |
 

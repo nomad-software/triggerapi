@@ -347,15 +347,15 @@ func TestRequests(t *testing.T) {
 			t.Fatal("folder and request not created")
 		}
 		list := w.requests.store.Folders[0].Requests[0]
-		if w.open != list || list.URL != "{{host}}/users" || w.request.header.request.Text() != "New Request" {
-			t.Errorf("open = %+v, title %q", w.open, w.request.header.request.Text())
+		if w.open != list || list.URL != "{{host}}/users" || tabTitle(w) != "New Request" {
+			t.Errorf("open = %+v, title %q", w.open, tabTitle(w))
 		}
 
 		// Renaming updates the title.
 		tree.TopLevelItem(0).SetText(0, "Api")
 		tree.TopLevelItem(0).Child(0).SetText(0, "Fetch")
-		if list.Name != "Fetch" || w.request.header.request.Text() != "Fetch" || w.requests.store.Folders[0].Name != "Api" {
-			t.Errorf("rename: %q, title %q", list.Name, w.request.header.request.Text())
+		if list.Name != "Fetch" || tabTitle(w) != "Fetch" || w.requests.store.Folders[0].Name != "Api" {
+			t.Errorf("rename: %q, title %q", list.Name, tabTitle(w))
 		}
 
 		// Adding with a request open starts from an empty request in the
@@ -437,7 +437,7 @@ func TestRequests(t *testing.T) {
 		if tree.TopLevelItemCount() != 2 || tree.TopLevelItem(0).Text(0) != "Api" || tree.TopLevelItem(0).Child(1).Text(0) != "Post" {
 			t.Fatal("tree not restored")
 		}
-		if w.open != nil || !w.request.header.request.IsHidden() {
+		if w.open != nil || tabTitle(w) != untitled {
 			t.Error("a request is open at startup")
 		}
 
@@ -457,7 +457,7 @@ func TestRequests(t *testing.T) {
 
 		// Removing the open request opens its neighbour.
 		w.requests.remove()
-		if folder := w.requests.store.Folders[0]; len(folder.Requests) != 1 || w.open != folder.Requests[0] || w.request.header.request.Text() != "Fetch" {
+		if folder := w.requests.store.Folders[0]; len(folder.Requests) != 1 || w.open != folder.Requests[0] || tabTitle(w) != "Fetch" {
 			t.Errorf("after remove: open %+v", w.open)
 		}
 
@@ -474,7 +474,7 @@ func TestRequests(t *testing.T) {
 		if tree.TopLevelItemCount() != 1 || len(w.requests.store.Folders) != 1 {
 			t.Error("folder not removed")
 		}
-		if w.open != nil || w.request.url.Text() != "" || !w.request.header.request.IsHidden() {
+		if w.open != nil || w.request.url.Text() != "" || tabTitle(w) != untitled {
 			t.Errorf("removed request still open: %+v", w.open)
 		}
 
@@ -526,7 +526,7 @@ func TestWindowSizeRemembered(t *testing.T) {
 		w.Close()
 	})
 
-	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default}); got != want {
+	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default}); !reflect.DeepEqual(got, want) {
 		t.Errorf("saved %+v, want %+v", got, want)
 	}
 
@@ -547,7 +547,7 @@ func TestWindowSizeRemembered(t *testing.T) {
 		}
 		w.Close()
 	})
-	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, Maximized: true, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default}); got != want {
+	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, Maximized: true, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default}); !reflect.DeepEqual(got, want) {
 		t.Errorf("saved %+v, want %+v", got, want)
 	}
 }
@@ -819,8 +819,8 @@ func TestGRPCRequest(t *testing.T) {
 		if request == nil || request.Type != collection.TypeGRPC || request.Request != nil {
 			t.Fatalf("request = %+v", request)
 		}
-		if w.stack.CurrentIndex() != pageGRPC || w.grpc.header.request.Text() != "New Request" {
-			t.Errorf("page = %d, title %q", w.stack.CurrentIndex(), w.grpc.header.request.Text())
+		if w.stack.CurrentIndex() != pageGRPC || tabTitle(w) != "New Request" {
+			t.Errorf("page = %d, title %q", w.stack.CurrentIndex(), tabTitle(w))
 		}
 		if got := itemType(w.requests.tree.TopLevelItem(0).Child(0)); got != collection.TypeGRPC {
 			t.Errorf("type shown as %q", got)
@@ -1011,8 +1011,8 @@ func TestGRPCAndRESTRequests(t *testing.T) {
 
 		// Renaming a gRPC request updates its title.
 		tree.TopLevelItem(0).Child(1).SetText(colName, "Say")
-		if grpcRequest.Name != "Say" || w.grpc.header.request.Text() != "Say" {
-			t.Errorf("name = %q, title = %q", grpcRequest.Name, w.grpc.header.request.Text())
+		if grpcRequest.Name != "Say" || tabTitle(w) != "Say" {
+			t.Errorf("name = %q, title = %q", grpcRequest.Name, tabTitle(w))
 		}
 
 		// Removing the open gRPC request returns to the REST one beside it.
@@ -1194,7 +1194,7 @@ func TestSettingsDialog(t *testing.T) {
 
 		// Accepting without changing anything changes nothing, even though
 		// the font is not one the selector could show.
-		if got := d.settings(current); got != current {
+		if got := d.settings(current); !reflect.DeepEqual(got, current) {
 			t.Errorf("unchanged dialog gave %+v, want %+v", got, current)
 		}
 
@@ -1205,7 +1205,7 @@ func TestSettingsDialog(t *testing.T) {
 		want := current
 		want.WorkspacesDir = "/data/workspaces"
 		want.ResponseFont = d.font.CurrentFont().Family()
-		if got != want || got.ResponseFont == current.ResponseFont {
+		if !reflect.DeepEqual(got, want) || got.ResponseFont == current.ResponseFont {
 			t.Errorf("got %+v, want %+v", got, want)
 		}
 
@@ -1562,9 +1562,13 @@ func TestHeader(t *testing.T) {
 
 		// With nothing saved open no request is named, and there are no
 		// environments to select.
-		h := w.request.header
-		if !h.request.IsHidden() || !h.requestLabel.IsHidden() || h.environment.Count() != 1 || h.environment.CurrentText() != "None" {
-			t.Errorf("header = %q, %q", h.request.Text(), h.environment.CurrentText())
+		selector := w.environment.environment
+		if tabTitle(w) != untitled || selector.Count() != 1 || selector.CurrentText() != "None" {
+			t.Errorf("tab = %q, environment %q", tabTitle(w), selector.CurrentText())
+		}
+		// The selector is beside the tabs, and in neither request UI.
+		if w.request.root.IsAncestorOf(selector.QWidget) || w.grpc.root.IsAncestorOf(selector.QWidget) || w.stack.IsAncestorOf(selector.QWidget) || selector.IsHidden() {
+			t.Error("the environment selector is inside the request UI")
 		}
 
 		w.environments.add()
@@ -1576,49 +1580,48 @@ func TestHeader(t *testing.T) {
 		w.editor.close.Click()
 		w.requests.addRequest()
 
-		if h.request.IsHidden() || h.requestLabel.Text() != "Request:" || h.request.Text() != "New Request" {
-			t.Errorf("request = %q", h.request.Text())
+		if tabTitle(w) != "New Request" {
+			t.Errorf("request = %q", tabTitle(w))
 		}
-		if h.environment.Count() != 3 || h.environment.ItemText(1) != "Local" || h.environment.CurrentText() != "Remote" {
-			t.Errorf("environments = %d, selected %q", h.environment.Count(), h.environment.CurrentText())
+		if selector.Count() != 3 || selector.ItemText(1) != "Local" || selector.CurrentText() != "Remote" {
+			t.Errorf("environments = %d, selected %q", selector.Count(), selector.CurrentText())
 		}
 
 		// Selecting an environment in the header makes it the active one.
 		w.request.url.SetText("{{host}}/users")
-		h.environment.SetCurrentIndex(1)
+		selector.SetCurrentIndex(1)
 		if w.environments.store.Active != 0 || w.environments.list.CurrentRow() != 0 || w.request.preview.Text() != "→ local.test/users" {
 			t.Errorf("active = %d, preview = %q", w.environments.store.Active, w.request.preview.Text())
 		}
 
-		// The gRPC request UI has the same header, kept in step.
+		// It is the same one when a gRPC request is shown.
 		addGRPCRequest(w)
-		g := w.grpc.header
-		if g.request.Text() != "New Request" || g.environment.CurrentText() != "Local" {
-			t.Errorf("gRPC header = %q, %q", g.request.Text(), g.environment.CurrentText())
+		if tabTitle(w) != "New Request" || selector.CurrentText() != "Local" || selector.IsHidden() {
+			t.Errorf("tab = %q, environment %q", tabTitle(w), selector.CurrentText())
 		}
-		g.environment.SetCurrentIndex(2)
-		if w.environments.store.Active != 1 || h.environment.CurrentText() != "Remote" {
-			t.Errorf("active = %d, REST header = %q", w.environments.store.Active, h.environment.CurrentText())
+		selector.SetCurrentIndex(2)
+		if w.environments.store.Active != 1 || w.environments.list.CurrentRow() != 1 {
+			t.Errorf("active = %d", w.environments.store.Active)
 		}
 
 		// It follows the sidebar, and a rename.
 		w.environments.list.SetCurrentRow(0)
-		if g.environment.CurrentText() != "Local" {
-			t.Errorf("environment = %q", g.environment.CurrentText())
+		if selector.CurrentText() != "Local" {
+			t.Errorf("environment = %q", selector.CurrentText())
 		}
 		w.environments.edit()
 		w.editor.name.SetText("Dev")
 		w.editor.close.Click()
-		if g.environment.CurrentText() != "Dev" || g.environment.ItemText(1) != "Dev" {
-			t.Errorf("environment = %q", g.environment.CurrentText())
+		if selector.CurrentText() != "Dev" || selector.ItemText(1) != "Dev" {
+			t.Errorf("environment = %q", selector.CurrentText())
 		}
 
 		// None can be selected.
-		g.environment.SetCurrentIndex(0)
-		if w.environments.store.Active != -1 || w.environments.list.CurrentRow() != -1 || h.environment.CurrentText() != "None" {
+		selector.SetCurrentIndex(0)
+		if w.environments.store.Active != -1 || w.environments.list.CurrentRow() != -1 || selector.CurrentText() != "None" {
 			t.Errorf("active = %d", w.environments.store.Active)
 		}
-		g.environment.SetCurrentIndex(2)
+		selector.SetCurrentIndex(2)
 	})
 
 	// The selection made in the header is saved.
@@ -2350,8 +2353,8 @@ func TestSidebarOrder(t *testing.T) {
 
 		// Renaming one moves it, and the header follows.
 		w.editor.name.SetText("zulu")
-		if w.environments.list.CurrentRow() != 2 || w.environments.list.Item(2).Text() != "zulu" || w.request.header.environment.CurrentText() != "zulu" {
-			t.Errorf("after rename: row %d, header %q", w.environments.list.CurrentRow(), w.request.header.environment.CurrentText())
+		if w.environments.list.CurrentRow() != 2 || w.environments.list.Item(2).Text() != "zulu" || w.environment.environment.CurrentText() != "zulu" {
+			t.Errorf("after rename: row %d, header %q", w.environments.list.CurrentRow(), w.environment.environment.CurrentText())
 		}
 		w.editor.close.Click()
 
@@ -2604,8 +2607,8 @@ func TestImportEnvironment(t *testing.T) {
 		if got := w.expand("{{host}}/{{off}}"); got != "api.test/{{off}}" {
 			t.Errorf("expanded to %q", got)
 		}
-		if w.request.header.environment.CurrentText() != "Staging" {
-			t.Errorf("header shows %q", w.request.header.environment.CurrentText())
+		if w.environment.environment.CurrentText() != "Staging" {
+			t.Errorf("header shows %q", w.environment.environment.CurrentText())
 		}
 
 		saved, err := env.Load(files.Environments)
@@ -3405,4 +3408,230 @@ func TestFirstRun(t *testing.T) {
 	if saved, err := collection.Load(workspace.Requests(files.Workspaces, "Default")); err != nil || len(saved.Folders) != 1 {
 		t.Errorf("requests = %+v, %v", saved, err)
 	}
+}
+
+// tabTitle returns the name on the tab that is shown above the request UI.
+func tabTitle(w *Window) string {
+	return w.tabs.bar.TabText(w.tabs.bar.CurrentIndex())
+}
+
+// tabNames lists the tabs above the request UI, with a star after the name
+// of each that is pinned.
+func tabNames(w *Window) []string {
+	var names []string
+	for i, tab := range w.tabs.tabs {
+		name := w.tabs.bar.TabText(i)
+		if tab.pinned {
+			name += "*"
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+func TestPinnedRequests(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("pong"))
+	}))
+	defer srv.Close()
+
+	files := testFiles(t)
+	store := &collection.Store{}
+	folder := store.AddFolder("Folder")
+	folder.Add(collection.NewREST("A", rest.Request{Method: "GET", URL: "a.test"}))
+	folder.Add(collection.NewREST("B", rest.Request{Method: "GET", URL: srv.URL}))
+	folder.Add(collection.NewGRPC("C", rpc.Request{URL: "c.test:1"}))
+	if err := store.Save(files.Requests); err != nil {
+		t.Fatal(err)
+	}
+
+	var w *Window
+	check := func(what string, current int, want ...string) {
+		t.Helper()
+		if got := tabNames(w); !reflect.DeepEqual(got, want) || w.tabs.bar.CurrentIndex() != current || w.tabs.bar.Count() != len(want) {
+			t.Errorf("%s: tabs = %q with %d shown, want %q with %d shown", what, got, w.tabs.bar.CurrentIndex(), want, current)
+		}
+	}
+
+	mainthread.Wait(func() {
+		w = NewWindow(files.Files)
+		w.Show()
+		tree := w.requests.tree
+		pick := func(name string) { tree.SetCurrentItem(treeItem(tree, "Folder", name)) }
+
+		// There is one tab to begin with, which has nothing to pin.
+		check("at first", 0, "Untitled")
+		if w.tabs.current().button.IsEnabled() {
+			t.Error("a request that is not saved can be pinned")
+		}
+
+		// It shows whichever request is selected.
+		pick("A")
+		check("after selecting A", 0, "A")
+		pick("B")
+		check("after selecting B", 0, "B")
+		if w.open == nil || w.open.Name != "B" || !w.tabs.current().button.IsEnabled() {
+			t.Fatalf("open = %+v", w.open)
+		}
+
+		// Pinning it keeps B there, and the next request selected has a
+		// new tab.
+		w.tabs.current().button.Click()
+		check("after pinning B", 0, "B*")
+		pick("C")
+		check("after selecting C", 1, "B*", "C")
+		if w.open.Name != "C" || w.stack.CurrentIndex() != pageGRPC {
+			t.Errorf("open = %+v on page %d", w.open, w.stack.CurrentIndex())
+		}
+		pick("A")
+		check("after selecting A", 1, "B*", "A")
+
+		// Selecting a pinned request goes to its tab.
+		pick("B")
+		check("after selecting B", 0, "B*", "A")
+		if w.open.Name != "B" || w.request.url.Text() != srv.URL {
+			t.Errorf("open = %+v", w.open)
+		}
+
+		// Choosing a tab shows its request, and selects it in the sidebar.
+		w.tabs.bar.SetCurrentIndex(1)
+		if w.open.Name != "A" || w.request.url.Text() != "a.test" || tree.CurrentItem().Text(colName) != "A" {
+			t.Errorf("open = %+v, selected %q", w.open, tree.CurrentItem().Text(colName))
+		}
+		w.tabs.current().button.Click()
+		pick("C")
+		check("after pinning A and selecting C", 2, "B*", "A*", "C")
+
+		// The button of a tab is a pin until the tab is pinned, and then
+		// shows the type of its request, but for while the pointer is over
+		// the tab, when it is a pin again to unpin it with.
+		key := func(tab *requestTab) int64 { return tab.button.Icon().CacheKey() }
+		pinned, preview := w.tabs.tabs[0], w.tabs.tabs[2]
+		if key(preview) != w.tabs.unpinnedIcon.CacheKey() || key(pinned) != requestTypeIcon(collection.TypeREST).CacheKey() {
+			t.Error("the buttons do not show a pin and the type of the request")
+		}
+		w.tabs.hover(pinned)
+		if key(pinned) != w.tabs.pinnedIcon.CacheKey() || !strings.Contains(pinned.button.ToolTip(), "Unpin") {
+			t.Error("the button of a pinned tab is not a pin under the pointer")
+		}
+		w.tabs.hover(preview)
+		if key(pinned) != requestTypeIcon(collection.TypeREST).CacheKey() || key(preview) != w.tabs.unpinnedIcon.CacheKey() {
+			t.Error("the button did not go back to the type of the request")
+		}
+		w.tabs.hover(nil)
+		// The tabs have no icon of their own, and no line names the request
+		// beneath them.
+		if !w.tabs.bar.TabIcon(0).IsNull() {
+			t.Error("a tab has an icon beside its button")
+		}
+
+		// Renaming a request renames its tab.
+		treeItem(tree, "Folder", "A").SetText(colName, "Alpha")
+		check("after renaming A", 2, "B*", "Alpha*", "C")
+
+		// A request sent from a tab has its response there when the tab is
+		// gone back to.
+		w.tabs.bar.SetCurrentIndex(0)
+		w.send()
+	})
+
+	waitFor(t, "the response", func() bool { return fieldValue(w.response, "Status") == "200 OK" })
+
+	mainthread.Wait(func() {
+		tree := w.requests.tree
+
+		w.tabs.bar.SetCurrentIndex(1)
+		if fieldValue(w.response, "Status") != "" || w.response.body.ToPlainText() != "" {
+			t.Error("the response of one tab is shown in another")
+		}
+		w.tabs.bar.SetCurrentIndex(0)
+		if fieldValue(w.response, "Status") != "200 OK" || w.response.body.ToPlainText() != "pong" {
+			t.Errorf("response = %q %q", fieldValue(w.response, "Status"), w.response.body.ToPlainText())
+		}
+
+		// Unpinning a tab that is not shown closes it.
+		w.tabs.tabs[1].button.Click()
+		check("after unpinning Alpha", 0, "B*", "C")
+
+		// Unpinning the tab that is shown makes it the one that follows
+		// the selection, in place of the other.
+		w.tabs.current().button.Click()
+		check("after unpinning B", 0, "B")
+		if w.open.Name != "B" {
+			t.Errorf("open = %+v", w.open)
+		}
+		tree.SetCurrentItem(treeItem(tree, "Folder", "C"))
+		check("after selecting C", 0, "C")
+
+		// B and C are left pinned.
+		w.tabs.current().button.Click()
+		tree.SetCurrentItem(treeItem(tree, "Folder", "B"))
+		w.tabs.current().button.Click()
+		check("after pinning C and B", 1, "C*", "B*")
+
+		w.Close()
+	})
+
+	// The pinned requests are kept in the settings.
+	want := []settings.Pin{{Workspace: "Default", Path: []string{"Folder", "C"}}, {Workspace: "Default", Path: []string{"Folder", "B"}}}
+	if saved := settings.Load(files.Settings); !reflect.DeepEqual(saved.Pinned, want) {
+		t.Errorf("saved pins = %+v, want %+v", saved.Pinned, want)
+	}
+
+	// They are opened again by the next run, with the first shown.
+	mainthread.Wait(func() {
+		w = NewWindow(files.Files)
+		w.Show()
+		tree := w.requests.tree
+		w.requests.confirm = func(string) bool { return true }
+
+		check("on the next run", 0, "C*", "B*")
+		if w.open == nil || w.open.Name != "C" || w.stack.CurrentIndex() != pageGRPC || tree.CurrentItem() == nil || tree.CurrentItem().Text(colName) != "C" {
+			t.Fatalf("open = %+v on page %d", w.open, w.stack.CurrentIndex())
+		}
+
+		// The tabs are put away while an environment is edited.
+		w.environments.add()
+		if w.stack.CurrentIndex() != pageEditor || !w.tabs.bar.IsHidden() {
+			t.Error("the tabs are shown above the environment editor")
+		}
+		w.closeEditor()
+		if w.tabs.bar.IsHidden() {
+			t.Error("the tabs did not come back")
+		}
+
+		// A request being composed is kept while another tab is shown.
+		w.stash(w.tabs.current())
+		w.showTab(w.tabs.open(nil), false)
+		check("with a request that is not saved", 2, "C*", "B*", "Untitled")
+		w.request.url.SetText("draft.test")
+		w.tabs.bar.SetCurrentIndex(1)
+		if w.open == nil || w.open.Name != "B" {
+			t.Fatalf("open = %+v", w.open)
+		}
+		w.tabs.bar.SetCurrentIndex(2)
+		if w.open != nil || w.request.url.Text() != "draft.test" {
+			t.Errorf("open = %+v, url %q", w.open, w.request.url.Text())
+		}
+
+		// Removing a pinned request closes its tab.
+		tree.SetCurrentItem(treeItem(tree, "Folder", "B"))
+		check("after selecting B", 1, "C*", "B*", "Untitled")
+		w.requests.remove()
+		if got := tabNames(w); len(got) < 1 || got[0] != "C*" || slices.Contains(got, "B*") {
+			t.Errorf("tabs after removing B = %q", got)
+		}
+
+		// Each workspace has its own pinned requests.
+		w.workspaces.warn = func(message string) { t.Error(message) }
+		w.workspaces.add()
+		check("in a new workspace", 0, "Untitled")
+		if w.open != nil {
+			t.Errorf("open = %+v", w.open)
+		}
+		w.workspaces.list.SetCurrentRow(0)
+		if got := tabNames(w); len(got) != 1 || got[0] != "C*" || w.open == nil || w.open.Name != "C" {
+			t.Errorf("tabs back in the first workspace = %q, open %+v", got, w.open)
+		}
+	})
 }

@@ -325,3 +325,35 @@ func TestSort(t *testing.T) {
 		t.Errorf("Eta = %v, want %v", got, want)
 	}
 }
+
+func TestPathAndFind(t *testing.T) {
+	store := &Store{}
+	hotel := store.AddFolder("Hotel")
+	ping := hotel.Add(NewREST("Ping", rest.Request{Method: "GET"}))
+	rooms := hotel.AddFolder("Rooms")
+	book := rooms.Add(NewREST("Book", rest.Request{Method: "POST"}))
+	// Another folder of the same name, further on, with a request of its own.
+	other := store.AddFolder("Hotel")
+	late := other.Add(NewREST("Late", rest.Request{Method: "GET"}))
+
+	if got, want := store.Path(book), []string{"Hotel", "Rooms", "Book"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+	if got, want := store.Path(ping), []string{"Hotel", "Ping"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+	if got := store.Path(NewREST("Stray", rest.Request{})); got != nil {
+		t.Errorf("path of a request that is not in the store = %q", got)
+	}
+
+	for _, r := range []*Request{ping, book, late} {
+		if got := store.Find(store.Path(r)); got != r {
+			t.Errorf("found %+v for %q", got, store.Path(r))
+		}
+	}
+	for _, path := range [][]string{nil, {"Hotel"}, {"Hotel", "Missing"}, {"Hotel", "Rooms"}, {"Nowhere", "Ping"}, {"Hotel", "Rooms", "Book", "More"}} {
+		if got := store.Find(path); got != nil {
+			t.Errorf("found %+v for %q", got, path)
+		}
+	}
+}

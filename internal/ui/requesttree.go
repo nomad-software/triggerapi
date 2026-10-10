@@ -574,6 +574,38 @@ func (t *requestTree) deselect() {
 	t.tree.ClearSelection()
 }
 
+// selectRequest selects the item of a request, if it has one, without
+// calling onOpen. Nothing is left selected if there is no request.
+func (t *requestTree) selectRequest(r *collection.Request) {
+	defer func(prev bool) { t.updating = prev }(t.updating)
+	t.updating = true
+
+	if r == nil {
+		t.deselect()
+		return
+	}
+
+	var find func(item *qt.QTreeWidgetItem) *qt.QTreeWidgetItem
+	find = func(item *qt.QTreeWidgetItem) *qt.QTreeWidgetItem {
+		if _, request := t.locate(item); request == r {
+			return item
+		}
+		for i := range item.ChildCount() {
+			if found := find(item.Child(i)); found != nil {
+				return found
+			}
+		}
+		return nil
+	}
+
+	for i := range t.tree.TopLevelItemCount() {
+		if item := find(t.tree.TopLevelItem(i)); item != nil {
+			t.tree.SetCurrentItem(item)
+			return
+		}
+	}
+}
+
 // open reports the selected request, if the selection is one.
 func (t *requestTree) open() {
 	item := t.tree.CurrentItem()

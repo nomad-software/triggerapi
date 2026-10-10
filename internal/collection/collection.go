@@ -221,6 +221,58 @@ func (s *Store) FolderOf(r *Request) *Folder {
 	return nil
 }
 
+// Path returns the names of the folders a request is in, outermost first,
+// followed by its own name. It is nil if the request is not in the store.
+func (s *Store) Path(r *Request) []string {
+	var find func(in *Folder, path []string) []string
+	find = func(in *Folder, path []string) []string {
+		path = append(path, in.Name)
+		if slices.Contains(in.Requests, r) {
+			return append(path, r.Name)
+		}
+		for _, sub := range in.Folders {
+			if found := find(sub, slices.Clone(path)); found != nil {
+				return found
+			}
+		}
+		return nil
+	}
+
+	for _, top := range s.Folders {
+		if found := find(top, nil); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// Find returns the request at a path, as Path gives it, or nil if there is
+// none. Where names are shared it is the first that is found.
+func (s *Store) Find(path []string) *Request {
+	var find func(folders []*Folder, path []string) *Request
+	find = func(folders []*Folder, path []string) *Request {
+		if len(path) < 2 {
+			return nil
+		}
+		for _, folder := range folders {
+			if folder.Name != path[0] {
+				continue
+			}
+			if len(path) == 2 {
+				for _, r := range folder.Requests {
+					if r.Name == path[1] {
+						return r
+					}
+				}
+			} else if found := find(folder.Folders, path[1:]); found != nil {
+				return found
+			}
+		}
+		return nil
+	}
+	return find(s.Folders, path)
+}
+
 // move takes item out of from and puts it in to, before the item that was at
 // index there, or at the end if the index is past it. The two can be the same
 // list, which is how an item is reordered.

@@ -6,6 +6,15 @@
   "responseHeight": 522,
   "responseFont": "Iosevka Term Curly",
   "workspace": "Default",
+  "pinned": [
+    {
+      "workspace": "Default",
+      "path": [
+        "Random Task API",
+        "Get random task"
+      ]
+    }
+  ],
   "jsonColours": {
     "key": "#9bdafc",
     "string": "#a1b796",

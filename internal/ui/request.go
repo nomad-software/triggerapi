@@ -43,8 +43,6 @@ const curlColour = "#0b4f6c"
 type requestPanel struct {
 	root *qt.QWidget
 
-	// header names the saved request being edited and the environment.
-	header *header
 	method *qt.QComboBox
 	url    *qt.QLineEdit
 	send   *qt.QPushButton
@@ -91,8 +89,6 @@ type requestPanel struct {
 
 func newRequestPanel() *requestPanel {
 	p := &requestPanel{root: qt.NewQWidget2(), highlight: newPlaceholderHighlighter()}
-
-	p.header = newHeader()
 
 	p.method = qt.NewQComboBox2()
 	p.method.AddItems(rest.Methods)
@@ -160,7 +156,6 @@ func newRequestPanel() *requestPanel {
 	p.pages.AddWidget(p.newCurlPage())
 
 	layout := qt.NewQVBoxLayout(p.root)
-	layout.AddWidget(p.header.root)
 	layout.AddWidget2(p.pages.QWidget, 1)
 
 	return p

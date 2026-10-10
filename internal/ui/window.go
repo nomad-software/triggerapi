@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -128,6 +129,11 @@ type Window struct {
 	// laidOut is set once the saved layout has been restored.
 	laidOut bool
 
+	// tabs is the row of tabs above the request UI: one for each pinned
+	// request, and one for the request last selected in the sidebar.
+	tabs *requestTabs
+	// environment selects the environment in use, beside the tabs.
+	environment *environmentSelector
 	// stack shows the REST request UI, the gRPC request UI or the
 	// environment editor.
 	stack    *qt.QStackedWidget
@@ -168,6 +174,8 @@ func NewWindow(files Files) *Window {
 		request:     newRequestPanel(),
 		grpc:        newGRPCPanel(),
 		editor:      newEnvEditor(),
+		tabs:        newRequestTabs(),
+		environment: newEnvironmentSelector(),
 		schemas:     map[string]*rpc.Schema{},
 	}
 
@@ -237,14 +245,17 @@ func NewWindow(files Files) *Window {
 	w.requests.onError = saveFailed
 	w.requests.onOpen = w.openRequest
 	w.requests.onRemove = func(r *collection.Request) {
+		// Its tab is closed, which shows another if it was the one shown.
+		// The tree is in the middle of removing it, so is left alone.
+		w.tabs.remove(r)
 		if w.open == r {
-			w.show(nil)
+			w.showTab(w.tabs.current(), false)
 		}
 	}
-	w.requests.onRename = func(r *collection.Request) {
-		if w.open == r {
-			w.updateHeaders()
-		}
+	w.requests.onRename = w.tabs.rename
+	w.tabs.onSelect = func(from, to *requestTab) {
+		w.stash(from)
+		w.showTab(to, true)
 	}
 	w.requests.create = func() (*collection.Request, bool) {
 		switch typ, ok := askRequestType(w.QWidget); {
@@ -325,6 +336,9 @@ func NewWindow(files Files) *Window {
 		split.OnSplitterMoved(func(int, int) { w.responseHeight = split.Sizes()[1] })
 	}
 	w.stack.OnCurrentChanged(func(page int) {
+		// The tabs are of requests, so are put away while an environment
+		// is edited in their place.
+		w.tabs.bar.SetVisible(page != pageEditor)
 		if split, ok := w.splits[page]; ok {
 			w.later(func() { w.restoreResponseHeight(split) })
 		}
@@ -347,7 +361,21 @@ func NewWindow(files Files) *Window {
 
 	w.split = qt.NewQSplitter3(qt.Horizontal)
 	w.split.AddWidget(w.sidebar.QWidget)
-	w.split.AddWidget(w.stack.QWidget)
+	// The tabs of the requests are above whichever page is shown.
+	pages := qt.NewQWidget2()
+	pagesLayout := qt.NewQVBoxLayout(pages)
+	pagesLayout.SetContentsMargins(0, 0, 0, 0)
+	pagesLayout.SetSpacing(0)
+	// The environment is selected on the same line, at the right, and
+	// stays there when the tabs are put away.
+	top := qt.NewQHBoxLayout2()
+	top.SetContentsMargins(0, 0, 9, 0)
+	top.AddWidget3(w.tabs.bar.QWidget, 1, qt.AlignBottom)
+	top.AddStretch()
+	top.AddWidget(w.environment.root)
+	pagesLayout.AddLayout(top.QLayout)
+	pagesLayout.AddWidget2(w.stack.QWidget, 1)
+	w.split.AddWidget(pages)
 	w.split.SetStretchFactor(0, 0)
 	w.split.SetStretchFactor(1, 1)
 	w.split.SetSizes([]int{defaultSidebarWidth, 1024 - defaultSidebarWidth})
@@ -363,15 +391,14 @@ func NewWindow(files Files) *Window {
 		}
 	})
 
-	// Selecting an environment above a request selects it in the sidebar,
+	// Selecting an environment beside the tabs selects it in the sidebar,
 	// which is what makes it the active one.
-	for _, h := range []*header{w.request.header, w.grpc.header} {
-		h.onEnvironment = w.environments.list.SetCurrentRow
-	}
+	w.environment.onEnvironment = w.environments.list.SetCurrentRow
 
 	w.newMenuBar()
 	w.updateHeaders()
 	w.applyJSONColours()
+	w.restoreTabs()
 
 	w.request.url.SetFocus()
 
@@ -467,23 +494,94 @@ func (w *Window) loadWorkspace(name string) (envs *env.Store, envPath string, re
 // openWorkspace makes a workspace the one in use, showing its environments
 // and requests in place of those of the one before.
 func (w *Window) openWorkspace(name string) {
+	// The pinned requests of the workspace being left are noted while its
+	// requests are still there to be found.
+	w.keepPins()
+
 	envs, envPath, requests, requestsPath := w.loadWorkspace(name)
 	w.config.Workspace = name
 
-	// The open request and the environment being edited belong to the
-	// workspace being left.
+	// The environment being edited belongs to the workspace being left, as
+	// do the requests in the tabs, which are replaced by those that are
+	// pinned in this one.
 	w.closeEditor()
-	w.show(nil)
 
 	w.environments.load(envs, envPath)
 	w.requests.clearSearch()
 	w.requests.load(requests, requestsPath)
+	w.restoreTabs()
 	w.environmentChanged()
+}
+
+// keepPins records the requests that are pinned, among those of the other
+// workspaces, to be opened again in tabs the next time the workspace is
+// used. Those of workspaces that have gone are forgotten.
+func (w *Window) keepPins() {
+	name := w.config.Workspace
+
+	pins := slices.DeleteFunc(slices.Clone(w.config.Pinned), func(p settings.Pin) bool { return p.Workspace == name })
+	for _, r := range w.tabs.pinned() {
+		if path := w.requests.store.Path(r); path != nil {
+			pins = append(pins, settings.Pin{Workspace: name, Path: path})
+		}
+	}
+	w.config.Pinned = slices.DeleteFunc(pins, func(p settings.Pin) bool {
+		return !slices.Contains(w.workspaces.names, p.Workspace)
+	})
+}
+
+// restoreTabs opens a tab for each request that was pinned in the workspace
+// in use, and shows the first, or a request that is not saved if there are
+// none.
+func (w *Window) restoreTabs() {
+	var pinned []*collection.Request
+	for _, pin := range w.config.Pinned {
+		if pin.Workspace != w.config.Workspace {
+			continue
+		}
+		if r := w.requests.store.Find(pin.Path); r != nil && !slices.Contains(pinned, r) {
+			pinned = append(pinned, r)
+		}
+	}
+
+	w.tabs.reset(pinned)
+	w.showTab(w.tabs.current(), true)
+}
+
+// stash keeps the request being composed in a tab, if it is one that is not
+// saved, so that it is still there when the tab is shown again.
+func (w *Window) stash(tab *requestTab) {
+	if tab != nil && tab.request == nil {
+		draft := w.request.request()
+		tab.draft = &draft
+	}
+}
+
+// showTab shows the request of a tab in the request UI, with the response
+// it was last given. The request is selected in the sidebar too if sync is
+// set.
+func (w *Window) showTab(tab *requestTab, sync bool) {
+	w.show(tab.request)
+	if tab.request == nil && tab.draft != nil {
+		w.request.load(*tab.draft)
+		w.updatePreview()
+	}
+	if tab.replay != nil {
+		tab.replay()
+	}
+	if sync {
+		w.requests.selectRequest(tab.request)
+	}
 }
 
 // renamedWorkspace follows the workspace in use to its new name, which is
 // also the name of the folder its files are in.
 func (w *Window) renamedWorkspace(name string) {
+	for i, pin := range w.config.Pinned {
+		if pin.Workspace == w.config.Workspace {
+			w.config.Pinned[i].Workspace = name
+		}
+	}
 	w.config.Workspace = name
 	if w.environments.path != "" {
 		w.environments.path = workspace.Environments(w.workspacesDir(), name)
@@ -541,6 +639,7 @@ func (w *Window) restoreResponseHeight(split *qt.QSplitter) {
 // maximised window is that of the window before it was maximised, falling
 // back to the previous setting if the platform does not report one.
 func (w *Window) settings() settings.Settings {
+	w.keepPins()
 	s := w.config
 
 	// The layout is only known once the window has been shown. The response
@@ -669,10 +768,12 @@ func (w *Window) closeEditor() {
 	w.stack.SetCurrentIndex(w.requestPage())
 }
 
-// openRequest shows a saved request in the request UI.
+// openRequest shows a saved request that was selected in the sidebar: in
+// the tab it is pinned in, or else in the tab that is not pinned.
 func (w *Window) openRequest(r *collection.Request) {
 	if w.open != r {
-		w.show(r)
+		w.stash(w.tabs.current())
+		w.showTab(w.tabs.open(r), false)
 	}
 	w.closeEditor()
 }
@@ -717,24 +818,15 @@ func (w *Window) status(message string) {
 	w.StatusBar().ShowMessage(strings.Join(strings.Fields(message), " "))
 }
 
-// updateHeaders names the open request above each request UI, and lists the
-// environments there with the active one selected.
+// updateHeaders lists the environments beside the tabs, with the active one
+// selected.
 func (w *Window) updateHeaders() {
-	request := ""
-	if w.open != nil {
-		request = w.open.Name
-	}
-
 	store := w.environments.store
 	names := make([]string, len(store.Environments))
 	for i, e := range store.Environments {
 		names[i] = e.Name
 	}
-
-	for _, h := range []*header{w.request.header, w.grpc.header} {
-		h.setRequest(request)
-		h.setEnvironments(names, store.Active)
-	}
+	w.environment.setEnvironments(names, store.Active)
 }
 
 // run does the work of the Send or Invoke button in the background, or
@@ -749,6 +841,7 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(
 	ctx, cancel := context.WithCancel(context.Background())
 	w.cancel = cancel
 	shown := w.shown
+	tab := w.tabs.current()
 
 	label := button.Text()
 	button.SetText("Cancel")
@@ -766,17 +859,24 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(
 			w.cancel = nil
 			button.SetText(label)
 
+			var result func()
 			switch {
 			case shown != w.shown:
 				// Another request has been shown since, so the result is
 				// no longer wanted.
+				return
 			case errors.Is(err, context.Canceled):
-				response.showCancelled(elapsed)
+				result = func() { response.showCancelled(elapsed) }
 			case err != nil:
-				response.showError(err, elapsed)
+				result = func() { response.showError(err, elapsed) }
 			default:
-				show()
+				result = show
 			}
+
+			// The tab keeps the result, to show it again when the tab is
+			// gone back to.
+			result()
+			tab.replay = result
 		})
 	}()
 }

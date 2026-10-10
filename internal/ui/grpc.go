@@ -14,8 +14,6 @@ import (
 type grpcPanel struct {
 	root *qt.QWidget
 
-	// header names the saved request being edited and the environment.
-	header *header
 	url    *qt.QLineEdit
 	tls    *qt.QCheckBox
 	invoke *qt.QPushButton
@@ -48,8 +46,6 @@ type grpcPanel struct {
 
 func newGRPCPanel() *grpcPanel {
 	p := &grpcPanel{root: qt.NewQWidget2(), highlight: newPlaceholderHighlighter()}
-
-	p.header = newHeader()
 
 	p.url = qt.NewQLineEdit2()
 	p.url.SetPlaceholderText("Server address, e.g. localhost:50051")
@@ -131,7 +127,6 @@ func newGRPCPanel() *grpcPanel {
 	tabs.AddTab(p.definition.QWidget, "Service Definition")
 
 	layout := qt.NewQVBoxLayout(p.root)
-	layout.AddWidget(p.header.root)
 	layout.AddLayout(top.QLayout)
 	layout.AddWidget(p.status.QWidget)
 	layout.AddWidget(tabs.QWidget)

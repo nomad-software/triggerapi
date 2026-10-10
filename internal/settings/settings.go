@@ -39,6 +39,9 @@ type Settings struct {
 	// Workspace is the name of the workspace in use.
 	Workspace string `json:"workspace,omitempty"`
 
+	// Pinned are the requests that are kept open in tabs of their own.
+	Pinned []Pin `json:"pinned,omitempty"`
+
 	// EnvironmentsFile and RequestsFile are where the environments and the
 	// requests were kept before there were workspaces. They are only read,
 	// to bring those into the first workspace, and are then emptied.
@@ -47,6 +50,15 @@ type Settings struct {
 
 	// JSONColours are the colours JSON is highlighted in.
 	JSONColours JSONColours `json:"jsonColours,omitzero"`
+}
+
+// Pin names a request that is kept open in a tab.
+type Pin struct {
+	// Workspace is the name of the workspace the request is in.
+	Workspace string `json:"workspace"`
+	// Path is the names of the folders the request is in, outermost first,
+	// followed by its own name.
+	Path []string `json:"path"`
 }
 
 // JSONColours are the colours of the parts of JSON, as #rrggbb. The default

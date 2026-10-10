@@ -294,6 +294,28 @@ func drawBin(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
+// drawPin draws a drawing pin, for keeping something where it is.
+func drawPin(painter *qt.QPainter) {
+	pen := whitePen()
+	pen.SetWidth(12)
+	painter.SetPenWithPen(pen)
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	path := qt.NewQPainterPath()
+	// The head, the body, the collar and the point.
+	path.MoveTo2(44, 26)
+	path.LineTo2(84, 26)
+	path.MoveTo2(52, 26)
+	path.LineTo2(50, 62)
+	path.MoveTo2(76, 26)
+	path.LineTo2(78, 62)
+	path.MoveTo2(34, 64)
+	path.LineTo2(94, 64)
+	path.MoveTo2(64, 64)
+	path.LineTo2(64, 104)
+	painter.DrawPath(path)
+}
+
 // drawMonitor draws the monitor of a desk, on its stand, for a workspace.
 func drawMonitor(painter *qt.QPainter) {
 	outline(painter)
