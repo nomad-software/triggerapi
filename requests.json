@@ -99,6 +99,11 @@
     },
     {
       "name": "em-ohip-hotel",
+      "folders": [
+        {
+          "name": "hotel"
+        }
+      ],
       "requests": [
         {
           "name": "hotel -\u003e GetHotels",

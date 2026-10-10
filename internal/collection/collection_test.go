@@ -126,3 +126,55 @@ func TestLoadNormalises(t *testing.T) {
 		t.Errorf("bare rpc = %+v", r)
 	}
 }
+
+func TestNestedFolders(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "requests.json")
+
+	want := &Store{}
+	service := want.AddFolder("em-ohip-hotel")
+	rpc1 := service.AddFolder("ohip_hotel")
+	first := rpc1.Add(NewGRPC("GetHotel", rpc.Request{URL: "localhost:1", Method: "ohip_hotel.Hotels/Get"}))
+	deep := rpc1.AddFolder("admin").AddFolder("reports")
+	second := deep.Add(NewREST("Daily", rest.Request{Method: "GET", URL: "example.com/daily"}))
+	service.AddFolder("empty")
+	third := service.Add(NewREST("Health", rest.Request{Method: "GET", URL: "example.com/health"}))
+
+	if got, wantAll := service.All(), []*Request{third, first, second}; !reflect.DeepEqual(got, wantAll) {
+		t.Errorf("All = %v", got)
+	}
+	if got := service.Descendants(); got != 4 {
+		t.Errorf("Descendants = %d, want 4", got)
+	}
+
+	if err := want.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		data, _ := os.ReadFile(path)
+		t.Errorf("got %s", data)
+	}
+
+	// Removing a folder takes everything in it.
+	rpc1.RemoveFolder(0)
+	if len(rpc1.Folders) != 0 || len(service.All()) != 2 {
+		t.Errorf("after remove: %d folders, %d requests", len(rpc1.Folders), len(service.All()))
+	}
+}
+
+func TestLoadNestedNulls(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "requests.json")
+	os.WriteFile(path, []byte(`{"folders": [{"name": "a", "folders": [null, {"name": "b", "folders": [null], "requests": [null, {"name": "r"}]}]}]}`), 0o644)
+
+	s, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := s.Folders[0].Folders
+	if len(b) != 1 || len(b[0].Folders) != 0 || len(b[0].Requests) != 1 || b[0].Requests[0].Type != TypeREST {
+		t.Errorf("got %+v", b)
+	}
+}

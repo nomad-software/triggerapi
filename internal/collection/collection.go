@@ -56,10 +56,13 @@ func (r *Request) normalise() {
 	}
 }
 
-// Folder is a named group of requests.
+// Folder is a named group of requests. It can hold other folders, to any
+// depth. Its folders come before its requests wherever its contents are
+// listed.
 type Folder struct {
 	Name     string     `json:"name"`
-	Requests []*Request `json:"requests"`
+	Folders  []*Folder  `json:"folders,omitempty"`
+	Requests []*Request `json:"requests,omitempty"`
 }
 
 // Store is the collection of folders that is saved to disk. Folders and
@@ -69,16 +72,30 @@ type Store struct {
 	Folders []*Folder `json:"folders"`
 }
 
-// AddFolder appends a new folder.
+// AddFolder appends a new folder at the top level.
 func (s *Store) AddFolder(name string) *Folder {
 	f := &Folder{Name: name}
 	s.Folders = append(s.Folders, f)
 	return f
 }
 
-// RemoveFolder deletes the folder at index along with its requests.
+// RemoveFolder deletes the top level folder at index along with everything
+// in it.
 func (s *Store) RemoveFolder(index int) {
 	s.Folders = slices.Delete(s.Folders, index, index+1)
+}
+
+// AddFolder appends a new folder inside the folder.
+func (f *Folder) AddFolder(name string) *Folder {
+	sub := &Folder{Name: name}
+	f.Folders = append(f.Folders, sub)
+	return sub
+}
+
+// RemoveFolder deletes the folder at index inside the folder, along with
+// everything in it.
+func (f *Folder) RemoveFolder(index int) {
+	f.Folders = slices.Delete(f.Folders, index, index+1)
 }
 
 // Add appends a request to the folder.
@@ -92,6 +109,38 @@ func (f *Folder) Remove(index int) {
 	f.Requests = slices.Delete(f.Requests, index, index+1)
 }
 
+// All returns the requests in the folder and in every folder inside it.
+func (f *Folder) All() []*Request {
+	requests := slices.Clone(f.Requests)
+	for _, sub := range f.Folders {
+		requests = append(requests, sub.All()...)
+	}
+	return requests
+}
+
+// Descendants returns the number of folders inside the folder, at any depth.
+func (f *Folder) Descendants() int {
+	n := len(f.Folders)
+	for _, sub := range f.Folders {
+		n += sub.Descendants()
+	}
+	return n
+}
+
+// normalise drops nulls from the folder and everything inside it, so the
+// rest of the program need not check for them, and normalises its requests.
+func (f *Folder) normalise() {
+	f.Folders = slices.DeleteFunc(f.Folders, func(sub *Folder) bool { return sub == nil })
+	for _, sub := range f.Folders {
+		sub.normalise()
+	}
+
+	f.Requests = slices.DeleteFunc(f.Requests, func(r *Request) bool { return r == nil })
+	for _, r := range f.Requests {
+		r.normalise()
+	}
+}
+
 // Load reads a store from the JSON file at path. A missing file is not an
 // error and yields an empty store.
 func Load(path string) (*Store, error) {
@@ -100,13 +149,9 @@ func Load(path string) (*Store, error) {
 		return &Store{}, err
 	}
 
-	// Drop nulls so the rest of the program need not check for them.
 	store.Folders = slices.DeleteFunc(store.Folders, func(f *Folder) bool { return f == nil })
 	for _, f := range store.Folders {
-		f.Requests = slices.DeleteFunc(f.Requests, func(r *Request) bool { return r == nil })
-		for _, r := range f.Requests {
-			r.normalise()
-		}
+		f.normalise()
 	}
 
 	return store, nil

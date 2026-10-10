@@ -104,8 +104,8 @@ func newGRPCPanel() *grpcPanel {
 	p.example.SetToolTip("Replace the message with one that has every field of the method's request")
 
 	exampleBar := qt.NewQHBoxLayout2()
-	exampleBar.AddStretch()
 	exampleBar.AddWidget(p.example.QWidget)
+	exampleBar.AddStretch()
 
 	messageTab := qt.NewQWidget2()
 	messageLayout := qt.NewQVBoxLayout(messageTab)

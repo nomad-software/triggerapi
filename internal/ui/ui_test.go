@@ -356,7 +356,9 @@ func TestRequests(t *testing.T) {
 			t.Errorf("switching modified a request: %q %q", list.Method, create.Method)
 		}
 
-		// Selecting a folder leaves the open request alone.
+		// Selecting a folder leaves the open request alone. With nothing
+		// selected a folder is added at the top level.
+		w.requests.deselect()
 		w.requests.addFolder()
 		if w.open != list || tree.TopLevelItemCount() != 2 {
 			t.Errorf("open after adding a folder = %+v", w.open)
@@ -723,10 +725,10 @@ func isFailure(p *responsePanel) bool {
 }
 
 // itemType returns the type whose icon an item of the request tree has, or
-// an empty type if it has no icon.
+// an empty type if it has the icon of a folder.
 func itemType(item *qt.QTreeWidgetItem) collection.Type {
 	icon := item.Icon(colName)
-	if icon.IsNull() {
+	if icon.IsNull() || (folderIcon != nil && icon.CacheKey() == folderIcon.CacheKey()) {
 		return ""
 	}
 	for typ, known := range requestTypeIcons {
@@ -1838,4 +1840,132 @@ func TestJSONColourSettings(t *testing.T) {
 			t.Errorf("literal colour = %s", got)
 		}
 	})
+}
+
+func TestNestedFolders(t *testing.T) {
+	files := testFiles(t)
+
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+		tree := w.requests.tree
+		name := func(item *qt.QTreeWidgetItem, text string) { item.SetText(colName, text) }
+
+		// A folder is added at the top level when nothing is selected, and
+		// inside the selected folder when one is.
+		w.requests.addFolder()
+		service := tree.TopLevelItem(0)
+		name(service, "em-ohip-hotel")
+
+		w.requests.addFolder()
+		name(service.Child(0), "ohip_hotel")
+		if tree.TopLevelItemCount() != 1 || service.ChildCount() != 1 || !service.IsExpanded() {
+			t.Fatalf("subfolder not added: %d top level, %d children", tree.TopLevelItemCount(), service.ChildCount())
+		}
+
+		// A request goes in the selected folder, however deep.
+		addGRPCRequest(w)
+		name(service.Child(0).Child(0), "GetHotel")
+		folders := w.requests.store.Folders
+		if len(folders) != 1 || len(folders[0].Folders) != 1 || len(folders[0].Folders[0].Requests) != 1 {
+			t.Fatalf("store = %+v", folders[0])
+		}
+		get := folders[0].Folders[0].Requests[0]
+		if w.open != get || get.Name != "GetHotel" || get.Type != collection.TypeGRPC {
+			t.Errorf("open = %+v", w.open)
+		}
+
+		// With a request selected, a folder is added beside it, in the
+		// folder that holds it, and listed before the requests.
+		w.requests.addFolder()
+		name(service.Child(0).Child(0), "admin")
+		inner := service.Child(0)
+		if inner.ChildCount() != 2 || inner.Child(0).Text(colName) != "admin" || inner.Child(1).Text(colName) != "GetHotel" {
+			t.Errorf("children = %q, %q", inner.Child(0).Text(colName), inner.Child(1).Text(colName))
+		}
+		if itemType(inner.Child(0)) != "" || itemType(inner.Child(1)) != collection.TypeGRPC {
+			t.Errorf("icons = %q, %q", itemType(inner.Child(0)), itemType(inner.Child(1)))
+		}
+
+		// The request is still found now that a folder comes before it.
+		tree.SetCurrentItem(inner.Child(1))
+		if w.open != get {
+			t.Errorf("open = %+v", w.open)
+		}
+		w.grpc.url.SetText("localhost:1")
+		if get.GRPC.URL != "localhost:1" {
+			t.Errorf("edit went to %+v", get.GRPC)
+		}
+
+		// A REST request three folders down.
+		tree.SetCurrentItem(inner.Child(0))
+		w.requests.addRequest()
+		name(inner.Child(0).Child(0), "Report")
+		report := folders[0].Folders[0].Folders[0].Requests[0]
+		if w.open != report || report.Type != collection.TypeREST || w.stack.CurrentIndex() != pageRequest {
+			t.Errorf("open = %+v", w.open)
+		}
+
+		// A second top level folder needs the selection cleared first.
+		w.requests.deselect()
+		w.requests.addFolder()
+		name(tree.TopLevelItem(1), "other")
+		if tree.TopLevelItemCount() != 2 || len(w.requests.store.Folders) != 2 {
+			t.Errorf("top level folders = %d", tree.TopLevelItemCount())
+		}
+
+		// Renaming a folder inside another renames the right one.
+		if folders[0].Folders[0].Name != "ohip_hotel" || folders[0].Folders[0].Folders[0].Name != "admin" {
+			t.Errorf("names = %q, %q", folders[0].Folders[0].Name, folders[0].Folders[0].Folders[0].Name)
+		}
+	})
+
+	saved, err := collection.Load(files.Requests)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := saved.Folders[0].Folders[0]; got.Name != "ohip_hotel" || got.Requests[0].Name != "GetHotel" || got.Folders[0].Requests[0].Name != "Report" {
+		t.Fatalf("saved %+v", got)
+	}
+
+	// A new window restores the whole tree.
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+		tree := w.requests.tree
+
+		inner := tree.TopLevelItem(0).Child(0)
+		if tree.TopLevelItemCount() != 2 || inner.Text(colName) != "ohip_hotel" || inner.Child(0).Child(0).Text(colName) != "Report" || inner.Child(1).Text(colName) != "GetHotel" {
+			t.Fatal("tree not restored")
+		}
+
+		tree.SetCurrentItem(inner.Child(0).Child(0))
+		report := w.open
+		if report == nil || report.Name != "Report" {
+			t.Fatalf("open = %+v", report)
+		}
+
+		// Removing a folder asks first, saying what is in it.
+		var asked string
+		w.requests.confirm = func(question string) bool { asked = question; return false }
+		tree.SetCurrentItem(inner)
+		w.requests.remove()
+		if !strings.Contains(asked, `"ohip_hotel"`) || !strings.Contains(asked, "1 folder and 2 requests") {
+			t.Errorf("asked %q", asked)
+		}
+		if tree.TopLevelItem(0).ChildCount() != 1 || w.open != report {
+			t.Error("folder removed without confirmation")
+		}
+
+		// It takes everything in it, and closes the request that was open.
+		w.requests.confirm = func(string) bool { return true }
+		w.requests.remove()
+		if tree.TopLevelItem(0).ChildCount() != 0 || len(w.requests.store.Folders[0].Folders) != 0 || w.open != nil {
+			t.Errorf("after remove: %d children, open %+v", tree.TopLevelItem(0).ChildCount(), w.open)
+		}
+	})
+
+	if saved, err := collection.Load(files.Requests); err != nil || len(saved.Folders) != 2 || len(saved.Folders[0].Folders) != 0 {
+		t.Errorf("removal not saved: %+v, %v", saved, err)
+	}
 }
