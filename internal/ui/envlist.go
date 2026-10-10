@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	qt "github.com/mappu/miqt/qt6"
 
@@ -68,6 +69,8 @@ func newEnvList(store *env.Store, path string) *envList {
 	// which removes, and the one which imports is apart at the right.
 	add := newIconButton(environmentsColour, drawPlus, "Add an environment")
 	add.OnClicked(s.add)
+	duplicate := newIconButton(environmentsColour, drawCopy, "Duplicate the selected environment")
+	duplicate.OnClicked(s.duplicate)
 	importButton := newIconButton(environmentsColour, drawImport, "Import an environment exported from Postman")
 	importButton.OnClicked(s.importDocument)
 	edit := newIconButton(environmentsColour, drawPencil, "Edit the selected environment")
@@ -82,7 +85,7 @@ func newEnvList(store *env.Store, path string) *envList {
 	layout := qt.NewQVBoxLayout(s.root)
 	layout.AddWidget2(s.list.QWidget, 1)
 	layout.AddWidget(hint.QWidget)
-	buttons := newButtonRow(add, edit, remove)
+	buttons := newButtonRow(add, duplicate, edit, remove)
 	buttons.AddWidget(importButton.QWidget)
 	layout.AddLayout(buttons.QLayout)
 
@@ -129,6 +132,23 @@ func (s *envList) selected() {
 // add creates an environment, selects it and opens it for editing.
 func (s *envList) add() {
 	s.store.Environments = append(s.store.Environments, env.Environment{Name: "New Environment"})
+	s.store.Active = len(s.store.Environments) - 1
+	s.sort()
+	s.selected()
+	s.edit()
+}
+
+// duplicate makes a copy of the selected environment, selects it and opens
+// it for editing.
+func (s *envList) duplicate() {
+	e, ok := s.store.Current()
+	if !ok {
+		return
+	}
+	s.store.Environments = append(s.store.Environments, env.Environment{
+		Name:      e.Name + " copy",
+		Variables: slices.Clone(e.Variables),
+	})
 	s.store.Active = len(s.store.Environments) - 1
 	s.sort()
 	s.selected()

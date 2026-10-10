@@ -171,3 +171,41 @@ func TestCopyAll(t *testing.T) {
 		t.Errorf("copied %q and %q", a, b)
 	}
 }
+
+func TestDuplicate(t *testing.T) {
+	dir := t.TempDir()
+	Create(dir, "Hotel")
+	os.WriteFile(Environments(dir, "Hotel"), []byte("envs"), 0o644)
+	os.WriteFile(Requests(dir, "Hotel"), []byte("reqs"), 0o644)
+
+	name, err := Duplicate(dir, "Hotel")
+	if err != nil || name != "Hotel copy" {
+		t.Fatalf("duplicate = %q, %v", name, err)
+	}
+	envs, _ := os.ReadFile(Environments(dir, name))
+	reqs, _ := os.ReadFile(Requests(dir, name))
+	if string(envs) != "envs" || string(reqs) != "reqs" {
+		t.Errorf("copied %q and %q", envs, reqs)
+	}
+
+	// Another copy has another name, and one with nothing in it copies.
+	if name, err := Duplicate(dir, "Hotel"); err != nil || name != "Hotel copy 2" {
+		t.Errorf("duplicate = %q, %v", name, err)
+	}
+	Create(dir, "Empty")
+	if name, err := Duplicate(dir, "Empty"); err != nil || name != "Empty copy" {
+		t.Errorf("duplicate = %q, %v", name, err)
+	}
+	if got, want := list(t, dir), []string{"Empty", "Empty copy", "Hotel", "Hotel copy", "Hotel copy 2"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("workspaces = %q, want %q", got, want)
+	}
+
+	if _, err := Duplicate(dir, "Missing"); err == nil {
+		t.Error("duplicated a workspace that is not there")
+	}
+	long := strings.Repeat("a", 100)
+	Create(dir, long)
+	if name, err := Duplicate(dir, long); err != nil || Valid(name) != nil {
+		t.Errorf("duplicate of a long name = %q, %v", name, err)
+	}
+}

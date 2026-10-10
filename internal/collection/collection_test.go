@@ -357,3 +357,41 @@ func TestPathAndFind(t *testing.T) {
 		}
 	}
 }
+
+func TestClone(t *testing.T) {
+	folder := &Folder{Name: "Hotel", Collapsed: true}
+	original := folder.Add(NewREST("Book", rest.Request{
+		Method:  "POST",
+		URL:     "api.test",
+		Headers: []rest.KeyValue{{Key: "X-Key", Value: "abc", Enabled: true}},
+		Auth:    rest.Auth{Type: rest.AuthBearer, Token: "t"},
+		Body:    "{}",
+	}))
+	call := folder.AddFolder("Inner").Add(NewGRPC("Call", rpc.Request{URL: "c.test:1", Method: "a.B/C", Message: "{}"}))
+
+	// A copy of a request is the same, and changing it leaves the first
+	// alone.
+	clone := original.Clone()
+	if clone == original || clone.Request == original.Request || !reflect.DeepEqual(clone, original) {
+		t.Fatalf("clone = %+v, want a copy of %+v", clone, original)
+	}
+	clone.Headers[0].Value = "changed"
+	clone.URL = "other.test"
+	if original.Headers[0].Value != "abc" || original.URL != "api.test" {
+		t.Errorf("the request copied from was changed: %+v", original.Request)
+	}
+
+	if grpc := call.Clone(); grpc.GRPC == call.GRPC || !reflect.DeepEqual(grpc, call) || grpc.Request != nil {
+		t.Errorf("clone = %+v, want a copy of %+v", grpc, call)
+	}
+
+	// So is a copy of a folder, with everything in it.
+	copied := folder.Clone()
+	if copied == folder || !reflect.DeepEqual(copied, folder) || copied.Requests[0] == original || copied.Folders[0] == folder.Folders[0] {
+		t.Fatalf("clone = %+v, want a copy of %+v", copied, folder)
+	}
+	copied.Folders[0].Requests[0].GRPC.URL = "changed"
+	if call.GRPC.URL != "c.test:1" {
+		t.Error("the folder copied from was changed")
+	}
+}

@@ -58,6 +58,8 @@ func newWorkspaceList(dir func() string) *workspaceList {
 	// one which removes.
 	add := newIconButton(workspacesColour, drawPlus, "Add a workspace")
 	add.OnClicked(s.add)
+	duplicate := newIconButton(workspacesColour, drawCopy, "Duplicate the selected workspace")
+	duplicate.OnClicked(s.duplicate)
 	rename := newIconButton(workspacesColour, drawPencil, "Rename the selected workspace")
 	rename.OnClicked(s.rename)
 	remove := newIconButton(removeColour, drawBin, "Remove the selected workspace")
@@ -70,7 +72,7 @@ func newWorkspaceList(dir func() string) *workspaceList {
 	layout := qt.NewQVBoxLayout(s.root)
 	layout.AddWidget2(s.list.QWidget, 1)
 	layout.AddWidget(hint.QWidget)
-	layout.AddLayout(newButtonRow(add, rename, remove).QLayout)
+	layout.AddLayout(newButtonRow(add, duplicate, rename, remove).QLayout)
 
 	s.list.OnCurrentRowChanged(func(row int) {
 		if !s.updating && row >= 0 && row < len(s.names) && s.onOpen != nil {
@@ -141,6 +143,25 @@ func (s *workspaceList) add() {
 	if err := workspace.Create(s.dir(), name); err != nil {
 		s.warn(fmt.Sprintf("The workspace could not be added: %v.", err))
 		return
+	}
+
+	s.open(name)
+	s.rename()
+}
+
+// duplicate makes a copy of the selected workspace, with its environments
+// and requests, makes it the one in use and starts editing its name.
+func (s *workspaceList) duplicate() {
+	current := s.current()
+	if current == "" {
+		return
+	}
+	name, err := workspace.Duplicate(s.dir(), current)
+	if err != nil {
+		s.warn(fmt.Sprintf("The workspace could not be duplicated: %v.", err))
+		if name == "" {
+			return
+		}
 	}
 
 	s.open(name)

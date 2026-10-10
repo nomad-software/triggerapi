@@ -210,6 +210,22 @@ func drawPagePlus(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
+// drawCopy draws one page in front of another, for making a copy of
+// something.
+func drawCopy(painter *qt.QPainter) {
+	outline(painter)
+	// The page in front.
+	painter.DrawRoundedRect2(46, 44, 54, 58, 6, 6)
+
+	// What can be seen of the page behind it.
+	path := qt.NewQPainterPath()
+	path.MoveTo2(30, 82)
+	path.LineTo2(30, 32)
+	path.QuadTo2(30, 26, 36, 26)
+	path.LineTo2(82, 26)
+	painter.DrawPath(path)
+}
+
 // drawImport draws an arrow going into a page from outside it, pointing
 // left, for bringing something in from a file.
 func drawImport(painter *qt.QPainter) {

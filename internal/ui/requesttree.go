@@ -115,6 +115,8 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	addFolder.OnClicked(t.addFolder)
 	addRequest := newIconButton(requestsColour, drawPagePlus, "Add a request")
 	addRequest.OnClicked(t.addRequest)
+	duplicate := newIconButton(requestsColour, drawCopy, "Duplicate the selected folder or request")
+	duplicate.OnClicked(t.duplicate)
 	rename := newIconButton(requestsColour, drawLetters, "Rename the selected folder or request")
 	rename.OnClicked(t.rename)
 	remove := newIconButton(removeColour, drawBin, "Remove the selected folder or request")
@@ -122,7 +124,7 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	importButton := newIconButton(requestsColour, drawImport, "Import a folder of requests from an OpenAPI document or a Postman collection")
 	importButton.OnClicked(t.importDocument)
 
-	buttons := newButtonRow(addFolder, addRequest, rename, remove)
+	buttons := newButtonRow(addFolder, addRequest, duplicate, rename, remove)
 	buttons.AddWidget(importButton.QWidget)
 
 	layout := qt.NewQVBoxLayout(t.root)
@@ -663,6 +665,46 @@ func (t *requestTree) addRequest() {
 	if t.onOpen != nil {
 		t.onOpen(request)
 	}
+}
+
+// duplicate makes a copy of the selected request, or of the selected folder
+// and everything in it, beside the one it is a copy of, and starts editing
+// its name. A copy of a request is opened.
+func (t *requestTree) duplicate() {
+	item := t.tree.CurrentItem()
+	if item == nil {
+		return
+	}
+
+	folder, request := t.locate(item)
+	if request != nil {
+		holder := t.store.FolderOf(request)
+		if holder == nil {
+			return
+		}
+		clone := request.Clone()
+		clone.Name += " copy"
+		holder.Add(clone)
+
+		t.added(clone)
+		if t.onOpen != nil {
+			t.onOpen(clone)
+		}
+		return
+	}
+
+	parent, ok := t.store.ParentOf(folder)
+	if !ok {
+		return
+	}
+	clone := folder.Clone()
+	clone.Name += " copy"
+	if parent != nil {
+		parent.Folders = append(parent.Folders, clone)
+	} else {
+		t.store.Folders = append(t.store.Folders, clone)
+	}
+	t.added(clone)
 }
 
 // added shows a folder or request that has just been put in the store, in

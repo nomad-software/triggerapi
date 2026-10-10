@@ -3,6 +3,7 @@
 package collection
 
 import (
+	"encoding/json"
 	"slices"
 	"strings"
 
@@ -57,6 +58,17 @@ func (r *Request) normalise() {
 	}
 }
 
+// Clone returns a copy of the request which shares nothing with it.
+func (r *Request) Clone() *Request {
+	clone := &Request{}
+	// A request can always be written as JSON and read back.
+	if data, err := json.Marshal(r); err == nil {
+		_ = json.Unmarshal(data, clone)
+	}
+	clone.normalise()
+	return clone
+}
+
 // Folder is a named group of requests. It can hold other folders, to any
 // depth. Its folders come before its requests wherever its contents are
 // listed.
@@ -66,6 +78,17 @@ type Folder struct {
 	Collapsed bool       `json:"collapsed,omitempty"`
 	Folders   []*Folder  `json:"folders,omitempty"`
 	Requests  []*Request `json:"requests,omitempty"`
+}
+
+// Clone returns a copy of the folder, and of everything in it, which shares
+// nothing with it.
+func (f *Folder) Clone() *Folder {
+	clone := &Folder{}
+	if data, err := json.Marshal(f); err == nil {
+		_ = json.Unmarshal(data, clone)
+	}
+	clone.normalise()
+	return clone
 }
 
 // Store is the collection of folders that is saved to disk. Folders and

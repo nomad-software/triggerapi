@@ -3635,3 +3635,96 @@ func TestPinnedRequests(t *testing.T) {
 		}
 	})
 }
+
+func TestDuplicate(t *testing.T) {
+	files := testFiles(t)
+
+	envs := &env.Store{Active: 0, Environments: []env.Environment{{Name: "Local", Variables: []env.Variable{{Key: "host", Value: "local.test", Enabled: true}}}}}
+	if err := envs.Save(files.Environments); err != nil {
+		t.Fatal(err)
+	}
+	store := &collection.Store{}
+	hotel := store.AddFolder("Hotel")
+	hotel.Add(collection.NewREST("Book", rest.Request{Method: "POST", URL: "{{host}}/rooms", Headers: []rest.KeyValue{{Key: "X-Key", Value: "abc", Enabled: true}}}))
+	hotel.AddFolder("Inner").Add(collection.NewGRPC("Call", rpc.Request{URL: "c.test:1"}))
+	if err := store.Save(files.Requests); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+		tree := w.requests.tree
+
+		// A copy of a request is beside it, is opened, and is its own.
+		tree.SetCurrentItem(treeItem(tree, "Hotel", "Book"))
+		original := w.open
+		w.requests.duplicate()
+		if got, want := treeNames(treeItem(tree, "Hotel")), []string{"Inner/", "Book", "Book copy"}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("hotel = %q, want %q", got, want)
+		}
+		if w.open == nil || w.open == original || w.open.Name != "Book copy" || w.request.url.Text() != "{{host}}/rooms" || tree.CurrentItem().Text(colName) != "Book copy" {
+			t.Fatalf("open = %+v", w.open)
+		}
+		w.request.url.SetText("{{host}}/changed")
+		if original.URL != "{{host}}/rooms" || len(original.Headers) != 1 {
+			t.Errorf("the request copied from was changed: %+v", original.Request)
+		}
+
+		// A copy of a folder has a copy of everything in it.
+		tree.SetCurrentItem(treeItem(tree, "Hotel"))
+		w.requests.duplicate()
+		if tree.TopLevelItemCount() != 2 || tree.CurrentItem().Text(colName) != "Hotel copy" {
+			t.Fatalf("%d folders, selected %q", tree.TopLevelItemCount(), tree.CurrentItem().Text(colName))
+		}
+		if got, want := treeNames(treeItem(tree, "Hotel copy")), []string{"Inner/", "Book", "Book copy"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("copy = %q, want %q", got, want)
+		}
+		if w.requests.store.Folders[1].Folders[0].Requests[0] == w.requests.store.Folders[0].Folders[0].Requests[0] {
+			t.Error("the copy shares a request with the folder it is a copy of")
+		}
+
+		// Nothing is duplicated with nothing selected.
+		w.requests.deselect()
+		w.requests.duplicate()
+		if tree.TopLevelItemCount() != 2 {
+			t.Error("duplicated with nothing selected")
+		}
+
+		// A copy of an environment has its variables, and is the one
+		// selected and edited.
+		w.environments.duplicate()
+		list := w.environments.list
+		if list.Count() != 2 || list.CurrentRow() != 1 || list.Item(1).Text() != "Local copy" || w.stack.CurrentIndex() != pageEditor || w.editor.name.Text() != "Local copy" {
+			t.Fatalf("%d environments, row %d, editing %q", list.Count(), list.CurrentRow(), w.editor.name.Text())
+		}
+		w.editor.variables.add("token", "t")
+		w.closeEditor()
+		if all := w.environments.store.Environments; len(all[0].Variables) != 1 || len(all[1].Variables) != 2 || w.expand("{{host}}") != "local.test" {
+			t.Errorf("environments = %+v", all)
+		}
+
+		// A copy of a workspace has its environments and requests, and is
+		// the one in use.
+		w.workspaces.warn = func(message string) { t.Error(message) }
+		w.workspaces.duplicate()
+		if got, want := w.workspaces.names, []string{"Default", "Default copy"}; !reflect.DeepEqual(got, want) || w.workspaces.current() != "Default copy" {
+			t.Fatalf("workspaces = %q, current %q", got, w.workspaces.current())
+		}
+		if w.environments.list.Count() != 2 || w.requests.tree.TopLevelItemCount() != 2 || w.requests.path != workspace.Requests(files.Workspaces, "Default copy") {
+			t.Errorf("copy has %d environments and %d folders, saved to %q", w.environments.list.Count(), w.requests.tree.TopLevelItemCount(), w.requests.path)
+		}
+
+		// Changing the copy leaves the workspace it is a copy of alone.
+		w.requests.confirm = func(string) bool { return true }
+		w.requests.tree.SetCurrentItem(treeItem(w.requests.tree, "Hotel copy"))
+		w.requests.remove()
+	})
+
+	if original, err := collection.Load(files.Requests); err != nil || len(original.Folders) != 2 {
+		t.Errorf("requests of the first workspace = %+v, %v", original, err)
+	}
+	if copied, err := collection.Load(workspace.Requests(files.Workspaces, "Default copy")); err != nil || len(copied.Folders) != 1 {
+		t.Errorf("requests of the copy = %+v, %v", copied, err)
+	}
+}

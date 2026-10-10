@@ -161,6 +161,30 @@ func Remove(dir, name string) error {
 	return os.Remove(folder)
 }
 
+// Duplicate makes a copy of a workspace, with its environments and requests,
+// and returns the name it was given.
+func Duplicate(dir, name string) (string, error) {
+	if err := Valid(name); err != nil {
+		return "", err
+	}
+	if taken, err := has(dir, name); err != nil {
+		return "", err
+	} else if !taken {
+		return "", fmt.Errorf("there is no workspace named %s", name)
+	}
+
+	// A long name is cut short to leave room for what is added to it.
+	base := name
+	if len(base) > 80 {
+		base = strings.TrimSpace(strings.ToValidUTF8(base[:80], ""))
+	}
+	copied := Unique(dir, base+" copy")
+	if err := Create(dir, copied); err != nil {
+		return "", err
+	}
+	return copied, Import(dir, copied, Environments(dir, name), Requests(dir, name))
+}
+
 // Import copies the files of environments and requests from before there
 // were workspaces into a workspace. A file that does not exist is skipped,
 // and nothing already in the workspace is replaced.
