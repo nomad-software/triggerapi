@@ -118,7 +118,7 @@ func RunCurl(ctx context.Context, r Request) (*Response, error) {
 
 	// The headers are written to a file, which keeps them apart from the
 	// body however the response is made up.
-	file, err := os.CreateTemp("", "postie-headers-*")
+	file, err := os.CreateTemp("", "triggerapi-headers-*")
 	if err != nil {
 		return nil, err
 	}

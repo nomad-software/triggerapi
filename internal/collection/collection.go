@@ -6,9 +6,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/nomad-software/postie/internal/jsonfile"
-	"github.com/nomad-software/postie/internal/rest"
-	"github.com/nomad-software/postie/internal/rpc"
+	"github.com/nomad-software/triggerapi/internal/jsonfile"
+	"github.com/nomad-software/triggerapi/internal/rest"
+	"github.com/nomad-software/triggerapi/internal/rpc"
 )
 
 // Type is the kind of a saved request.

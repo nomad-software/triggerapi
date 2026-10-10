@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/nomad-software/postie/internal/env"
+	"github.com/nomad-software/triggerapi/internal/env"
 )
 
 // exportedEnvironment is an environment, or the globals, exported from

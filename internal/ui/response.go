@@ -12,8 +12,8 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"github.com/nomad-software/postie/internal/rest"
-	"github.com/nomad-software/postie/internal/rpc"
+	"github.com/nomad-software/triggerapi/internal/rest"
+	"github.com/nomad-software/triggerapi/internal/rpc"
 )
 
 // responsePanel displays the result of the last request.

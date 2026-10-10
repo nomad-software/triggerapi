@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Postie is a desktop client for making REST API and gRPC calls, inspired by Postman. It is written in Go with a Qt 6 GUI via the [miqt](https://github.com/mappu/miqt) bindings.
+TriggerAPI is a desktop client for making REST API and gRPC calls, inspired by Postman. It is written in Go with a Qt 6 GUI via the [miqt](https://github.com/mappu/miqt) bindings.
 
 REST and gRPC requests, environments and saved requests in folders are implemented; history is not started yet.
 
@@ -28,6 +28,7 @@ Packages under `internal/`; only `ui` depends on Qt.
   - Both sidebar lists are kept in alphabetical order, ignoring case, by sorting the stores themselves (`env.Store.Sort`, `collection.Store.Sort`; folders still come before requests) on load and after every add, rename, move and import, then redrawing. In the request tree a redraw replaces every item, so never keep a `QTreeWidgetItem` across an operation that can redraw; a rename made in the tree is sorted a turn of the event loop later.
   - The selected environment is the active one. Edit opens it in `envEditor`, which follows the selection while open and reports edits through `envList.update`.
   - Clicking a request in the tree, or pressing Edit, opens it: `Window.open` points at it, the `header` above the panel shows its name at the left and, at the right, a labelled drop-down that selects the active environment by selecting it in the sidebar list (`Window.updateHeaders` keeps both headers in step), `requestPanel.load` shows it, and every edit (`requestPanel.onChange`) is written back with `requestPanel.request()` and saved. With `Window.open == nil` the REST request UI holds an unsaved request. Add Request asks for the type through `askRequestType`, a package variable that tests replace; by default it shows a `choiceDialog` (`choice.go`), the generic pick-one-of-these dialog that offers each choice as an icon with its name beneath, and which the import dialog also uses. Icons, including the program's own (`appIcon`, used as the window icon and so shown in the about box), are drawn with `QPainter` by `drawIcon` in `icons.go`; there are no image files. The same icons are shown before each request's name in the Requests tree. A new request type needs an entry in `requestTypes` and `typeLabels`. `requestTree` maps tree items to the store by position (`locate`), so the two must be kept in the same order: under a folder's item come its folders, then its requests, which is why a new subfolder is inserted before the requests. Add Folder and Add Request act on the selected folder, or the folder of the selected request; clicking empty space in the tree clears the selection, which is how a top level folder is added. Folders and requests are moved between folders by dragging (where exactly in a folder something is dropped makes no difference, as the order is alphabetical): the tree's drop event is intercepted, the move is made in the store (`Store.MoveRequest` / `MoveFolder`) by `requestTree.drop`, and the tree is redrawn from the store (`draw`) once the drag has finished, so Qt never moves items itself.
+  - The search box above the Requests tree (`requestTree.search`) narrows it as text is typed: `applySearch` hides the items that do not match and opens the folders left, without touching the store, so items still map to it by position. Something matches when every word typed is in its name or the names of the folders above it, ignoring case. While a search is on, folders opened and closed are not recorded; clearing it redraws from the store, which puts them back. `draw` reapplies the search, and adding or importing clears it so the new item can be seen.
   - The URL field shows the enabled params as its query string and the two are kept in step both ways (`urlChanged` / `paramsChanged`, using `rest.SplitURL`, `JoinURL` and `MergeParams` in `rest/query.go`). The stored `rest.Request.URL` has no query string; the params hold it.
   - `requestPanel.request()` and `load()` are the only places widgets are converted to and from a `rest.Request` (likewise `grpcPanel` and `rpc.Request`); a new field must be added to both, to an `onChange` hook, and to the request's `Expand` so placeholders work in it.
   - Widgets report changes through callback fields (`onChange`, `onOpen`, ...) and use an `updating` flag to suppress them while being filled programmatically.
@@ -49,8 +50,8 @@ Packages under `internal/`; only `ui` depends on Qt.
 ## Commands
 
 ```sh
-make build                # go build -ldflags "-s -w" -o postie . (binary is gitignored)
-make run                  # build, then ./postie
+make build                # go build -ldflags "-s -w" -o triggerapi . (binary is gitignored)
+make run                  # build, then ./triggerapi
 make vet                  # go vet ./...
 make test                 # go test ./...
 go test ./path/to/pkg -run TestName   # single test
@@ -61,7 +62,7 @@ Always build the binary without debug symbols (`-ldflags "-s -w"`), either with 
 Smoke-test the GUI without a display:
 
 ```sh
-QT_QPA_PLATFORM=offscreen timeout 3 ./postie   # exit code 124 means it started and kept running
+QT_QPA_PLATFORM=offscreen timeout 3 ./triggerapi   # exit code 124 means it started and kept running
 ```
 
 ## Building with miqt

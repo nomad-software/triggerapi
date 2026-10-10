@@ -5,7 +5,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"github.com/nomad-software/postie/internal/ui"
+	"github.com/nomad-software/triggerapi/internal/ui"
 )
 
 // The saved data lives in the directory the program is run from.

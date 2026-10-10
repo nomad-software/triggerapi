@@ -6,7 +6,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"github.com/nomad-software/postie/internal/settings"
+	"github.com/nomad-software/triggerapi/internal/settings"
 )
 
 // tokenKind is a kind of JSON token that is coloured.

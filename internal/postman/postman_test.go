@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/nomad-software/postie/internal/collection"
-	"github.com/nomad-software/postie/internal/rest"
+	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
 const sample = `{

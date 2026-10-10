@@ -6,14 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
 
-	"github.com/nomad-software/postie/internal/collection"
-	"github.com/nomad-software/postie/internal/openapi"
-	"github.com/nomad-software/postie/internal/postman"
-	"github.com/nomad-software/postie/internal/rest"
+	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/openapi"
+	"github.com/nomad-software/triggerapi/internal/postman"
+	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
 // colName is the column of the request tree, which holds the names.
@@ -31,6 +32,9 @@ var typeLabels = map[collection.Type]string{
 type requestTree struct {
 	root *qt.QWidget
 	tree *qt.QTreeWidget
+	// search narrows the tree to the folders and requests that match what
+	// is typed in it.
+	search *qt.QLineEdit
 
 	store *collection.Store
 	// path is the file the store is saved to. Nothing is saved if it is empty.
@@ -61,12 +65,27 @@ type requestTree struct {
 
 func newRequestTree(store *collection.Store, path string) *requestTree {
 	t := &requestTree{
-		root: qt.NewQWidget2(),
-		tree: qt.NewQTreeWidget2(),
+		root:   qt.NewQWidget2(),
+		tree:   qt.NewQTreeWidget2(),
+		search: qt.NewQLineEdit2(),
 	}
 
+	t.search.SetPlaceholderText("Search requests")
+	t.search.SetClearButtonEnabled(true)
+	t.search.OnTextChanged(func(string) {
+		if t.updating {
+			return
+		}
+		if t.query() == nil {
+			// Back to the folders open or closed as they were.
+			t.draw(t.selection())
+		} else {
+			t.applySearch()
+		}
+	})
+
 	t.confirm = func(question string) bool {
-		return qt.QMessageBox_Question(t.root, "Postie", question) == qt.QMessageBox__Yes
+		return qt.QMessageBox_Question(t.root, "TriggerAPI", question) == qt.QMessageBox__Yes
 	}
 	t.create = func() (*collection.Request, bool) {
 		return collection.NewREST("New Request", rest.Request{Method: http.MethodGet}), true
@@ -81,7 +100,7 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 		return path, path != ""
 	}
 	t.warn = func(message string) {
-		qt.QMessageBox_Warning(t.root, "Postie", message)
+		qt.QMessageBox_Warning(t.root, "TriggerAPI", message)
 	}
 
 	t.tree.SetHeaderHidden(true)
@@ -112,6 +131,7 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	change.AddWidget(remove.QWidget)
 
 	layout := qt.NewQVBoxLayout(t.root)
+	layout.AddWidget(t.search.QWidget)
 	layout.AddWidget2(t.tree.QWidget, 1)
 	layout.AddLayout(add.QLayout)
 	layout.AddLayout(change.QLayout)
@@ -254,23 +274,91 @@ func (t *requestTree) draw(selected any) {
 	if current != nil {
 		t.tree.SetCurrentItem(current)
 	}
+	t.applySearch()
+}
+
+// query returns the words being searched for, in lower case. It is nil when
+// there is no search.
+func (t *requestTree) query() []string {
+	if words := strings.Fields(strings.ToLower(t.search.Text())); len(words) > 0 {
+		return words
+	}
+	return nil
+}
+
+// applySearch hides the folders and requests that do not match the search,
+// and opens the folders that are left so that what was found can be seen.
+// Something matches if every word of the search is in its name or the names
+// of the folders it is in, so a folder that matches is shown with all it
+// holds. Items are hidden and not removed, as they are matched to the store
+// by their position. Which folders are open is not kept: the tree is drawn
+// again from the store when the search is cleared.
+func (t *requestTree) applySearch() {
+	words := t.query()
+	if words == nil {
+		return
+	}
+
+	defer func(prev bool) { t.updating = prev }(t.updating)
+	t.updating = true
+
+	// show reports if an item, or anything beneath it, matches.
+	var show func(item *qt.QTreeWidgetItem, path string) bool
+	show = func(item *qt.QTreeWidgetItem, path string) bool {
+		path += " " + strings.ToLower(item.Text(colName))
+
+		found := true
+		for _, word := range words {
+			found = found && strings.Contains(path, word)
+		}
+		for i := range item.ChildCount() {
+			if show(item.Child(i), path) {
+				found = true
+			}
+		}
+
+		item.SetHidden(!found)
+		if found && item.ChildCount() > 0 {
+			item.SetExpanded(true)
+		}
+		return found
+	}
+	for i := range t.tree.TopLevelItemCount() {
+		show(t.tree.TopLevelItem(i), "")
+	}
+}
+
+// clearSearch empties the search box without drawing the tree again, for
+// when it is about to be drawn anyway.
+func (t *requestTree) clearSearch() {
+	defer func(prev bool) { t.updating = prev }(t.updating)
+	t.updating = true
+	t.search.Clear()
+}
+
+// selection returns the folder or request that is selected, or nil.
+func (t *requestTree) selection() any {
+	item := t.tree.CurrentItem()
+	if item == nil {
+		return nil
+	}
+	if folder, request := t.locate(item); request != nil {
+		return request
+	} else {
+		return folder
+	}
 }
 
 // sort puts the folders and requests in alphabetical order and draws the tree
 // again if that moved anything, keeping what is selected selected.
 func (t *requestTree) sort() {
-	var selected any
-	if item := t.tree.CurrentItem(); item != nil {
-		folder, request := t.locate(item)
-		selected = folder
-		if request != nil {
-			selected = request
-		}
-	}
+	selected := t.selection()
 
 	before := t.order()
 	t.store.Sort()
 	if slices.Equal(before, t.order()) {
+		// A new name may no longer match the search.
+		t.applySearch()
 		return
 	}
 
@@ -462,7 +550,8 @@ func (t *requestTree) locate(item *qt.QTreeWidgetItem) (*collection.Folder, *col
 // setCollapsed records that the folder of an item was opened or closed by
 // the user.
 func (t *requestTree) setCollapsed(item *qt.QTreeWidgetItem, collapsed bool) {
-	if t.updating {
+	// Folders opened and closed during a search are not remembered.
+	if t.updating || t.query() != nil {
 		return
 	}
 	if folder, request := t.locate(item); request == nil && folder.Collapsed != collapsed {
@@ -553,6 +642,8 @@ func (t *requestTree) addRequest() {
 // added shows a folder or request that has just been put in the store, in
 // its place in the order, and starts editing its name.
 func (t *requestTree) added(what any) {
+	// It may not match a search, and must be seen.
+	t.clearSearch()
 	t.store.Sort()
 	t.draw(what)
 	t.save()
@@ -624,6 +715,7 @@ func (t *requestTree) importFile(source importSource, path string) error {
 	folder.Collapse()
 
 	t.store.Folders = append(t.store.Folders, folder)
+	t.clearSearch()
 	t.store.Sort()
 	t.draw(folder)
 	t.save()

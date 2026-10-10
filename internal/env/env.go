@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/nomad-software/postie/internal/jsonfile"
+	"github.com/nomad-software/triggerapi/internal/jsonfile"
 )
 
 // Variable is a single named value in an environment.

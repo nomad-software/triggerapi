@@ -15,8 +15,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/nomad-software/postie/internal/collection"
-	"github.com/nomad-software/postie/internal/rest"
+	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
 // document is the part of an OpenAPI document that requests are made from.

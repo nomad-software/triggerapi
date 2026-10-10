@@ -11,7 +11,7 @@ import (
 // padding and each of its states are given here.
 const primaryStyle = `
 QPushButton {
-	background-color: #2f7fd1;
+	background-color: #e8590c;
 	color: #ffffff;
 	font-weight: bold;
 	border: none;
@@ -19,9 +19,9 @@ QPushButton {
 	padding: 5px 18px;
 	min-width: 56px;
 }
-QPushButton:hover { background-color: #428fdd; }
-QPushButton:pressed { background-color: #2569b0; }
-QPushButton:focus { border: 1px solid #9cc7f2; }
+QPushButton:hover { background-color: #f76707; }
+QPushButton:pressed { background-color: #d9480f; }
+QPushButton:focus { border: 1px solid #ffc078; }
 QPushButton:disabled { background-color: #8a9aab; }
 `
 

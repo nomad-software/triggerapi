@@ -17,12 +17,12 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
 
-	"github.com/nomad-software/postie/internal/collection"
-	"github.com/nomad-software/postie/internal/env"
-	"github.com/nomad-software/postie/internal/rest"
-	"github.com/nomad-software/postie/internal/rpc"
-	"github.com/nomad-software/postie/internal/rpc/rpctest"
-	"github.com/nomad-software/postie/internal/settings"
+	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/env"
+	"github.com/nomad-software/triggerapi/internal/rest"
+	"github.com/nomad-software/triggerapi/internal/rpc"
+	"github.com/nomad-software/triggerapi/internal/rpc/rpctest"
+	"github.com/nomad-software/triggerapi/internal/settings"
 )
 
 // TestMain runs the Qt event loop on the main thread and the tests on another
@@ -94,14 +94,14 @@ func TestSendRequest(t *testing.T) {
 		w.request.auth.typ.SetCurrentIndex(2) // Bearer Token
 		w.request.auth.token.SetText("secret")
 		w.request.bodyType.SetCurrentIndex(1) // JSON
-		w.request.bodyRaw.SetPlainText(`{"name":"postie"}`)
+		w.request.bodyRaw.SetPlainText(`{"name":"triggerapi"}`)
 
 		w.request.send.Click()
 	})
 
 	select {
 	case r := <-got:
-		want := received{"POST", "page=2", "yes", "Bearer secret", "application/json", `{"name":"postie"}`}
+		want := received{"POST", "page=2", "yes", "Bearer secret", "application/json", `{"name":"triggerapi"}`}
 		if r != want {
 			t.Errorf("server received %+v, want %+v", r, want)
 		}
@@ -694,7 +694,7 @@ func TestPlaceholderColouringSurvivesGC(t *testing.T) {
 
 func TestAboutText(t *testing.T) {
 	text := mainthread.Wait2(aboutText)
-	for _, want := range []string{"Postie v0.0.1", "Copyright © 2026 Gary Willoughby", "Qt version 6.", "LGPLv3", "https://www.gnu.org/licenses/lgpl-3.0.html", "The Qt Company Ltd"} {
+	for _, want := range []string{"TriggerAPI v0.0.1", "Copyright © 2026 Gary Willoughby", "Qt version 6.", "LGPLv3", "https://www.gnu.org/licenses/lgpl-3.0.html", "The Qt Company Ltd"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("about text does not mention %q", want)
 		}
@@ -2851,6 +2851,104 @@ func TestExecuteCurl(t *testing.T) {
 		w.request.load(rest.Request{Method: "GET"})
 		if w.request.execute.IsEnabled() {
 			t.Error("a request without a URL can be executed")
+		}
+	})
+}
+
+func TestSearchRequests(t *testing.T) {
+	files := testFiles(t)
+
+	store := &collection.Store{}
+	hotel := store.AddFolder("Hotel")
+	hotel.Add(collection.NewREST("Ping", rest.Request{Method: "GET"}))
+	rooms := hotel.AddFolder("Rooms")
+	rooms.Collapsed = true
+	rooms.Add(collection.NewREST("Book room", rest.Request{Method: "POST"}))
+	rooms.Add(collection.NewREST("List rooms", rest.Request{Method: "GET"}))
+	users := store.AddFolder("Users")
+	users.Collapsed = true
+	users.Add(collection.NewREST("List users", rest.Request{Method: "GET"}))
+	store.AddFolder("Empty")
+	if err := store.Save(files.Requests); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files)
+		w.Show()
+		rt := w.requests
+		tree := rt.tree
+
+		// shown lists the paths of the items that are not hidden.
+		shown := func() []string {
+			var paths []string
+			var walk func(item *qt.QTreeWidgetItem, path string)
+			walk = func(item *qt.QTreeWidgetItem, path string) {
+				if item.IsHidden() {
+					return
+				}
+				path += "/" + item.Text(colName)
+				paths = append(paths, path)
+				for i := range item.ChildCount() {
+					walk(item.Child(i), path)
+				}
+			}
+			for i := range tree.TopLevelItemCount() {
+				walk(tree.TopLevelItem(i), "")
+			}
+			return paths
+		}
+		check := func(query string, want ...string) {
+			t.Helper()
+			rt.search.SetText(query)
+			if got := shown(); !reflect.DeepEqual(got, want) {
+				t.Errorf("search %q shows %q, want %q", query, got, want)
+			}
+		}
+
+		// Requests that match are shown with the folders they are in, which
+		// are opened, whatever the case of the letters.
+		check("LIST", "/Hotel", "/Hotel/Rooms", "/Hotel/Rooms/List rooms", "/Users", "/Users/List users")
+		if !treeItem(tree, "Hotel", "Rooms").IsExpanded() || !treeItem(tree, "Users").IsExpanded() {
+			t.Error("the folders of what was found are not open")
+		}
+
+		// Every word must match, in the name or the folders above.
+		check("list room", "/Hotel", "/Hotel/Rooms", "/Hotel/Rooms/List rooms")
+		check("users list", "/Users", "/Users/List users")
+
+		// A folder that matches is shown with everything in it.
+		check("rooms", "/Hotel", "/Hotel/Rooms", "/Hotel/Rooms/Book room", "/Hotel/Rooms/List rooms")
+		check("empty", "/Empty")
+		check("nothing like this")
+
+		// What is found is still the request it was.
+		rt.search.SetText("book")
+		tree.SetCurrentItem(treeItem(tree, "Hotel", "Rooms", "Book room"))
+		if w.open == nil || w.open.Name != "Book room" || w.request.method.CurrentText() != "POST" {
+			t.Errorf("opened %+v", w.open)
+		}
+
+		// Clearing the search shows everything, with the folders open or
+		// closed as they were, and the request still selected.
+		check("", "/Empty", "/Hotel", "/Hotel/Rooms", "/Hotel/Rooms/Book room", "/Hotel/Rooms/List rooms", "/Hotel/Ping", "/Users", "/Users/List users")
+		// Rooms was closed, but is left open to show the selected request.
+		if !treeItem(tree, "Hotel", "Rooms").IsExpanded() || treeItem(tree, "Users").IsExpanded() || !treeItem(tree, "Hotel").IsExpanded() {
+			t.Error("the folders are not as they were")
+		}
+		if item := tree.CurrentItem(); item == nil || item.Text(colName) != "Book room" {
+			t.Error("the request is no longer selected")
+		}
+		if !rooms.Collapsed || !users.Collapsed || hotel.Collapsed {
+			t.Error("the search changed which folders are closed")
+		}
+
+		// Adding something clears the search, so that it can be seen.
+		rt.search.SetText("users")
+		tree.SetCurrentItem(treeItem(tree, "Users"))
+		rt.addRequest()
+		if rt.search.Text() != "" || len(shown()) != 9 || tree.CurrentItem().Text(colName) != "New Request" {
+			t.Errorf("after adding: search %q, shown %q", rt.search.Text(), shown())
 		}
 	})
 }

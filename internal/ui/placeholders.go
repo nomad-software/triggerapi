@@ -6,7 +6,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"github.com/nomad-software/postie/internal/env"
+	"github.com/nomad-software/triggerapi/internal/env"
 )
 
 // placeholderRange is the position of a {{key}} placeholder in a piece of

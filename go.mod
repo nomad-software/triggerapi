@@ -1,4 +1,4 @@
-module github.com/nomad-software/postie
+module github.com/nomad-software/triggerapi
 
 go 1.27.1
 

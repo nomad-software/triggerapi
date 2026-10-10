@@ -5,7 +5,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"github.com/nomad-software/postie/internal/rpc"
+	"github.com/nomad-software/triggerapi/internal/rpc"
 )
 
 // grpcPanel holds the widgets used to compose a gRPC request. The methods the

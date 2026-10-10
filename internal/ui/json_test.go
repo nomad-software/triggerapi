@@ -12,7 +12,7 @@ func TestJSONTokens(t *testing.T) {
 	}{
 		{``, nil},
 		{`{`, nil},
-		{`  "name": "postie",`, []jsonToken{{2, 6, tokenKey}, {10, 8, tokenString}}},
+		{`  "name": "triggerapi",`, []jsonToken{{2, 6, tokenKey}, {10, 12, tokenString}}},
 		{`"n" : -1.5e+3, "ok":true,"x":null`, []jsonToken{
 			{0, 3, tokenKey}, {6, 7, tokenNumber},
 			{15, 4, tokenKey}, {20, 4, tokenLiteral},

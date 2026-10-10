@@ -3,7 +3,7 @@ package ui
 import (
 	qt "github.com/mappu/miqt/qt6"
 
-	"github.com/nomad-software/postie/internal/rest"
+	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
 // authTypes are the entries of the auth type selector, in the order they are

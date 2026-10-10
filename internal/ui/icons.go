@@ -181,17 +181,23 @@ func drawArrows(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
-// drawEnvelope draws an envelope, as delivered by a postie.
-func drawEnvelope(painter *qt.QPainter) {
-	painter.SetPenWithPen(whitePen())
-	painter.SetBrushWithStyle(qt.NoBrush)
-	painter.DrawRoundedRect2(26, 38, 76, 52, 6, 6)
+// drawBolt draws a bolt of lightning, for a request that is fired off.
+func drawBolt(painter *qt.QPainter) {
+	white := qt.NewQColor6("#ffffff")
+	pen := qt.NewQPen3(white)
+	pen.SetWidth(6)
+	pen.SetJoinStyle(qt.RoundJoin)
+	painter.SetPenWithPen(pen)
+	painter.SetBrush(qt.NewQBrush3(white))
 
-	// The flap.
 	path := qt.NewQPainterPath()
-	path.MoveTo2(29, 42)
-	path.LineTo2(64, 68)
-	path.LineTo2(99, 42)
+	path.MoveTo2(74, 22)
+	path.LineTo2(38, 72)
+	path.LineTo2(61, 72)
+	path.LineTo2(54, 106)
+	path.LineTo2(91, 55)
+	path.LineTo2(68, 55)
+	path.CloseSubpath()
 	painter.DrawPath(path)
 }
 
@@ -203,7 +209,7 @@ var appIconCache *qt.QIcon
 // appIcon returns the icon of the program.
 func appIcon() *qt.QIcon {
 	if appIconCache == nil {
-		appIconCache = drawIcon(256, appIconColour, drawEnvelope)
+		appIconCache = drawIcon(256, appIconColour, drawBolt)
 	}
 	return appIconCache
 }

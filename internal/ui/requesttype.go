@@ -3,7 +3,7 @@ package ui
 import (
 	qt "github.com/mappu/miqt/qt6"
 
-	"github.com/nomad-software/postie/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/collection"
 )
 
 // requestTypes are the types of request that can be created, in the order

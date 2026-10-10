@@ -5,7 +5,7 @@ package settings
 import (
 	"regexp"
 
-	"github.com/nomad-software/postie/internal/jsonfile"
+	"github.com/nomad-software/triggerapi/internal/jsonfile"
 )
 
 const (

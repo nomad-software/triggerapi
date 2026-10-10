@@ -11,8 +11,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/nomad-software/postie/internal/collection"
-	"github.com/nomad-software/postie/internal/rest"
+	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
 // exported is the part of a collection that requests are made from.

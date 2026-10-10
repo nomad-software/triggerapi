@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nomad-software/postie/internal/rest"
-	"github.com/nomad-software/postie/internal/rpc"
+	"github.com/nomad-software/triggerapi/internal/rest"
+	"github.com/nomad-software/triggerapi/internal/rpc"
 )
 
 func TestSaveLoad(t *testing.T) {

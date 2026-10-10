@@ -7,8 +7,8 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"github.com/nomad-software/postie/internal/env"
-	"github.com/nomad-software/postie/internal/postman"
+	"github.com/nomad-software/triggerapi/internal/env"
+	"github.com/nomad-software/triggerapi/internal/postman"
 )
 
 // envList lists the environments. The selected environment is the active one
@@ -55,7 +55,7 @@ func newEnvList(store *env.Store, path string) *envList {
 		return path, path != ""
 	}
 	s.warn = func(message string) {
-		qt.QMessageBox_Warning(s.root, "Postie", message)
+		qt.QMessageBox_Warning(s.root, "TriggerAPI", message)
 	}
 
 	add := qt.NewQPushButton3("Add")

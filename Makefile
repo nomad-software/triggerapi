@@ -1,4 +1,4 @@
-BINARY := postie
+BINARY := triggerapi
 
 # -s -w leaves out the symbol table and debug information, which roughly
 # halves the size of the binary.

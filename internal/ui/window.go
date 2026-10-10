@@ -14,11 +14,11 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
 
-	"github.com/nomad-software/postie/internal/collection"
-	"github.com/nomad-software/postie/internal/env"
-	"github.com/nomad-software/postie/internal/rest"
-	"github.com/nomad-software/postie/internal/rpc"
-	"github.com/nomad-software/postie/internal/settings"
+	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/env"
+	"github.com/nomad-software/triggerapi/internal/rest"
+	"github.com/nomad-software/triggerapi/internal/rpc"
+	"github.com/nomad-software/triggerapi/internal/settings"
 )
 
 // Pages of the main stack.
@@ -54,7 +54,7 @@ func aboutText() string {
 	// The licence notices are set apart from the description of the program
 	// in a bordered box of smaller text. Qt's rich text draws a border
 	// around a table but not around a paragraph.
-	return "<h3>Postie " + Version + "</h3>" +
+	return "<h3>TriggerAPI " + Version + "</h3>" +
 		"<p>A desktop client for making REST API and gRPC calls.</p>" +
 		"<p>Copyright © 2026 Gary Willoughby. All rights reserved.</p>" +
 		"<table style=\"margin-top: 24px; border: 1px solid #888888; border-collapse: collapse;\" cellpadding=\"10\" width=\"100%\">" +
@@ -155,7 +155,7 @@ func NewWindow(files Files) *Window {
 		schemas:     map[string]*rpc.Schema{},
 	}
 
-	w.SetWindowTitle("Postie " + Version)
+	w.SetWindowTitle("TriggerAPI " + Version)
 	w.SetWindowIcon(appIcon())
 	// Dialogs take their icon from the application.
 	qt.QGuiApplication_SetWindowIcon(appIcon())
@@ -175,7 +175,7 @@ func NewWindow(files Files) *Window {
 	w.OnCloseEvent(func(super func(*qt.QCloseEvent), event *qt.QCloseEvent) {
 		if err := w.settings().Save(files.Settings); err != nil {
 			// The window is going away, so there is nowhere to show this.
-			fmt.Fprintln(os.Stderr, "postie: settings could not be saved:", err)
+			fmt.Fprintln(os.Stderr, "triggerapi: settings could not be saved:", err)
 		}
 		super(event)
 	})
@@ -383,7 +383,7 @@ func (w *Window) newMenuBar() {
 	w.about.SetShortcut(qt.NewQKeySequence2("Ctrl+I"))
 	w.about.SetMenuRole(qt.QAction__AboutRole)
 	w.about.OnTriggered(func() {
-		qt.QMessageBox_About(w.QWidget, "About Postie", aboutText())
+		qt.QMessageBox_About(w.QWidget, "About TriggerAPI", aboutText())
 	})
 }
 

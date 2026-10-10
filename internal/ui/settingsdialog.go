@@ -6,7 +6,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
-	"github.com/nomad-software/postie/internal/settings"
+	"github.com/nomad-software/triggerapi/internal/settings"
 )
 
 // settingsDialog edits the settings the user can choose.
@@ -53,7 +53,7 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 
 	note := qt.NewQLabel3("Choosing a file that already exists loads what is in it. " +
 		"Choosing a new file saves the current data there. " +
-		"A relative path is relative to the directory Postie is run from.")
+		"A relative path is relative to the directory TriggerAPI is run from.")
 	note.SetWordWrap(true)
 	note.SetEnabled(false)
 

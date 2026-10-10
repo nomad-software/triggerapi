@@ -1,4 +1,4 @@
-# Postie
+# TriggerAPI
 
 A desktop client for making REST API and gRPC calls, inspired by Postman. It is written
 in Go with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
@@ -7,7 +7,7 @@ bindings.
 - Send requests with any common HTTP method, query params, headers, basic or
   bearer authorization, and a JSON, text, XML or form body.
 - Show any REST request as a `curl` command, with the environment's variables
-  filled in, to copy and run in a terminal, or run it from Postie with the
+  filled in, to copy and run in a terminal, or run it from TriggerAPI with the
   installed `curl` and see the response as usual.
 - Call gRPC methods, sending the message as JSON with metadata and basic or
   bearer authorization. The methods of a server are discovered using gRPC
@@ -15,7 +15,8 @@ bindings.
 - JSON bodies, messages and responses are syntax highlighted, and their
   objects and arrays can be folded.
 - Save requests in folders, nested to any depth, and move them between
-  folders by dragging. Folders and requests are listed alphabetically.
+  folders by dragging. Folders and requests are listed alphabetically, and
+  can be searched by name.
 - Import an OpenAPI 3 or Swagger 2 document, as JSON or YAML, or a Postman
   collection, to create a folder of requests.
 - Define environments of variables and use them anywhere in a request as
@@ -23,7 +24,7 @@ bindings.
 
 ## Requirements
 
-Postie is developed and tested on Linux. It has not been tested on macOS yet,
+TriggerAPI is developed and tested on Linux. It has not been tested on macOS yet,
 and there is no macOS release, but the instructions below should build it
 there.
 
@@ -95,7 +96,7 @@ make build
 This is the same as:
 
 ```sh
-go build -ldflags "-s -w" -o postie .
+go build -ldflags "-s -w" -o triggerapi .
 ```
 
 The `-s -w` flags build without the symbol table and debug information, which
@@ -120,10 +121,10 @@ definitions from `.proto` files is not supported yet.
 ## Running
 
 ```sh
-./postie
+./triggerapi
 ```
 
-Postie keeps its data as JSON files, by default in the directory it is run
+TriggerAPI keeps its data as JSON files, by default in the directory it is run
 from:
 
 | File | Contents |
@@ -134,7 +135,7 @@ from:
 
 The environments and requests files can be kept elsewhere, such as a folder
 that is synced or shared, by choosing their locations in File > Settings.
-`settings.json` always stays in the directory Postie is run from.
+`settings.json` always stays in the directory TriggerAPI is run from.
 
 Changes are saved as they are made. Passwords and tokens entered in requests
 and environments are stored in these files as plain text.

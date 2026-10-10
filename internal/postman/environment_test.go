@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nomad-software/postie/internal/env"
+	"github.com/nomad-software/triggerapi/internal/env"
 )
 
 func TestImportEnvironment(t *testing.T) {

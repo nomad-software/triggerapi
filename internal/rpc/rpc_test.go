@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nomad-software/postie/internal/rest"
-	"github.com/nomad-software/postie/internal/rpc"
-	"github.com/nomad-software/postie/internal/rpc/rpctest"
+	"github.com/nomad-software/triggerapi/internal/rest"
+	"github.com/nomad-software/triggerapi/internal/rpc"
+	"github.com/nomad-software/triggerapi/internal/rpc/rpctest"
 )
 
 func server(t *testing.T, reflection rpctest.Reflection) *httptest.Server {
