@@ -1,6 +1,6 @@
 # TriggerAPI
 
-A desktop client for making REST API and gRPC calls, inspired by Postman. It is written
+A desktop client for making REST API and gRPC calls. It is written
 in Go with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
 bindings.
 
@@ -12,6 +12,7 @@ bindings.
 - Call gRPC methods, sending the message as JSON with metadata and basic or
   bearer authorization. The methods of a server are discovered using gRPC
   server reflection, so no protobuf files are needed.
+- Save the body of a response to a file.
 - JSON bodies, messages and responses are syntax highlighted, and their
   objects and arrays can be folded.
 - Save requests in folders, nested to any depth, and move them between

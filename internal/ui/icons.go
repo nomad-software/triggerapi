@@ -132,6 +132,31 @@ func drawPrompt(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
+// drawDisk draws a floppy disk, for saving something to a file.
+func drawDisk(painter *qt.QPainter) {
+	painter.SetPenWithPen(whitePen())
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	path := qt.NewQPainterPath()
+	// The disk, with its top right corner cut off.
+	path.MoveTo2(30, 30)
+	path.LineTo2(84, 30)
+	path.LineTo2(98, 44)
+	path.LineTo2(98, 98)
+	path.LineTo2(30, 98)
+	path.CloseSubpath()
+	// The shutter at the top, and the label at the bottom.
+	path.MoveTo2(46, 30)
+	path.LineTo2(46, 50)
+	path.LineTo2(74, 50)
+	path.LineTo2(74, 30)
+	path.MoveTo2(46, 98)
+	path.LineTo2(46, 72)
+	path.LineTo2(82, 72)
+	path.LineTo2(82, 98)
+	painter.DrawPath(path)
+}
+
 // The colours of the sidebar tab icons.
 const (
 	environmentsColour = "#8e6fd8"

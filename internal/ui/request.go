@@ -36,10 +36,6 @@ const (
 	pageCurl
 )
 
-// viewIconSize is the size of the icons in the bar at the right of the
-// request panel.
-const viewIconSize = 32
-
 // curlColour is the colour of the curl icon.
 const curlColour = "#0b4f6c"
 
@@ -165,12 +161,8 @@ func newRequestPanel() *requestPanel {
 // newViewBar returns the slim bar at the right of the panel, with a button
 // for each other way of showing the request.
 func (p *requestPanel) newViewBar() *qt.QWidget {
-	p.curl = qt.NewQToolButton2()
-	p.curl.SetIcon(drawIcon(viewIconSize*2, curlColour, drawPrompt))
-	p.curl.SetIconSize(qt.NewQSize2(viewIconSize, viewIconSize))
-	p.curl.SetToolTip("Show the request as a curl command")
+	p.curl = newViewButton(curlColour, drawPrompt, "Show the request as a curl command")
 	p.curl.SetCheckable(true)
-	p.curl.SetAutoRaise(true)
 	p.curl.OnToggled(func(checked bool) {
 		if checked {
 			p.pages.SetCurrentIndex(pageCurl)
@@ -180,16 +172,7 @@ func (p *requestPanel) newViewBar() *qt.QWidget {
 		}
 	})
 
-	// The bar is framed, like the pane of the sidebar at the left. The
-	// border is given outright, as not every theme draws one around a frame.
-	bar := qt.NewQFrame2()
-	bar.SetStyleSheet(".QFrame { border: 1px solid " + borderColour() + "; border-radius: 3px; }")
-	layout := qt.NewQVBoxLayout(bar.QWidget)
-	layout.SetContentsMargins(4, 4, 4, 4)
-	layout.AddWidget(p.curl.QWidget)
-	layout.AddStretch()
-
-	return bar.QWidget
+	return newViewBar(p.curl)
 }
 
 // newCurlPage returns the page which shows the request as a curl command.

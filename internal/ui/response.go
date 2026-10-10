@@ -5,6 +5,7 @@ import (
 	"html"
 	"maps"
 	"net/http"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,6 +24,20 @@ type responsePanel struct {
 	tabs    *qt.QTabWidget
 	body    *qt.QPlainTextEdit
 	headers *qt.QTableWidget
+
+	// save writes the body of the response to a file. It is in the slim
+	// bar at the right of the panel.
+	save *qt.QToolButton
+	// content is the body as it is saved: JSON formatted as it is shown,
+	// and any other HTTP response as it was received. fileName is the name
+	// offered for the file.
+	content  []byte
+	fileName string
+	// chooseSave asks the user where to save a file, offering a name. It
+	// reports false if they decide against saving.
+	chooseSave func(name string) (string, bool)
+	// warn tells the user of a problem.
+	warn func(message string)
 
 	// json records that the response is JSON, which is coloured and can have
 	// its objects and arrays folded.
@@ -87,7 +102,19 @@ func newResponsePanel(bodyFont string) *responsePanel {
 	p.tabs.AddTab(p.body.QWidget, "Response")
 	p.tabs.AddTab(p.headers.QWidget, "Headers")
 
-	layout := qt.NewQVBoxLayout(p.root)
+	p.chooseSave = func(name string) (string, bool) {
+		path := qt.QFileDialog_GetSaveFileName3(p.root, "Save Response", name)
+		return path, path != ""
+	}
+	p.warn = func(message string) {
+		qt.QMessageBox_Warning(p.root, "TriggerAPI", message)
+	}
+	p.save = newViewButton(saveColour, drawDisk, "Save the response to a file")
+	p.save.SetEnabled(false)
+	p.save.OnClicked(p.saveBody)
+
+	layout := qt.NewQVBoxLayout(qt.NewQWidget2())
+	layout.SetContentsMargins(0, 0, 0, 0)
 	p.result = qt.NewQLabel2()
 	p.result.SetTextFormat(qt.RichText)
 	p.result.SetWordWrap(true)
@@ -102,7 +129,53 @@ func newResponsePanel(bodyFont string) *responsePanel {
 	layout.AddWidget2(p.tabs.QWidget, 1)
 	layout.AddLayout(bar.QLayout)
 
+	// The slim bar is beside the whole of the response, as the one of the
+	// request panel is beside the request.
+	content := qt.NewQHBoxLayout(p.root)
+	content.AddWidget2(layout.ParentWidget(), 1)
+	content.AddWidget(newViewBar(p.save))
+
 	return p
+}
+
+// saveColour is the colour of the save icon.
+const saveColour = "#2f9e44"
+
+// setContent keeps the body of the response to be saved, and the name to
+// offer for its file. Without a body there is nothing to save.
+func (p *responsePanel) setContent(content []byte, fileName string) {
+	p.content = content
+	p.fileName = fileName
+	p.save.SetEnabled(len(content) > 0)
+}
+
+// saveBody asks where to save the body of the response, and saves it.
+func (p *responsePanel) saveBody() {
+	if len(p.content) == 0 {
+		return
+	}
+	path, ok := p.chooseSave(p.fileName)
+	if !ok {
+		return
+	}
+	if err := os.WriteFile(path, p.content, 0o644); err != nil {
+		p.warn(fmt.Sprintf("The response could not be saved: %v.", err))
+	}
+}
+
+// responseFileName returns a name to offer for the file a response is saved
+// to, from the type of content it says it is.
+func responseFileName(contentType string) string {
+	contentType = strings.ToLower(contentType)
+	for _, kind := range []struct{ part, extension string }{
+		{"json", "json"}, {"xml", "xml"}, {"html", "html"}, {"csv", "csv"}, {"pdf", "pdf"},
+		{"png", "png"}, {"jpeg", "jpg"}, {"gif", "gif"}, {"zip", "zip"}, {"text/", "txt"},
+	} {
+		if strings.Contains(contentType, kind.part) {
+			return "response." + kind.extension
+		}
+	}
+	return "response.bin"
 }
 
 // setJSONColours changes the colours JSON is shown in.
@@ -129,6 +202,7 @@ func fixedFont(family string) *qt.QFont {
 // clear empties the panel.
 func (p *responsePanel) clear() {
 	p.setBody("", false)
+	p.setContent(nil, "")
 	p.headers.SetRowCount(0)
 	p.tabs.SetTabText(1, "Headers")
 	p.setFields()
@@ -188,6 +262,13 @@ func (p *responsePanel) showError(err error, elapsed time.Duration) {
 // error status.
 func (p *responsePanel) show(res *rest.Response) {
 	p.setBody(res.Text(), res.IsJSON())
+	// JSON is saved formatted, as it is shown. Anything else is saved as
+	// it was received, which keeps a file that is not text intact.
+	content := res.Body
+	if res.IsJSON() {
+		content = []byte(res.Text())
+	}
+	p.setContent(content, responseFileName(res.Headers.Get("Content-Type")))
 	p.setHeaders(headerRows(res.Headers, ""))
 	p.setFields(
 		field{fieldCode, res.Status, res.StatusCode >= 400},
@@ -202,6 +283,7 @@ func (p *responsePanel) show(res *rest.Response) {
 // OK. The trailers of the call are listed after its headers.
 func (p *responsePanel) showRPC(res *rpc.Response) {
 	p.setBody(strings.Join(res.Messages, "\n\n"), true)
+	p.setContent([]byte(p.body.ToPlainText()), "response.json")
 	p.setHeaders(append(headerRows(res.Headers, ""), headerRows(res.Trailers, " (trailer)")...))
 	p.setFields(
 		field{fieldCode, fmt.Sprintf("%d %s", res.Code, res.CodeName), !res.OK()},

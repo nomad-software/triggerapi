@@ -2952,3 +2952,92 @@ func TestSearchRequests(t *testing.T) {
 		}
 	})
 }
+
+func TestSaveResponse(t *testing.T) {
+	dir := t.TempDir()
+
+	mainthread.Wait(func() {
+		w := NewWindow(testFiles(t))
+		w.Show()
+
+		for _, p := range []*responsePanel{w.response, w.grpcResponse} {
+			var offered []string
+			var warned []string
+			target := filepath.Join(dir, "saved")
+			p.chooseSave = func(name string) (string, bool) { offered = append(offered, name); return target, true }
+			p.warn = func(message string) { warned = append(warned, message) }
+
+			// There is nothing to save until there is a response.
+			if p.save.IsEnabled() || !p.root.IsAncestorOf(p.save.QWidget) {
+				t.Fatal("the save button is enabled without a response, or is not in the panel")
+			}
+
+			// JSON is saved formatted, as it is shown.
+			raw := []byte(`{"a":1}`)
+			p.show(&rest.Response{Status: "200 OK", StatusCode: 200, Headers: http.Header{"Content-Type": {"application/json"}}, Body: raw})
+			if !p.save.IsEnabled() {
+				t.Fatal("the save button is not enabled")
+			}
+			p.save.Click()
+			if got, err := os.ReadFile(target); err != nil || string(got) != "{\n  \"a\": 1\n}" || string(got) != p.body.ToPlainText() || !reflect.DeepEqual(offered, []string{"response.json"}) {
+				t.Errorf("saved %q, %v, offered %q", got, err, offered)
+			}
+
+			// Anything else is saved as it was received, as is JSON that
+			// is not valid.
+			for contentType, body := range map[string]string{"application/octet-stream": "\x00\xff {\"a\":1}", "application/json": `{"a":`} {
+				p.show(&rest.Response{Status: "200 OK", StatusCode: 200, Headers: http.Header{"Content-Type": {contentType}}, Body: []byte(body)})
+				p.save.Click()
+				if got, _ := os.ReadFile(target); string(got) != body {
+					t.Errorf("saved %q, want %q", got, body)
+				}
+			}
+
+			// The messages of a gRPC call are saved as they are shown.
+			p.showRPC(&rpc.Response{Messages: []string{"{\n  \"a\": 1\n}", "{\n  \"b\": 2\n}"}})
+			p.save.Click()
+			if got, _ := os.ReadFile(target); string(got) != p.body.ToPlainText() || !strings.Contains(string(got), `"b": 2`) {
+				t.Errorf("saved %q", got)
+			}
+
+			// Nothing is written if no file is chosen.
+			os.Remove(target)
+			p.chooseSave = func(string) (string, bool) { return "", false }
+			p.save.Click()
+			if _, err := os.Stat(target); err == nil {
+				t.Error("saved without a file being chosen")
+			}
+
+			// A file that cannot be written is reported.
+			p.chooseSave = func(string) (string, bool) { return filepath.Join(dir, "missing", "file"), true }
+			p.save.Click()
+			if len(warned) != 1 || !strings.Contains(warned[0], "could not be saved") {
+				t.Errorf("warned %q", warned)
+			}
+
+			// A response without a body, an error and a new request leave
+			// nothing to save.
+			p.show(&rest.Response{Status: "204 No Content", StatusCode: 204, Headers: http.Header{}})
+			if p.save.IsEnabled() {
+				t.Error("an empty response can be saved")
+			}
+			p.show(&rest.Response{Status: "200 OK", StatusCode: 200, Headers: http.Header{}, Body: raw})
+			p.showError(io.EOF, time.Second)
+			if p.save.IsEnabled() {
+				t.Error("an error can be saved")
+			}
+		}
+
+		for contentType, want := range map[string]string{
+			"application/json; charset=utf-8": "response.json",
+			"text/xml":                        "response.xml",
+			"text/html":                       "response.html",
+			"text/plain":                      "response.txt",
+			"":                                "response.bin",
+		} {
+			if got := responseFileName(contentType); got != want {
+				t.Errorf("file name for %q = %q, want %q", contentType, got, want)
+			}
+		}
+	})
+}
