@@ -23,6 +23,8 @@ const (
 	colourFound
 	colourNotFound
 	colourError
+	colourCaptured
+	colourNotCaptured
 )
 
 // colourKinds are the colours, with what each is called in the settings and
@@ -31,7 +33,8 @@ const (
 // command too. The action buttons are those beside the tabs of a panel, curl
 // and save, and the pin of a request tab. A placeholder that the active
 // environment defines is green, and one that it does not is the colour of an
-// error.
+// error. The last two are of the tick and the cross which say how capturing
+// from a response went.
 var colourKinds = []struct {
 	kind     colourKind
 	label    string
@@ -48,6 +51,8 @@ var colourKinds = []struct {
 	{colourFound, "Placeholders found", "#2e9e5b"},
 	{colourNotFound, "Placeholders not found", failureColour},
 	{colourError, "Errors", failureColour},
+	{colourCaptured, "Captured", "#2e9e5b"},
+	{colourNotCaptured, "Not captured", failureColour},
 }
 
 // customColours are the colours the user has chosen. See setColours.
@@ -77,6 +82,10 @@ func customIconColour(custom *settings.Colours, kind colourKind) *string {
 		return &custom.NotFound
 	case colourError:
 		return &custom.Error
+	case colourCaptured:
+		return &custom.Captured
+	case colourNotCaptured:
+		return &custom.NotCaptured
 	default:
 		return &custom.Action
 	}
@@ -135,6 +144,7 @@ func setColours(custom settings.Colours) {
 
 	requestTypeIcons = map[collection.Type]*qt.QIcon{}
 	folderIcon, workspaceIconCache, environmentIconCache, removeIcon = nil, nil, nil, nil
+	capturedIcon, notCapturedIcon = nil, nil
 
 	for _, paint := range painted {
 		paint()

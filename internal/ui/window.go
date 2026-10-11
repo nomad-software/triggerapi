@@ -198,6 +198,10 @@ func NewWindow(files Files) *Window {
 	setColours(w.config.Colours)
 	w.response = newResponsePanel(w.config.ResponseFont)
 	w.grpcResponse = newResponsePanel(w.config.ResponseFont)
+	// What to capture from a response is set beside the response, though
+	// it is kept by the request.
+	w.response.setCaptureTable(w.request.captures)
+	w.grpcResponse.setCaptureTable(w.grpc.captures)
 	w.Resize(w.config.Width, w.config.Height)
 	if w.config.Maximized {
 		w.SetWindowState(qt.WindowMaximized)
@@ -897,10 +901,21 @@ func (w *Window) updateHeaders() {
 	w.environment.setEnvironments(names, store.Active)
 }
 
+// outcome is what is done, on the main thread, with the result of the work
+// of a request that ended without an error.
+type outcome struct {
+	// capture sets variables of the active environment from the result.
+	// It is called once, even if the result is no longer wanted on show.
+	capture func()
+	// show shows the result. It is called again whenever the tab of the
+	// request is gone back to.
+	show func()
+}
+
 // run does the work of the Send or Invoke button in the background, or
-// cancels the work already in flight. The work returns a function to show
-// its result, which is called on the main thread.
-func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(context.Context) (show func(), err error)) {
+// cancels the work already in flight. The work returns what to do with its
+// result, which is done on the main thread.
+func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(context.Context) (outcome, error)) {
 	if w.cancel != nil {
 		w.cancel()
 		return
@@ -919,13 +934,19 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(
 	// Qt widgets may only be touched from the main thread, so the result is
 	// handed back to it.
 	go func() {
-		show, err := work(ctx)
+		done, err := work(ctx)
 		elapsed := time.Since(start)
 
 		mainthread.Start(func() {
 			cancel()
 			w.cancel = nil
 			button.SetText(label)
+
+			// The request was made for what it captures as much as for
+			// what it shows, so that is kept whatever is on show by now.
+			if err == nil {
+				done.capture()
+			}
 
 			var result func()
 			switch {
@@ -938,7 +959,7 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(
 			case err != nil:
 				result = func() { response.showError(err, elapsed) }
 			default:
-				result = show
+				result = done.show
 			}
 
 			// The tab keeps the result, to show it again when the tab is
@@ -951,28 +972,49 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(
 
 // send starts the REST request, or cancels the request in flight.
 func (w *Window) send() {
-	req := w.request.request().Expand(w.expand)
+	request := w.request.request()
+	req := request.Expand(w.expand)
 
-	w.run(w.request.send, w.response, func(ctx context.Context) (func(), error) {
+	w.run(w.request.send, w.response, func(ctx context.Context) (outcome, error) {
 		res, err := rest.Send(ctx, w.client, req)
-		return func() { w.response.show(res) }, err
+		return w.restOutcome(res, request.Captures), err
 	})
 }
 
 // executeCurl makes the REST request by running the curl command that is
 // shown for it, or cancels the request in flight.
 func (w *Window) executeCurl() {
-	req := w.request.request().Expand(w.expand)
+	request := w.request.request()
+	req := request.Expand(w.expand)
 
-	w.run(w.request.execute, w.response, func(ctx context.Context) (func(), error) {
+	w.run(w.request.execute, w.response, func(ctx context.Context) (outcome, error) {
 		res, err := rest.RunCurl(ctx, req)
-		return func() { w.response.show(res) }, err
+		return w.restOutcome(res, request.Captures), err
 	})
+}
+
+// restOutcome returns what to do with the response to a REST request, which
+// is nil if there was an error instead. Values are captured from a response
+// with a status that is a success.
+func (w *Window) restOutcome(res *rest.Response, captures []rest.KeyValue) outcome {
+	var captured []captureResult
+	return outcome{
+		capture: func() {
+			if res.StatusCode >= 200 && res.StatusCode < 300 {
+				captured = w.capture(captures, string(res.Body))
+			}
+		},
+		show: func() {
+			w.response.show(res)
+			w.response.showCaptured(captured)
+		},
+	}
 }
 
 // invoke starts the gRPC request, or cancels the request in flight.
 func (w *Window) invoke() {
-	req := w.grpc.request().Expand(w.expand)
+	request := w.grpc.request()
+	req := request.Expand(w.expand)
 
 	// The service definition is loaded by the call if it has not been yet.
 	var schema *rpc.Schema
@@ -980,9 +1022,27 @@ func (w *Window) invoke() {
 		schema = w.schemas[target]
 	}
 
-	w.run(w.grpc.invoke, w.grpcResponse, func(ctx context.Context) (func(), error) {
+	w.run(w.grpc.invoke, w.grpcResponse, func(ctx context.Context) (outcome, error) {
 		res, err := rpc.Invoke(ctx, req, schema)
-		return func() { w.grpcResponse.showRPC(res) }, err
+
+		// Values are captured from the last message of a call that ended
+		// with OK, which is the only message of a unary method.
+		var captured []captureResult
+		return outcome{
+			capture: func() {
+				switch {
+				case !res.OK():
+				case len(res.Messages) == 0:
+					captured = failedCaptures(request.Captures, errors.New("there was no response message"))
+				default:
+					captured = w.capture(request.Captures, res.Messages[len(res.Messages)-1])
+				}
+			},
+			show: func() {
+				w.grpcResponse.showRPC(res)
+				w.grpcResponse.showCaptured(captured)
+			},
+		}, err
 	})
 }
 

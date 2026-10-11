@@ -55,6 +55,11 @@ type requestPanel struct {
 
 	params  *keyValueTable
 	headers *keyValueTable
+	// captures are the variables to set from the response, each with the
+	// path of its value in the response. They are part of the request, but
+	// are shown as the Capture tab of its response panel, where the
+	// response they are about is.
+	captures *keyValueTable
 
 	auth *authEditor
 
@@ -157,6 +162,9 @@ func newRequestPanel() *requestPanel {
 	p.headers = newKeyValueTable("Header", "Value")
 	p.headers.onChange = p.changed
 	p.highlight.table(p.headers.table)
+
+	p.captures = newCaptureTable()
+	p.captures.onChange = p.changed
 
 	// The curl button is at the right of the line the tabs are on.
 	p.curl = newIconButton(colourAction, drawPrompt, "Show the request as a curl command")
@@ -431,6 +439,7 @@ func (p *requestPanel) request() rest.Request {
 		BodyType: bodyTypes[p.bodyType.CurrentIndex()].typ,
 		Body:     p.bodyRaw.ToPlainText(),
 		Form:     p.bodyForm.items(),
+		Captures: p.captures.items(),
 	}
 }
 
@@ -461,6 +470,7 @@ func (p *requestPanel) load(r rest.Request) {
 	p.bodyRaw.SetPlainText(r.Body)
 	p.bodyFold.reset()
 	p.bodyForm.setItems(r.Form)
+	p.captures.setItems(r.Captures)
 	p.updateCurl()
 	p.updatePreview()
 }

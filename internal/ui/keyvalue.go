@@ -2,6 +2,7 @@ package ui
 
 import (
 	"slices"
+	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
@@ -13,9 +14,19 @@ const (
 	colEnabled = iota
 	colKey
 	colValue
+	// colStatus holds an icon which says something of the row. It is
+	// hidden unless the table is one that shows statuses. See showStatuses.
+	colStatus
 	// colRemove holds the button which removes the row.
 	colRemove
 )
+
+// rowStatus is what is shown of a row in its status column: an icon, with
+// what it means as its tooltip.
+type rowStatus struct {
+	icon *qt.QIcon
+	tip  string
+}
 
 // removeIconSize is the size of the icon which removes a row.
 const removeIconSize = 18
@@ -30,18 +41,27 @@ type keyValueTable struct {
 
 	// onChange is called after the user edits or removes a row.
 	onChange func()
+
+	// statuses records that rows have statuses on show, which no longer
+	// hold once the rows are changed. onStale is called when they are
+	// taken away because of that.
+	statuses bool
+	onStale  func()
 }
 
 func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
-	t := &keyValueTable{table: qt.NewQTableWidget3(0, 4)}
+	t := &keyValueTable{table: qt.NewQTableWidget3(0, 5)}
 
-	t.table.SetHorizontalHeaderLabels([]string{"", keyLabel, valueLabel, ""})
+	t.table.SetHorizontalHeaderLabels([]string{"", keyLabel, valueLabel, "", ""})
+	t.table.SetColumnHidden(colStatus, true)
+	t.table.SetIconSize(qt.NewQSize2(removeIconSize, removeIconSize))
 	t.table.VerticalHeader().SetVisible(false)
 
 	header := t.table.HorizontalHeader()
 	header.SetSectionResizeMode2(colEnabled, qt.QHeaderView__ResizeToContents)
 	header.SetSectionResizeMode2(colKey, qt.QHeaderView__Stretch)
 	header.SetSectionResizeMode2(colValue, qt.QHeaderView__Stretch)
+	header.SetSectionResizeMode2(colStatus, qt.QHeaderView__ResizeToContents)
 	header.SetSectionResizeMode2(colRemove, qt.QHeaderView__ResizeToContents)
 
 	t.table.OnItemChanged(func(item *qt.QTableWidgetItem) {
@@ -132,7 +152,37 @@ func (t *keyValueTable) widget() *qt.QWidget {
 	return t.table.QWidget
 }
 
+// showStatuses shows a status against each row whose pair is enabled and
+// has one of the keys, and none against the others. The statuses are taken
+// away again when the rows are next changed.
+func (t *keyValueTable) showStatuses(statuses map[string]rowStatus) {
+	defer func(prev bool) { t.updating = prev }(t.updating)
+	t.updating = true
+
+	t.statuses = len(statuses) > 0
+	none := qt.NewQIcon()
+	defer none.Delete()
+
+	for row := range t.table.RowCount() {
+		item := t.table.Item(row, colStatus)
+		pair := t.pair(row)
+		if status, ok := statuses[strings.TrimSpace(pair.Key)]; ok && pair.Enabled {
+			item.SetIcon(status.icon)
+			item.SetToolTip(status.tip)
+		} else {
+			item.SetIcon(none)
+			item.SetToolTip("")
+		}
+	}
+}
+
 func (t *keyValueTable) changed() {
+	if t.statuses {
+		t.showStatuses(nil)
+		if t.onStale != nil {
+			t.onStale()
+		}
+	}
 	if t.onChange != nil {
 		t.onChange()
 	}
@@ -153,7 +203,11 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 	t.table.SetItem(row, colKey, qt.NewQTableWidgetItem2(key))
 	t.table.SetItem(row, colValue, qt.NewQTableWidgetItem2(value))
 
-	// Nothing is typed or selected in the cell of the button.
+	// Nothing is typed or selected in the cell of the status, which is
+	// left enabled so that its icon is not greyed, or in that of the button.
+	status := qt.NewQTableWidgetItem()
+	status.SetFlags(qt.ItemIsEnabled)
+	t.table.SetItem(row, colStatus, status)
 	blank := qt.NewQTableWidgetItem()
 	blank.SetFlags(qt.NoItemFlags)
 	t.table.SetItem(row, colRemove, blank)
@@ -219,6 +273,7 @@ func (t *keyValueTable) setItems(items []rest.KeyValue) {
 	defer func(prev bool) { t.updating = prev }(t.updating)
 	t.updating = true
 
+	t.statuses = false
 	t.table.SetRowCount(0)
 	for _, item := range items {
 		t.addRow(item.Key, item.Value, item.Enabled)

@@ -131,6 +131,7 @@ var colourSections = [2][]struct {
 	},
 	{
 		{"Text", []colourKind{colourFound, colourNotFound, colourError}},
+		{"Capture", []colourKind{colourCaptured, colourNotCaptured}},
 	},
 }
 

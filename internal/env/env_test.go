@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -144,5 +145,16 @@ func TestSort(t *testing.T) {
 	}
 	if got := names(loaded); !reflect.DeepEqual(got, []string{"A", "b"}) || loaded.Active != 1 {
 		t.Errorf("loaded %v, active %d", got, loaded.Active)
+	}
+}
+
+func TestSet(t *testing.T) {
+	e := Environment{Variables: []Variable{{Key: "host", Value: "a", Enabled: true}, {Key: "token", Value: "old"}}}
+	e.Set("token", "new")
+	e.Set("id", "7")
+
+	want := []Variable{{Key: "host", Value: "a", Enabled: true}, {Key: "token", Value: "new", Enabled: true}, {Key: "id", Value: "7", Enabled: true}}
+	if !slices.Equal(e.Variables, want) {
+		t.Errorf("got %+v, want %+v", e.Variables, want)
 	}
 }

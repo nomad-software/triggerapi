@@ -28,7 +28,10 @@ type grpcPanel struct {
 	example     *qt.QPushButton
 	auth        *authEditor
 	metadata    *keyValueTable
-	definition  *qt.QPlainTextEdit
+	// captures are the variables to set from the response. See
+	// requestPanel.captures.
+	captures   *keyValueTable
+	definition *qt.QPlainTextEdit
 
 	// highlight colours the placeholders in the fields of the request.
 	highlight *placeholderHighlighter
@@ -112,6 +115,9 @@ func newGRPCPanel() *grpcPanel {
 	p.auth = newAuthEditor(p.highlight)
 	p.auth.onChange = p.changed
 
+	p.captures = newCaptureTable()
+	p.captures.onChange = p.changed
+
 	p.metadata = newKeyValueTable("Key", "Value")
 	p.metadata.onChange = p.changed
 	p.highlight.table(p.metadata.table)
@@ -167,6 +173,7 @@ func (p *grpcPanel) request() rpc.Request {
 		Message:  p.message.ToPlainText(),
 		Metadata: p.metadata.items(),
 		Auth:     p.auth.auth(),
+		Captures: p.captures.items(),
 	}
 }
 
@@ -191,6 +198,7 @@ func (p *grpcPanel) load(r rpc.Request) {
 	p.message.SetPlainText(r.Message)
 	p.messageFold.reset()
 	p.metadata.setItems(r.Metadata)
+	p.captures.setItems(r.Captures)
 	p.auth.load(r.Auth)
 
 	p.definition.SetPlainText("")

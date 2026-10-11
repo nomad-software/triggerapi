@@ -56,6 +56,19 @@ func (e Environment) Expand(s string) string {
 	})
 }
 
+// Set gives the variable with a key a value, and enables it. The variable is
+// added if there is none.
+func (e *Environment) Set(key, value string) {
+	for i := range e.Variables {
+		if e.Variables[i].Key == key {
+			e.Variables[i].Value = value
+			e.Variables[i].Enabled = true
+			return
+		}
+	}
+	e.Variables = append(e.Variables, Variable{Key: key, Value: value, Enabled: true})
+}
+
 // Placeholders returns the {{key}} placeholders found in s.
 func Placeholders(s string) []string {
 	return placeholder.FindAllString(s, -1)

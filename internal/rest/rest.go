@@ -93,6 +93,13 @@ type Request struct {
 	BodyType BodyType   `json:"bodyType,omitempty"`
 	Body     string     `json:"body,omitempty"`
 	Form     []KeyValue `json:"form,omitempty"`
+
+	// Captures are the values to take from the response and keep in
+	// variables of the active environment: the key of each is the name of
+	// a variable and its value the path of the value in the JSON of the
+	// response, as the capture package reads it. Placeholders in them are
+	// not replaced.
+	Captures []KeyValue `json:"captures,omitempty"`
 }
 
 // Response is the result of sending a request.

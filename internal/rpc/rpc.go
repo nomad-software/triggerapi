@@ -34,6 +34,10 @@ type Request struct {
 	Message  string          `json:"message,omitempty"`
 	Metadata []rest.KeyValue `json:"metadata,omitempty"`
 	Auth     rest.Auth       `json:"auth"`
+
+	// Captures are the values to take from the last response message and
+	// keep in variables of the active environment. See rest.Request.
+	Captures []rest.KeyValue `json:"captures,omitempty"`
 }
 
 // Response is the result of a call.

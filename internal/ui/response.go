@@ -28,6 +28,12 @@ type responsePanel struct {
 	// save writes the body of the response to a file. It is at the right
 	// of the line the tabs are on.
 	save *qt.QToolButton
+
+	// captures is the table of the Capture tab, which belongs to the
+	// request panel, and captured what came of capturing from the response
+	// that is shown.
+	captures *keyValueTable
+	captured []captureResult
 	// content is the body as it is saved: JSON formatted as it is shown,
 	// and any other HTTP response as it was received. fileName is the name
 	// offered for the file.
@@ -197,6 +203,7 @@ func (p *responsePanel) clear() {
 	p.headers.SetRowCount(0)
 	p.tabs.SetTabText(1, "Headers")
 	p.setFields()
+	p.showCaptured(nil)
 }
 
 // maxHighlight is the size of response above which it is not treated as
@@ -210,10 +217,61 @@ func (p *responsePanel) setBody(text string, isJSON bool) {
 	p.fold.reset()
 }
 
-// recolour shows the bar beneath the response again, after the colour of
-// errors has changed.
+// tabCapture is the tab of a response panel on which what to capture from
+// the response is set.
+const tabCapture = 2
+
+// setCaptureTable adds the Capture tab, which shows the table of what the
+// request captures from its response.
+func (p *responsePanel) setCaptureTable(table *keyValueTable) {
+	p.captures = table
+	p.tabs.AddTab(table.widget(), "Capture")
+	// The marks are of the rows as they were when the response came.
+	table.onStale = func() { p.showCaptured(nil) }
+}
+
+// showCaptured marks the Capture tab with how capturing from the response
+// went: a tick if every value was captured and a cross if any was not, with
+// the same against each row of the table, and the reason one failed as the
+// tooltip of its mark. With no results the marks are taken away.
+func (p *responsePanel) showCaptured(results []captureResult) {
+	p.captured = results
+	if p.captures == nil {
+		return
+	}
+
+	statuses := map[string]rowStatus{}
+	var failed []string
+	for _, r := range results {
+		if r.err != nil {
+			statuses[r.variable] = rowStatus{captureIcon(false), "Not captured: " + r.err.Error()}
+			failed = append(failed, r.variable+": "+r.err.Error())
+		} else {
+			statuses[r.variable] = rowStatus{captureIcon(true), "Captured"}
+		}
+	}
+	p.captures.showStatuses(statuses)
+
+	switch {
+	case len(results) == 0:
+		none := qt.NewQIcon()
+		defer none.Delete()
+		p.tabs.SetTabIcon(tabCapture, none)
+		p.tabs.SetTabToolTip(tabCapture, "")
+	case len(failed) > 0:
+		p.tabs.SetTabIcon(tabCapture, captureIcon(false))
+		p.tabs.SetTabToolTip(tabCapture, "Not captured:\n"+strings.Join(failed, "\n"))
+	default:
+		p.tabs.SetTabIcon(tabCapture, captureIcon(true))
+		p.tabs.SetTabToolTip(tabCapture, "Every value was captured")
+	}
+}
+
+// recolour shows the bar beneath the response and the marks of what was
+// captured again, after the colours have changed.
 func (p *responsePanel) recolour() {
 	p.setFields(p.fields...)
+	p.showCaptured(p.captured)
 }
 
 // setFields fills the bar beneath the response with labelled values. Fields

@@ -52,6 +52,11 @@ bindings.
 
 - Define environments of variables and use them anywhere in a request as
   `{{name}}` placeholders. Environments exported from Postman can be imported.
+- Capture values from a response into variables of the selected environment,
+  such as a token from a login to use in later requests. The Capture tab of
+  the response lists the variables to set, each with the path of its value in the
+  JSON of the response, such as `data.items[0].id`. A tick or a cross on the
+  tab and against each variable shows whether it was captured.
 - Placeholders are coloured where they are used, differently if the selected
   environment does not define them, and the URL a request would be sent to
   can be previewed in place of the URL field. A long URL is wrapped, with the

@@ -154,6 +154,35 @@ func drawEye(painter *qt.QPainter) {
 	painter.DrawEllipse2(54, 54, 20, 20)
 }
 
+// drawTick draws a tick, for something that went well.
+func drawTick(painter *qt.QPainter) {
+	pen := whitePen()
+	pen.SetWidth(14)
+	painter.SetPenWithPen(pen)
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	path := qt.NewQPainterPath()
+	path.MoveTo2(32, 68)
+	path.LineTo2(54, 90)
+	path.LineTo2(98, 40)
+	painter.DrawPath(path)
+}
+
+// drawCross draws a cross, for something that did not.
+func drawCross(painter *qt.QPainter) {
+	pen := whitePen()
+	pen.SetWidth(14)
+	painter.SetPenWithPen(pen)
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	path := qt.NewQPainterPath()
+	path.MoveTo2(38, 38)
+	path.LineTo2(90, 90)
+	path.MoveTo2(90, 38)
+	path.LineTo2(38, 90)
+	painter.DrawPath(path)
+}
+
 // drawDisk draws a floppy disk, for saving something to a file.
 func drawDisk(painter *qt.QPainter) {
 	painter.SetPenWithPen(whitePen())
