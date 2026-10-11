@@ -7,9 +7,10 @@ import (
 )
 
 // formatButton is a button which sets out the JSON in an editor with each
-// member and element on a line of its own.
+// member and element on a line of its own. It is an action button, shown as
+// an icon.
 type formatButton struct {
-	button *qt.QPushButton
+	button *qt.QToolButton
 	edit   *qt.QPlainTextEdit
 
 	// warn tells the user of a problem.
@@ -18,8 +19,8 @@ type formatButton struct {
 
 // newFormatButton returns the button which sets out the JSON in an editor.
 func newFormatButton(edit *qt.QPlainTextEdit) *formatButton {
-	f := &formatButton{button: qt.NewQPushButton3("Format"), edit: edit}
-	f.button.SetToolTip("Set out the JSON with each value on a line of its own")
+	f := &formatButton{edit: edit}
+	f.button = newIconButton(colourAction, drawBraces, "Format the JSON, with each value on a line of its own")
 	f.button.OnClicked(f.format)
 
 	// A problem is shown beneath the button, and goes away by itself.
