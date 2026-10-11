@@ -71,7 +71,7 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 
 	general := qt.NewQWidget2()
 	form := qt.NewQFormLayout(general)
-	form.AddRow3("Response font", d.font.QWidget)
+	form.AddRow3("Code font", d.font.QWidget)
 	form.AddRow4("Workspaces folder", d.folderRow(d.workspaces, "Workspaces Folder"))
 	// The note is about the folder above it.
 	form.AddRowWithWidget(note.QWidget)

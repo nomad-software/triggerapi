@@ -229,7 +229,7 @@ The settings are kept where the system keeps the configuration of programs:
 | Linux | `~/.config/triggerapi/settings.json` (or under `$XDG_CONFIG_HOME`) |
 | macOS | `~/Library/Application Support/triggerapi/settings.json` |
 
-They hold the window size and layout, the response font, colours, the
+They hold the window size and layout, the code font, colours, the
 workspaces folder, the workspace in use and the pinned requests.
 
 The workspaces are kept, by default, where the system keeps the data of
