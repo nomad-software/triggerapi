@@ -73,3 +73,51 @@ func TestExtractErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestMatch(t *testing.T) {
+	tests := []struct {
+		value, pattern, want string
+	}{
+		{"abc123", "", "abc123"},
+		{"abc123", `\d+`, "123"},
+		{"session=xyz; Path=/", `session=([^;]+)`, "xyz"},
+		// The first group is the one that is kept, and the first match.
+		{"a1 b2", `([a-z])(\d)`, "a"},
+		{"Bearer TOKEN", `(?i)bearer (.+)`, "TOKEN"},
+		// A group that matched nothing gives nothing.
+		{"abc", `abc(\d)?`, ""},
+	}
+	for _, test := range tests {
+		if got, err := Match(test.value, test.pattern); err != nil || got != test.want {
+			t.Errorf("Match(%q, %q) = %q, %v, want %q", test.value, test.pattern, got, err, test.want)
+		}
+	}
+
+	for pattern, want := range map[string]string{
+		`\d+`:  "the regex does not match the value",
+		`(abc`: "the regex is not valid: missing closing ): `(abc`",
+	} {
+		if _, err := Match("abc", pattern); err == nil || err.Error() != want {
+			t.Errorf("Match(abc, %q): %v, want %q", pattern, err, want)
+		}
+	}
+}
+
+func TestRuleExtract(t *testing.T) {
+	const document = `{"link": "https://example.com/users/42?page=2"}`
+
+	rule := Rule{Variable: "id", Path: "link", Regex: `/users/(\d+)`}
+	if got, err := rule.Extract(document); err != nil || got != "42" {
+		t.Errorf("Extract = %q, %v", got, err)
+	}
+
+	// Without a regex it is the whole value, and the path comes first.
+	rule.Regex = ""
+	if got, err := rule.Extract(document); err != nil || got != "https://example.com/users/42?page=2" {
+		t.Errorf("Extract = %q, %v", got, err)
+	}
+	rule.Path, rule.Regex = "nothing", `(`
+	if _, err := rule.Extract(document); err == nil || err.Error() != `there is no "nothing" in the response` {
+		t.Errorf("Extract: %v", err)
+	}
+}

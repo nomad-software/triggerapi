@@ -18,6 +18,7 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
 
+	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/env"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -2319,17 +2320,33 @@ func TestCapture(t *testing.T) {
 		w.request.captures.add("last", "data.items[-1].id")
 		w.request.captures.add("missing", "data.nothing")
 		w.request.captures.add("unused", "data.token")
-		w.request.captures.setItems(func() []rest.KeyValue {
-			items := w.request.captures.items()
-			for i := range items {
-				items[i].Enabled = items[i].Key != "unused"
-			}
-			return items
-		}())
+		rules := captureRules(w.request.captures)
+		for i := range rules {
+			rules[i].Enabled = rules[i].Variable != "unused"
+		}
+		// A regex picks out part of the value: what it matches, or what
+		// its first group does.
+		rules = append(rules,
+			capture.Rule{Variable: "tokenDigits", Path: "data.token", Regex: `\d+`, Enabled: true},
+			capture.Rule{Variable: "tokenLetters", Path: "data.token", Regex: `^([a-z]+)\d`, Enabled: true},
+		)
+		setCaptureRules(w.request.captures, rules)
 		w.request.captures.onChange()
 
+		// The regex has a column of its own, after the path.
+		if table := w.request.captures.table; table.IsColumnHidden(colDescription) || table.Item(3, colDescription).Text() != `\d+` || !strings.HasPrefix(table.HorizontalHeaderItem(colDescription).Text(), "Regex") {
+			t.Errorf("the regex of row 3 is %q", table.Item(3, colDescription).Text())
+		}
+
 		// The captures are part of the request, and are saved with it.
-		want := []rest.KeyValue{{Key: "last", Value: "data.items[-1].id", Enabled: true}, {Key: "missing", Value: "data.nothing", Enabled: true}, {Key: "token", Value: "data.token", Enabled: true}, {Key: "unused", Value: "data.token"}}
+		want := []capture.Rule{
+			{Variable: "last", Path: "data.items[-1].id", Enabled: true},
+			{Variable: "missing", Path: "data.nothing", Enabled: true},
+			{Variable: "token", Path: "data.token", Enabled: true},
+			{Variable: "tokenDigits", Path: "data.token", Regex: `\d+`, Enabled: true},
+			{Variable: "tokenLetters", Path: "data.token", Regex: `^([a-z]+)\d`, Enabled: true},
+			{Variable: "unused", Path: "data.token"},
+		}
 		if !slices.Equal(request.Request.Captures, want) {
 			t.Errorf("captures = %+v", request.Request.Captures)
 		}
@@ -2345,7 +2362,7 @@ func TestCapture(t *testing.T) {
 		// The variables are set in the active environment: one that was
 		// there is given the value and enabled, and the others are added.
 		got := variables(w)
-		if got["token"] != "abc123" || got["last"] != "8" || len(got) != 3 {
+		if got["token"] != "abc123" || got["last"] != "8" || got["tokenDigits"] != "123" || got["tokenLetters"] != "abc" || len(got) != 5 {
 			t.Errorf("variables = %v", got)
 		}
 		if saved, err := env.Load(files.Environments); err != nil || !slices.Equal(saved.Environments[0].Variables, w.environments.store.Environments[0].Variables) {
@@ -2355,7 +2372,7 @@ func TestCapture(t *testing.T) {
 		// Each capture is marked with how it went, and the tab with a
 		// cross as one of them failed. Nothing is said of it in the bar.
 		tab, rows, tips := captureMarks(w.response)
-		if want := map[string]string{"last": "tick", "missing": "cross", "token": "tick", "unused": ""}; tab != "cross" || !maps.Equal(rows, want) {
+		if want := map[string]string{"last": "tick", "missing": "cross", "token": "tick", "tokenDigits": "tick", "tokenLetters": "tick", "unused": ""}; tab != "cross" || !maps.Equal(rows, want) {
 			t.Errorf("tab %q, rows %v", tab, rows)
 		}
 		if tips["token"] != "Captured" || tips["missing"] != `Not captured: there is no "nothing" in the response` || tips["unused"] != "" {

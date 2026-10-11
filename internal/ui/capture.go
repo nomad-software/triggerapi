@@ -37,22 +37,45 @@ func captureIcon(captured bool) *qt.QIcon {
 
 // newCaptureTable returns the table of the Capture tab of a response panel:
 // the variables to set from the response, each with the path of its value in the
-// JSON of the response.
+// JSON of the response, and a regular expression to pick out part of that
+// value with. The expression is in the column of descriptions.
 func newCaptureTable() *keyValueTable {
 	table := newKeyValueTable("Environment Variable", "Path in the response, e.g. data.items[0].id")
+	// The expression is no less a part of the rule than the path is.
+	table.plain = true
+	table.describe("Regex (optional)")
+	table.setItems(nil)
 	table.table.SetToolTip("After a response that is not a failure, each variable is set, in the selected environment, " +
 		"to the value at its path in the JSON of the response.\n" +
-		"Names are separated by dots and an index into an array is in brackets: data.items[0].id")
+		"Names are separated by dots and an index into an array is in brackets: data.items[0].id\n" +
+		"A regex keeps only the part of the value it matches, or the part its first group matches if it has groups.")
 	// Each row is marked with how capturing it went.
 	table.table.SetColumnHidden(colStatus, false)
 	return table
 }
 
+// captureRules returns the rules in a table made by newCaptureTable.
+func captureRules(table *keyValueTable) []capture.Rule {
+	var rules []capture.Rule
+	for _, pair := range table.allDescribed() {
+		rules = append(rules, capture.Rule{Variable: pair.Key, Path: pair.Value, Regex: pair.Description, Enabled: pair.Enabled})
+	}
+	return rules
+}
+
+// setCaptureRules shows rules in a table made by newCaptureTable.
+func setCaptureRules(table *keyValueTable, rules []capture.Rule) {
+	pairs := make([]describedPair, len(rules))
+	for i, rule := range rules {
+		pairs[i] = describedPair{rest.KeyValue{Key: rule.Variable, Value: rule.Path, Enabled: rule.Enabled}, rule.Regex}
+	}
+	table.setDescribed(pairs)
+}
+
 // capture sets variables of the active environment from the JSON of a
-// response, as the rules of the request say: the key of each is the name of
-// a variable, and its value the path of the value to give it. It returns
-// what came of each rule that is in use.
-func (w *Window) capture(rules []rest.KeyValue, document string) []captureResult {
+// response, as the rules of the request say. It returns what came of each
+// rule that is in use.
+func (w *Window) capture(rules []capture.Rule, document string) []captureResult {
 	rules = enabledCaptures(rules)
 	if len(rules) == 0 {
 		return nil
@@ -66,10 +89,10 @@ func (w *Window) capture(rules []rest.KeyValue, document string) []captureResult
 	results := make([]captureResult, len(rules))
 	changed := false
 	for i, rule := range rules {
-		value, err := capture.Extract(document, rule.Value)
-		results[i] = captureResult{rule.Key, err}
+		value, err := rule.Extract(document)
+		results[i] = captureResult{rule.Variable, err}
 		if err == nil {
-			environment.Set(rule.Key, value)
+			environment.Set(rule.Variable, value)
 			changed = true
 		}
 	}
@@ -86,21 +109,21 @@ func (w *Window) capture(rules []rest.KeyValue, document string) []captureResult
 
 // failedCaptures returns the results of rules none of which could be
 // followed, all for the same reason.
-func failedCaptures(rules []rest.KeyValue, err error) []captureResult {
+func failedCaptures(rules []capture.Rule, err error) []captureResult {
 	var results []captureResult
 	for _, rule := range enabledCaptures(rules) {
-		results = append(results, captureResult{rule.Key, err})
+		results = append(results, captureResult{rule.Variable, err})
 	}
 	return results
 }
 
 // enabledCaptures returns the rules that are in use: those that are enabled
 // and name a variable.
-func enabledCaptures(rules []rest.KeyValue) []rest.KeyValue {
-	var enabled []rest.KeyValue
+func enabledCaptures(rules []capture.Rule) []capture.Rule {
+	var enabled []capture.Rule
 	for _, rule := range rules {
-		if key := strings.TrimSpace(rule.Key); rule.Enabled && key != "" {
-			enabled = append(enabled, rest.KeyValue{Key: key, Value: rule.Value, Enabled: true})
+		if rule.Variable = strings.TrimSpace(rule.Variable); rule.Enabled && rule.Variable != "" {
+			enabled = append(enabled, rule)
 		}
 	}
 	return enabled

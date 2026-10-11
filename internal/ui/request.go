@@ -465,7 +465,7 @@ func (p *requestPanel) request() rest.Request {
 		BodyType: bodyTypes[p.bodyType.CurrentIndex()].typ,
 		Body:     p.bodyRaw.ToPlainText(),
 		Form:     p.bodyForm.items(),
-		Captures: p.captures.items(),
+		Captures: captureRules(p.captures),
 	}
 }
 
@@ -496,7 +496,7 @@ func (p *requestPanel) load(r rest.Request) {
 	p.bodyRaw.SetPlainText(r.Body)
 	p.bodyFold.reset()
 	p.bodyForm.setItems(r.Form)
-	p.captures.setItems(r.Captures)
+	setCaptureRules(p.captures, r.Captures)
 	p.showLikelyTab()
 	p.updateCurl()
 	p.updatePreview()

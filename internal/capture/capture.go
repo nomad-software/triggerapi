@@ -8,9 +8,56 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 )
+
+// Rule says what to capture from a response: the variable to keep it in,
+// the path of the value in the JSON of the response, and a regular
+// expression which picks out the part of the value that is wanted, if not
+// all of it is. One that is not enabled is not followed.
+type Rule struct {
+	Variable string `json:"key"`
+	Path     string `json:"value"`
+	Regex    string `json:"regex,omitempty"`
+	Enabled  bool   `json:"enabled"`
+}
+
+// Extract returns the value the rule captures from a JSON document: the
+// value at its path, or the part of that which its regular expression
+// picks out.
+func (r Rule) Extract(document string) (string, error) {
+	value, err := Extract(document, r.Path)
+	if err != nil {
+		return "", err
+	}
+	return Match(value, r.Regex)
+}
+
+// Match returns the part of a value that a regular expression picks out:
+// what its first group matched, if it has groups, and otherwise all that it
+// matched, at the first place it matches. With no expression that is the
+// whole value. The syntax is that of the regexp package.
+func Match(value, pattern string) (string, error) {
+	if pattern == "" {
+		return value, nil
+	}
+
+	expression, err := regexp.Compile(pattern)
+	if err != nil {
+		return "", fmt.Errorf("the regex is not valid: %s", strings.TrimPrefix(err.Error(), "error parsing regexp: "))
+	}
+
+	found := expression.FindStringSubmatch(value)
+	if found == nil {
+		return "", errors.New("the regex does not match the value")
+	}
+	if len(found) > 1 {
+		return found[1], nil
+	}
+	return found[0], nil
+}
 
 // step is one step of a path: into the member of an object with a name, or
 // into the element of an array at an index.

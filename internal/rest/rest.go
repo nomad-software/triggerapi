@@ -14,6 +14,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/nomad-software/triggerapi/internal/capture"
 )
 
 // Methods lists the HTTP methods offered by the client.
@@ -95,11 +97,9 @@ type Request struct {
 	Form     []KeyValue `json:"form,omitempty"`
 
 	// Captures are the values to take from the response and keep in
-	// variables of the active environment: the key of each is the name of
-	// a variable and its value the path of the value in the JSON of the
-	// response, as the capture package reads it. Placeholders in them are
-	// not replaced.
-	Captures []KeyValue `json:"captures,omitempty"`
+	// variables of the active environment, as the capture package reads
+	// them. Placeholders in them are not replaced.
+	Captures []capture.Rule `json:"captures,omitempty"`
 }
 
 // Response is the result of sending a request.

@@ -15,6 +15,7 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
 
+	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/env"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -1012,7 +1013,7 @@ func (w *Window) executeCurl() {
 // restOutcome returns what to do with the response to a REST request, which
 // is nil if there was an error instead. Values are captured from a response
 // with a status that is a success.
-func (w *Window) restOutcome(res *rest.Response, captures []rest.KeyValue) outcome {
+func (w *Window) restOutcome(res *rest.Response, captures []capture.Rule) outcome {
 	var captured []captureResult
 	return outcome{
 		capture: func() {

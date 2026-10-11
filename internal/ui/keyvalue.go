@@ -73,7 +73,10 @@ type keyValueTable struct {
 	// on. See keepOne.
 	exclusive bool
 
-	// faint is the brush descriptions are written with, once made.
+	// plain has descriptions written like the rest of the pair, and not
+	// fainter. faint is the brush they are otherwise written with, once
+	// made.
+	plain bool
 	faint *qt.QBrush
 }
 
@@ -280,12 +283,14 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 	// A description is fainter than what it describes: the colour of the
 	// text beside it, half transparent.
 	description := qt.NewQTableWidgetItem()
-	if t.faint == nil {
-		// The colour is copied, as the one returned is the palette's own.
-		text := t.table.Palette().ColorWithCr(qt.QPalette__Text)
-		t.faint = qt.NewQBrush3(qt.NewQColor11(text.Red(), text.Green(), text.Blue(), 127))
+	if !t.plain {
+		if t.faint == nil {
+			// The colour is copied, as the one returned is the palette's own.
+			text := t.table.Palette().ColorWithCr(qt.QPalette__Text)
+			t.faint = qt.NewQBrush3(qt.NewQColor11(text.Red(), text.Green(), text.Blue(), 127))
+		}
+		description.SetForeground(t.faint)
 	}
-	description.SetForeground(t.faint)
 	t.table.SetItem(row, colDescription, description)
 
 	// Nothing is typed or selected in the cell of the status, which is

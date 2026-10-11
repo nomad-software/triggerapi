@@ -173,7 +173,7 @@ func (p *grpcPanel) request() rpc.Request {
 		Message:  p.message.ToPlainText(),
 		Metadata: p.metadata.items(),
 		Auth:     p.auth.auth(),
-		Captures: p.captures.items(),
+		Captures: captureRules(p.captures),
 	}
 }
 
@@ -198,7 +198,7 @@ func (p *grpcPanel) load(r rpc.Request) {
 	p.message.SetPlainText(r.Message)
 	p.messageFold.reset()
 	p.metadata.setItems(r.Metadata)
-	p.captures.setItems(r.Captures)
+	setCaptureRules(p.captures, r.Captures)
 	p.auth.load(r.Auth)
 
 	p.definition.SetPlainText("")

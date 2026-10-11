@@ -19,6 +19,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/dynamicpb"
 
+	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
@@ -37,7 +38,7 @@ type Request struct {
 
 	// Captures are the values to take from the last response message and
 	// keep in variables of the active environment. See rest.Request.
-	Captures []rest.KeyValue `json:"captures,omitempty"`
+	Captures []capture.Rule `json:"captures,omitempty"`
 }
 
 // Response is the result of a call.
