@@ -32,6 +32,8 @@ func newEnvEditor() *envEditor {
 
 	e.name.SetPlaceholderText("Environment name")
 	e.variables.describe("Description")
+	// Variables with one name are alternatives, of which one is in use.
+	e.variables.exclusive = true
 
 	bar := qt.NewQHBoxLayout2()
 	bar.AddWidget(qt.NewQLabel3("Environment").QWidget)

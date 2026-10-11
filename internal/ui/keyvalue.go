@@ -69,6 +69,10 @@ type keyValueTable struct {
 	statuses bool
 	onStale  func()
 
+	// exclusive keeps to one the pairs with the same key that are switched
+	// on. See keepOne.
+	exclusive bool
+
 	// faint is the brush descriptions are written with, once made.
 	faint *qt.QBrush
 }
@@ -98,6 +102,9 @@ func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
 		if item.Row() == last && (t.text(last, colKey) != "" || t.text(last, colValue) != "" || t.text(last, colDescription) != "") {
 			t.addRow("", "", true)
 		}
+		if t.exclusive {
+			t.keepOne(item)
+		}
 		t.changed()
 	})
 
@@ -122,6 +129,34 @@ func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
 func (t *keyValueTable) editing() bool {
 	focus := qt.QApplication_FocusWidget()
 	return focus != nil && t.table.Viewport().IsAncestorOf(focus)
+}
+
+// keepOne sees that no more than one of the pairs with the same key is
+// switched on, after a cell has been changed. Switching one on switches the
+// others off. A pair given the key of one that is on is itself switched off,
+// so that typing in another value for a key does not put it into use.
+func (t *keyValueTable) keepOne(changed *qt.QTableWidgetItem) {
+	row := changed.Row()
+	pair := t.pair(row)
+	if pair.Key == "" || !pair.Enabled {
+		return
+	}
+
+	defer func(prev bool) { t.updating = prev }(t.updating)
+	t.updating = true
+
+	for other := range t.table.RowCount() {
+		if other == row || !t.pair(other).Enabled || t.pair(other).Key != pair.Key {
+			continue
+		}
+		switch changed.Column() {
+		case colEnabled:
+			t.table.Item(other, colEnabled).SetCheckState(qt.Unchecked)
+		case colKey:
+			t.table.Item(row, colEnabled).SetCheckState(qt.Unchecked)
+			return
+		}
+	}
 }
 
 // describe shows the column of descriptions, under a heading.

@@ -2559,6 +2559,85 @@ func TestVariableDescriptions(t *testing.T) {
 	}
 }
 
+func TestOneVariableOfAName(t *testing.T) {
+	files := testFiles(t)
+	store := env.Store{Environments: []env.Environment{{Name: "Local", Variables: []env.Variable{
+		{Key: "host", Value: "http://local.test", Enabled: true, Description: "a local"},
+		{Key: "host", Value: "https://live.test", Description: "b live"},
+		{Key: "host", Value: "https://staging.test", Description: "c staging"},
+		{Key: "token", Value: "abc", Enabled: true},
+	}}}}
+	if err := store.Save(files.Environments); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+		w.environments.edit()
+		table := w.editor.variables
+
+		enabled := func() []bool {
+			var got []bool
+			for _, p := range table.allDescribed() {
+				got = append(got, p.Enabled)
+			}
+			return got
+		}
+		check := func(row int, state qt.CheckState) { table.table.Item(row, colEnabled).SetCheckState(state) }
+
+		// Switching on one of the variables with a name switches off the
+		// one that was on, and no others.
+		check(2, qt.Checked)
+		if got, want := enabled(), []bool{false, false, true, true}; !slices.Equal(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+		if got := w.expand("{{host}} {{token}}"); got != "https://staging.test abc" {
+			t.Errorf("expanded to %q", got)
+		}
+		check(1, qt.Checked)
+		if got, want := enabled(), []bool{false, true, false, true}; !slices.Equal(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+
+		// They can all be off.
+		check(1, qt.Unchecked)
+		if got, want := enabled(), []bool{false, false, false, true}; !slices.Equal(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+
+		// A variable given the name of one that is on is switched off, and
+		// the one in use stays so.
+		table.add("other", "xyz")
+		if got, want := enabled(), []bool{false, false, false, true, true}; !slices.Equal(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+		table.table.Item(3, colKey).SetText("token")
+		if got, want := enabled(), []bool{false, false, false, false, true}; !slices.Equal(got, want) || w.expand("{{token}}") != "abc" {
+			t.Errorf("got %v, want %v, token %q", got, want, w.expand("{{token}}"))
+		}
+
+		// What is saved is what is shown.
+		saved, err := env.Load(files.Environments)
+		if err != nil || len(saved.Environments[0].Variables) != 5 {
+			t.Errorf("saved %+v, %v", saved, err)
+			return
+		}
+		for i, v := range saved.Environments[0].Variables {
+			if v.Enabled != enabled()[i] {
+				t.Errorf("saved %+v", saved.Environments[0].Variables)
+			}
+		}
+
+		// The other tables allow it, as a header or a param can be repeated.
+		w.request.headers.add("Accept", "a")
+		w.request.headers.add("Accept", "b")
+		if items := w.request.headers.items(); len(items) != 2 || !items[0].Enabled || !items[1].Enabled {
+			t.Errorf("headers = %+v", items)
+		}
+	})
+}
+
 // treeItem finds an item of the request tree by the names on the way to it
 // from the top. It returns nil if there is none.
 func treeItem(tree *qt.QTreeWidget, names ...string) *qt.QTreeWidgetItem {

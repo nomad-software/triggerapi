@@ -62,8 +62,8 @@ bindings.
 - Define environments of variables and use them anywhere in a request as
   `{{name}}` placeholders. Environments exported from Postman can be imported.
 - Give each variable a description. Several variables can share a name, to
-  keep the values it is switched between, with the one that is switched on
-  being used.
+  keep the values it is switched between: switching one on switches the
+  other off.
 - Placeholders are coloured where they are used, differently if the selected
   environment does not define them.
 
