@@ -105,6 +105,8 @@ value is the same everywhere the variable is used.
 | `iso_date(1)` | The date that many days from today | `2026-10-12` |
 | `iso_timestamp()` | The time now, in UTC | `2026-10-11T15:04:05Z` |
 | `iso_timestamp(2)` | The same time that many days from now | `2026-10-13T15:04:05Z` |
+| `unix_timestamp()` | The time now, in seconds since 1970 | `1791731045` |
+| `unix_timestamp(2)` | The same time that many days from now | `1791903845` |
 
 The number of days can be negative, so `iso_date(-1)` is yesterday. Dates are
 in the local time zone and timestamps in UTC.

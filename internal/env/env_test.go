@@ -183,15 +183,18 @@ func TestEvaluate(t *testing.T) {
 	at := time.Date(2026, time.February, 27, 22, 30, 15, 0, zone)
 
 	for value, want := range map[string]string{
-		"iso_date()":        "2026-02-27",
-		"iso_date(0)":       "2026-02-27",
-		"iso_date(1)":       "2026-02-28",
-		"iso_date(2)":       "2026-03-01",
-		"iso_date(-27)":     "2026-01-31",
-		" iso_date( 365 ) ": "2027-02-27",
-		"iso_timestamp()":   "2026-02-28T03:30:15Z",
-		"iso_timestamp(2)":  "2026-03-02T03:30:15Z",
-		"iso_timestamp(-1)": "2026-02-27T03:30:15Z",
+		"iso_date()":         "2026-02-27",
+		"iso_date(0)":        "2026-02-27",
+		"iso_date(1)":        "2026-02-28",
+		"iso_date(2)":        "2026-03-01",
+		"iso_date(-27)":      "2026-01-31",
+		" iso_date( 365 ) ":  "2027-02-27",
+		"iso_timestamp()":    "2026-02-28T03:30:15Z",
+		"iso_timestamp(2)":   "2026-03-02T03:30:15Z",
+		"iso_timestamp(-1)":  "2026-02-27T03:30:15Z",
+		"unix_timestamp()":   "1772249415",
+		"unix_timestamp(2)":  "1772422215",
+		"unix_timestamp(-1)": "1772163015",
 	} {
 		if got, ok := Evaluate(value, at); !ok || got != want {
 			t.Errorf("Evaluate(%q) = %q, %v, want %q", value, got, ok, want)

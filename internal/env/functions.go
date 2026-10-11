@@ -25,6 +25,8 @@ var now = time.Now
 //     n days from today, or before it if n is below zero.
 //   - iso_timestamp() is the time now in UTC, as 2006-01-02T15:04:05Z, and
 //     iso_timestamp(n) that time n days from now.
+//   - unix_timestamp() is the time now as the number of seconds since the
+//     start of 1970 in UTC, and unix_timestamp(n) that time n days from now.
 func Evaluate(value string, at time.Time) (string, bool) {
 	parts := call.FindStringSubmatch(value)
 	if parts == nil {
@@ -49,6 +51,8 @@ func Evaluate(value string, at time.Time) (string, bool) {
 		return at.AddDate(0, 0, days).Format(time.DateOnly), true
 	case "iso_timestamp":
 		return at.AddDate(0, 0, days).UTC().Format(time.RFC3339), true
+	case "unix_timestamp":
+		return strconv.FormatInt(at.AddDate(0, 0, days).Unix(), 10), true
 	}
 	return "", false
 }
