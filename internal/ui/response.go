@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
 	"maps"
@@ -10,9 +11,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	qt "github.com/mappu/miqt/qt6"
 
+	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 )
@@ -42,6 +46,10 @@ type responsePanel struct {
 	// offered for the file.
 	content  []byte
 	fileName string
+	// captureDoc is the JSON that values are captured from, which the
+	// body ends with as it is shown: all of a REST response, and the last
+	// message of a gRPC one. It is empty if there is none.
+	captureDoc string
 	// chooseSave asks the user where to save a file, offering a name. It
 	// reports false if they decide against saving.
 	chooseSave func(name string) (string, bool)
@@ -102,6 +110,12 @@ func newResponsePanel(bodyFont string) *responsePanel {
 		}
 	})
 	p.fold = newFolder(p.body, isJSON)
+	// The menu of the body offers to capture the value it is opened on.
+	p.body.OnContextMenuEvent(func(_ func(*qt.QContextMenuEvent), event *qt.QContextMenuEvent) {
+		menu := p.contextMenu(p.body.CursorForPosition(event.Pos()).Position())
+		menu.ExecWithPos(event.GlobalPos())
+		menu.DeleteLater()
+	})
 	p.find = newFindBar(p.body, p.highlighter, p.fold)
 	p.find.onShow = func() { p.tabs.SetCurrentIndex(tabResponse) }
 	p.setBodyFont(bodyFont)
@@ -229,10 +243,64 @@ const maxHighlight = 2 << 20
 // setBody shows text as the response. JSON is coloured and can be folded.
 func (p *responsePanel) setBody(text string, isJSON bool) {
 	p.json = isJSON && len(text) <= maxHighlight
+	p.captureDoc = ""
 	p.body.SetPlainText(text)
 	p.fold.reset()
 	// What is being looked for is looked for in the new body.
 	p.find.search()
+}
+
+// capturePath returns the path of the value at a position in the body, for
+// a rule which captures it, and a name to call it by. There is none if the
+// position is not in JSON that values are captured from.
+func (p *responsePanel) capturePath(position int) (path, name string, ok bool) {
+	if p.captures == nil || p.captureDoc == "" {
+		return "", "", false
+	}
+	text := p.body.ToPlainText()
+	if !strings.HasSuffix(text, p.captureDoc) {
+		return "", "", false
+	}
+
+	// The position is in UTF-16 code units, and the offset in bytes.
+	offset := 0
+	for _, r := range text {
+		if position <= 0 {
+			break
+		}
+		position -= utf16.RuneLen(r)
+		offset += utf8.RuneLen(r)
+	}
+
+	offset -= len(text) - len(p.captureDoc)
+	if offset < 0 {
+		return "", "", false
+	}
+	return capture.PathAt(p.captureDoc, offset)
+}
+
+// contextMenu returns the menu of the body for a position in it: the usual
+// one of an editor and, if there is a value there that can be captured, the
+// offer to capture it.
+func (p *responsePanel) contextMenu(position int) *qt.QMenu {
+	menu := p.body.CreateStandardContextMenu()
+	if path, name, ok := p.capturePath(position); ok {
+		label := "Capture the whole response"
+		if path != "" {
+			// An & would otherwise underline the letter after it.
+			label = "Capture " + strings.ReplaceAll(path, "&", "&&")
+		}
+		menu.AddSeparator()
+		menu.AddActionWithText(label).OnTriggered(func() { p.addCapture(path, name) })
+	}
+	return menu
+}
+
+// addCapture adds a rule which captures the value at a path, and shows it
+// on the Capture tab with the name of its variable ready to be changed.
+func (p *responsePanel) addCapture(path, name string) {
+	p.tabs.SetCurrentIndex(tabCapture)
+	p.captures.addToEdit(name, path)
 }
 
 // Tabs of a response panel. The last is the one on which what to capture
@@ -360,7 +428,13 @@ func (p *responsePanel) showError(err error, elapsed time.Duration) {
 // response; its status goes in the bar beneath, as a failure if it is an
 // error status.
 func (p *responsePanel) show(res *rest.Response) {
-	p.setBody(res.Text(), res.IsJSON())
+	text := res.Text()
+	p.setBody(text, res.IsJSON())
+	// Values are captured from any body that is JSON, whatever it says it
+	// is.
+	if json.Valid(res.Body) {
+		p.captureDoc = text
+	}
 	// JSON is saved formatted, as it is shown. Anything else is saved as
 	// it was received, which keeps a file that is not text intact.
 	content := res.Body
@@ -382,6 +456,9 @@ func (p *responsePanel) show(res *rest.Response) {
 // OK. The trailers of the call are listed after its headers.
 func (p *responsePanel) showRPC(res *rpc.Response) {
 	p.setBody(strings.Join(res.Messages, "\n\n"), true)
+	if len(res.Messages) > 0 {
+		p.captureDoc = res.Messages[len(res.Messages)-1]
+	}
 	p.setContent([]byte(p.body.ToPlainText()), "response.json")
 	p.setHeaders(append(headerRows(res.Headers, ""), headerRows(res.Trailers, " (trailer)")...))
 	p.setFields(

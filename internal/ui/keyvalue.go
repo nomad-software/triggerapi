@@ -354,6 +354,28 @@ func (t *keyValueTable) add(key, value string) {
 	t.sort()
 }
 
+// addToEdit adds a pair, unless there is one the same already, and opens
+// its key for editing, as the caller may only have guessed at it.
+func (t *keyValueTable) addToEdit(key, value string) {
+	find := func() int {
+		for row := range t.table.RowCount() - 1 {
+			if pair := t.pair(row); pair.Key == key && pair.Value == value {
+				return row
+			}
+		}
+		return -1
+	}
+
+	row := find()
+	if row < 0 {
+		t.add(key, value)
+		row = find()
+	}
+	item := t.table.Item(row, colKey)
+	t.table.SetCurrentItem(item)
+	t.table.EditItem(item)
+}
+
 // setItems replaces the contents of the table, in alphabetical order,
 // without calling onChange.
 func (t *keyValueTable) setItems(items []rest.KeyValue) {

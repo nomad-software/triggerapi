@@ -121,3 +121,86 @@ func TestRuleExtract(t *testing.T) {
 		t.Errorf("Extract: %v", err)
 	}
 }
+
+func TestPathAt(t *testing.T) {
+	const doc = `{
+  "token": "abc",
+  "a.b": 1,
+  "$id": true,
+  "data": {
+    "items": [{"id": 1, "tags": ["x", "é😀"]}, {"id": 2}],
+    "user": {"name": "Ada", "": null}
+  },
+  "list": [[1, 2], []]
+}`
+
+	// at gives the offset of the nth place some text is in the document.
+	at := func(text string, nth int) int {
+		offset := -1
+		for range nth {
+			offset += 1 + strings.Index(doc[offset+1:], text)
+		}
+		return offset
+	}
+
+	tests := []struct {
+		what   string
+		offset int
+		path   string
+		name   string
+	}{
+		{"a value", at(`"abc"`, 1) + 2, "token", "token"},
+		{"the end of a value", at(`"abc"`, 1) + 5, "token", "token"},
+		{"its name", at(`"token"`, 1) + 3, "token", "token"},
+		{"the colon after its name", at(`"token"`, 1) + 7, "token", "token"},
+		{"a name with a dot", at(`"a.b"`, 1), `["a.b"]`, "a.b"},
+		{"a name with a $ first", at(`"$id"`, 1), `["$id"]`, "$id"},
+		{"an object", at(`"data"`, 1), "data", "data"},
+		{"the space in an object", at(`"items"`, 1) - 2, "data", "data"},
+		{"an array", at(`"items"`, 1), "data.items", "items"},
+		{"an element", at(`{"id": 1`, 1), "data.items[0]", "items"},
+		{"in an element", at(`"id": 1`, 1) + 6, "data.items[0].id", "id"},
+		{"in an array in an element", at(`"x"`, 1), "data.items[0].tags[0]", "tags"},
+		{"after other letters", at(`"é😀"`, 1) + 3, "data.items[0].tags[1]", "tags"},
+		{"in a later element", at(`"id": 2`, 1) + 6, "data.items[1].id", "id"},
+		{"after an object", at(`"name"`, 1), "data.user.name", "name"},
+		{"a name that is empty", at(`"": null`, 1) + 5, `data.user[""]`, "user"},
+		{"in an array in an array", at(`2]`, 1), "list[0][1]", "list"},
+		{"an empty array", at(`[]`, 1) + 1, "list[1]", "list"},
+		{"the whole document", 0, "", "value"},
+		{"the end of the document", len(doc), "", "value"},
+	}
+	for _, test := range tests {
+		path, name, ok := PathAt(doc, test.offset)
+		if !ok || path != test.path || name != test.name {
+			t.Errorf("%s: PathAt(%d) = %q, %q, %v, want %q, %q", test.what, test.offset, path, name, ok, test.path, test.name)
+			continue
+		}
+		// The path leads back to a value.
+		if _, err := Extract(doc, path); err != nil {
+			t.Errorf("%s: Extract(%q): %v", test.what, path, err)
+		}
+	}
+
+	for what, test := range map[string]struct {
+		doc    string
+		offset int
+	}{
+		"before the document":       {"  1", 0},
+		"after the document":        {"1  ", 3},
+		"outside the document":      {"1", 5},
+		"below the document":        {"1", -1},
+		"not JSON":                  {"hello", 1},
+		"not JSON before the value": {`{"a" 1, "b": 2}`, 12},
+		"a name with a . and a ]":   {`{"a.]": 1}`, 8},
+	} {
+		if path, _, ok := PathAt(test.doc, test.offset); ok {
+			t.Errorf("%s: PathAt(%q, %d) = %q", what, test.doc, test.offset, path)
+		}
+	}
+
+	// A value that is all there is has no path.
+	if path, name, ok := PathAt(`"abc"`, 2); !ok || path != "" || name != "value" {
+		t.Errorf("PathAt of a string = %q, %q, %v", path, name, ok)
+	}
+}

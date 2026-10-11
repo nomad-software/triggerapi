@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf16"
 
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
@@ -4697,6 +4698,91 @@ func TestFindInResponse(t *testing.T) {
 				t.Errorf("from the selection: open %v, text %q, count %q", f.isOpen(), f.field.Text(), f.count.Text())
 			}
 			f.close()
+		}
+	})
+}
+
+// The menu of the body of a response offers to capture the value it is
+// opened on, which adds a rule with the path of the value.
+func TestClickToCapture(t *testing.T) {
+	mainthread.Wait(func() {
+		w := NewWindow(testFiles(t).Files)
+		w.Show()
+
+		// offers returns what the menu at some text in the body offers to
+		// capture, and the action which does it.
+		offers := func(p *responsePanel, text string, nth int) (string, *qt.QAction) {
+			body := p.body.ToPlainText()
+			offset := -1
+			for range nth {
+				offset += 1 + strings.Index(body[offset+1:], text)
+			}
+			menu := p.contextMenu(len(utf16.Encode([]rune(body[:offset]))) + 1)
+			actions := menu.Actions()
+			if last := actions[len(actions)-1]; strings.HasPrefix(last.Text(), "Capture") {
+				return last.Text(), last
+			}
+			return "", nil
+		}
+
+		// Nothing is offered without a response, or in one that is not
+		// JSON.
+		p := w.response
+		if got, _ := offers(p, "", 1); got != "" {
+			t.Errorf("without a response: %q", got)
+		}
+		p.show(&rest.Response{Status: "200 OK", StatusCode: 200, Headers: http.Header{"Content-Type": {"text/plain"}}, Body: []byte("hello there")})
+		if got, _ := offers(p, "there", 1); got != "" {
+			t.Errorf("in text: %q", got)
+		}
+
+		p.show(&rest.Response{Status: "200 OK", StatusCode: 200, Headers: http.Header{"Content-Type": {"application/json"}}, Body: []byte(`{"é😀":"x","data":{"items":[{"id":7},{"id":8}],"a&b":1}}`)})
+		for text, want := range map[string]string{
+			`"data"`: "Capture data",
+			`"a&b"`:  "Capture data.a&&b",
+			`"x"`:    "Capture é😀",
+		} {
+			if got, _ := offers(p, text, 1); got != want {
+				t.Errorf("at %s: %q, want %q", text, got, want)
+			}
+		}
+
+		// The rule is added and shown, with its name the current cell.
+		got, action := offers(p, `"id"`, 2)
+		if got != "Capture data.items[1].id" {
+			t.Fatalf("at the second id: %q", got)
+		}
+		var changes int
+		w.request.captures.onChange = func() { changes++ }
+		action.Trigger()
+		want := []capture.Rule{{Variable: "id", Path: "data.items[1].id", Enabled: true}}
+		if rules := captureRules(w.request.captures); !slices.Equal(rules, want) || changes == 0 {
+			t.Errorf("rules = %+v after %d changes", rules, changes)
+		}
+		if table := w.request.captures.table; p.tabs.CurrentIndex() != tabCapture || table.CurrentRow() != 0 || table.CurrentColumn() != colKey {
+			t.Errorf("tab %d, cell %d, %d", p.tabs.CurrentIndex(), table.CurrentRow(), table.CurrentColumn())
+		}
+
+		// Capturing the same value again adds nothing.
+		action.Trigger()
+		if rules := captureRules(w.request.captures); len(rules) != 1 {
+			t.Errorf("rules = %+v", rules)
+		}
+
+		// Of the messages of a gRPC call, values are captured from the
+		// last, so they are offered only there.
+		p = w.grpcResponse
+		p.showRPC(&rpc.Response{Messages: []string{"{\n  \"text\": \"one\"\n}", "{\n  \"text\": \"two\"\n}"}})
+		if got, _ := offers(p, `"text"`, 1); got != "" {
+			t.Errorf("in the first message: %q", got)
+		}
+		if got, action := offers(p, `"text"`, 2); got != "Capture text" {
+			t.Errorf("in the last message: %q", got)
+		} else {
+			action.Trigger()
+			if rules := captureRules(w.grpc.captures); !slices.Equal(rules, []capture.Rule{{Variable: "text", Path: "text", Enabled: true}}) {
+				t.Errorf("rules = %+v", rules)
+			}
 		}
 	})
 }

@@ -48,7 +48,8 @@ func newCaptureTable() *keyValueTable {
 	table.table.SetToolTip("After a response that is not a failure, each variable is set, in the selected environment, " +
 		"to the value at its path in the JSON of the response.\n" +
 		"Names are separated by dots and an index into an array is in brackets: data.items[0].id\n" +
-		"A regex keeps only the part of the value it matches, or the part its first group matches if it has groups.")
+		"A regex keeps only the part of the value it matches, or the part its first group matches if it has groups.\n" +
+		"Right-click a value in the response to add it here.")
 	// Each row is marked with how capturing it went.
 	table.table.SetColumnHidden(colStatus, false)
 	return table

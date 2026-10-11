@@ -38,7 +38,8 @@ bindings.
   such as a token from a login to use in later requests. The Capture tab of
   the response lists the variables to set, each with the path of its value in
   the JSON of the response, such as `data.items[0].id`, and optionally a
-  regex to keep only part of that value. A tick or a cross on
+  regex to keep only part of that value. Right-clicking a value in the
+  response adds the variable for it. A tick or a cross on
   the tab and against each variable shows whether it was captured.
 - JSON bodies, messages and responses are syntax highlighted, and their
   objects and arrays can be folded.
