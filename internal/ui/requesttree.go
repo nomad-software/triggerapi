@@ -56,6 +56,10 @@ type requestTree struct {
 	warn func(message string)
 	// onOpen is called when a request is selected.
 	onOpen func(*collection.Request)
+	// browsing is set while a key moves the selection, which does not open
+	// what it moves to.
+	browsing bool
+
 	// onRename is called after a request is renamed.
 	onRename func(*collection.Request)
 	// onRemove is called after a request is removed.
@@ -72,6 +76,8 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 
 	t.search.SetPlaceholderText("Search requests")
 	t.search.SetClearButtonEnabled(true)
+	// Return goes on to what was found.
+	t.search.OnReturnPressed(t.browse)
 	t.search.OnTextChanged(func(string) {
 		if t.updating {
 			return
@@ -190,8 +196,23 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	t.tree.OnItemCollapsed(func(item *qt.QTreeWidgetItem) { t.setCollapsed(item, true) })
 
 	t.tree.OnCurrentItemChanged(func(*qt.QTreeWidgetItem, *qt.QTreeWidgetItem) {
-		if !t.updating {
+		if !t.updating && !t.browsing {
 			t.open()
+		}
+	})
+
+	// The keyboard moves through the tree without opening what it passes
+	// over: up and down from one item to the next, left to close a folder
+	// and right to open one, as a tree does by itself. Return opens the
+	// request it has got to.
+	t.tree.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
+		switch event.Key() {
+		case int(qt.Key_Return), int(qt.Key_Enter):
+			t.activate()
+		default:
+			defer func(prev bool) { t.browsing = prev }(t.browsing)
+			t.browsing = true
+			super(event)
 		}
 	})
 
@@ -204,13 +225,28 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 			return
 		}
 		folder, request := t.locate(item)
+
+		// Nothing can be left without a name, so one that is emptied is
+		// given back the name it had.
+		name := item.Text(colName)
+		if strings.TrimSpace(name) == "" {
+			previous := folder.Name
+			if request != nil {
+				previous = request.Name
+			}
+			t.updating = true
+			item.SetText(colName, previous)
+			t.updating = false
+			return
+		}
+
 		if request != nil {
-			request.Name = item.Text(colName)
+			request.Name = name
 			if t.onRename != nil {
 				t.onRename(request)
 			}
 		} else {
-			folder.Name = item.Text(colName)
+			folder.Name = name
 		}
 		t.save()
 
@@ -605,6 +641,67 @@ func (t *requestTree) selectRequest(r *collection.Request) {
 			t.tree.SetCurrentItem(item)
 			return
 		}
+	}
+}
+
+// focusSearch puts the keyboard in the search box, with what was last
+// searched for selected, to be typed over.
+func (t *requestTree) focusSearch() {
+	t.search.SetFocus()
+	t.search.SelectAll()
+}
+
+// browse puts the keyboard in the tree, to move through it with. A search
+// starts it at the first request that was found. Otherwise it starts where
+// the selection is, or at the first item if nothing is selected. Nothing is
+// opened by it.
+func (t *requestTree) browse() {
+	// first returns the first item on show beneath those given, which is
+	// a request if only is set.
+	var first func(count int, child func(int) *qt.QTreeWidgetItem, only bool) *qt.QTreeWidgetItem
+	first = func(count int, child func(int) *qt.QTreeWidgetItem, only bool) *qt.QTreeWidgetItem {
+		for i := range count {
+			item := child(i)
+			if item.IsHidden() {
+				continue
+			}
+			if _, request := t.locate(item); request != nil || !only {
+				return item
+			}
+			if found := first(item.ChildCount(), item.Child, only); found != nil {
+				return found
+			}
+		}
+		return nil
+	}
+
+	start := t.tree.CurrentItem()
+	if t.query() != nil {
+		start = first(t.tree.TopLevelItemCount(), t.tree.TopLevelItem, true)
+	}
+	if start == nil || start.IsHidden() {
+		start = first(t.tree.TopLevelItemCount(), t.tree.TopLevelItem, false)
+	}
+
+	if start != nil {
+		t.updating = true
+		t.tree.SetCurrentItem(start)
+		t.updating = false
+	}
+	t.tree.SetFocus()
+}
+
+// activate opens the selected request, or if a folder is selected opens or
+// closes that.
+func (t *requestTree) activate() {
+	item := t.tree.CurrentItem()
+	if item == nil {
+		return
+	}
+	if _, request := t.locate(item); request != nil {
+		t.open()
+	} else {
+		item.SetExpanded(!item.IsExpanded())
 	}
 }
 

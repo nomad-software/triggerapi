@@ -18,6 +18,9 @@ const (
 	defaultResponseFont = "Iosevka Term Curly"
 )
 
+// MaxTimeout is the longest a request can be given, in seconds.
+const MaxTimeout = 3600
+
 // Settings is the state that is saved to disk.
 type Settings struct {
 	// Width and Height are the size of the window when it is not maximised.
@@ -33,6 +36,13 @@ type Settings struct {
 	// ResponseFont is the font family the response body is shown in. The
 	// system's fixed width font is used if it is not installed.
 	ResponseFont string `json:"responseFont"`
+
+	// Timeout is how long a request can take, in seconds. There is no
+	// limit if it is zero.
+	Timeout int `json:"timeout,omitempty"`
+	// NoRedirects has a REST response that redirects to another address
+	// shown as it is. Such an address is otherwise followed.
+	NoRedirects bool `json:"noRedirects,omitempty"`
 
 	// WorkspacesDir is the folder the workspaces are kept in, each in a
 	// folder of its own. A relative path is relative to the directory the
@@ -161,6 +171,7 @@ func Load(path string) Settings {
 	if s.Width < minSize || s.Height < minSize {
 		s.Width, s.Height = defaultWidth, defaultHeight
 	}
+	s.Timeout = min(max(s.Timeout, 0), MaxTimeout)
 	s.SidebarWidth = max(s.SidebarWidth, 0)
 	s.ResponseHeight = max(s.ResponseHeight, 0)
 	s.JSONColours = s.JSONColours.valid()

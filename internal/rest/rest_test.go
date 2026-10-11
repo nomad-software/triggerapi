@@ -2,12 +2,15 @@ package rest
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBuildURL(t *testing.T) {
@@ -220,5 +223,71 @@ func TestSortPairs(t *testing.T) {
 	}
 	if want := "a b1 B2 C "; strings.Join(got, " ") != want {
 		t.Errorf("sorted = %q, want %q", strings.Join(got, " "), want)
+	}
+}
+
+func TestSendOptions(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/old":
+			http.Redirect(w, r, "/new", http.StatusFound)
+		case "/slow":
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+		default:
+			io.WriteString(w, "arrived")
+		}
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	client := &http.Client{}
+
+	// A redirect is followed unless the options say otherwise, in which
+	// case the response that redirects is the one returned.
+	r := Request{Method: "GET", URL: srv.URL + "/old"}
+	if res, err := Send(context.Background(), client, r); err != nil || res.StatusCode != 200 || string(res.Body) != "arrived" {
+		t.Errorf("followed: %+v, %v", res, err)
+	}
+	r.Options.NoRedirects = true
+	if res, err := Send(context.Background(), client, r); err != nil || res.StatusCode != 302 || res.Headers.Get("Location") != "/new" {
+		t.Errorf("not followed: %+v, %v", res, err)
+	}
+	// The client it was given is left as it was.
+	if client.CheckRedirect != nil {
+		t.Error("the client was changed")
+	}
+
+	// A request that takes longer than it is allowed is given up on.
+	slow := Request{Method: "GET", URL: srv.URL + "/slow", Options: Options{Timeout: 50 * time.Millisecond}}
+	if _, err := Send(context.Background(), client, slow); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("slow: %v", err)
+	}
+	slow.URL = srv.URL + "/quick"
+	if res, err := Send(context.Background(), client, slow); err != nil || string(res.Body) != "arrived" {
+		t.Errorf("quick: %+v, %v", res, err)
+	}
+
+	// The options are not part of the request as it is saved.
+	if data, err := json.Marshal(slow); err != nil || strings.Contains(string(data), "ptions") || strings.Contains(string(data), "imeout") {
+		t.Errorf("saved as %s, %v", data, err)
+	}
+}
+
+func TestCurlOptions(t *testing.T) {
+	r := Request{Method: "GET", URL: "http://example.com/a"}
+	for options, want := range map[Options]string{
+		{}:                          "curl --location http://example.com/a",
+		{NoRedirects: true}:         "curl http://example.com/a",
+		{Timeout: 30 * time.Second}: "curl --location --max-time 30 http://example.com/a",
+		{Timeout: 1500 * time.Millisecond, NoRedirects: true}: "curl --max-time 1.5 http://example.com/a",
+	} {
+		r.Options = options
+		if got, err := r.Curl(); err != nil || got != want {
+			t.Errorf("%+v: %q, %v, want %q", options, got, err, want)
+		}
 	}
 }

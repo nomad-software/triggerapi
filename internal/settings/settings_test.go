@@ -108,3 +108,33 @@ func TestPrepare(t *testing.T) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
+
+func TestRequestSettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+
+	// Redirects are followed and requests are given as long as they need
+	// unless the settings say otherwise.
+	if got := Load(path); got.Timeout != 0 || got.NoRedirects {
+		t.Errorf("defaults: %+v", got)
+	}
+
+	s := Load(path)
+	s.Timeout, s.NoRedirects = 30, true
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if got := Load(path); got.Timeout != 30 || !got.NoRedirects {
+		t.Errorf("saved: %+v", got)
+	}
+
+	// A time that cannot be is put within what can.
+	for timeout, want := range map[int]int{-5: 0, MaxTimeout + 1: MaxTimeout} {
+		s.Timeout = timeout
+		if err := s.Save(path); err != nil {
+			t.Fatal(err)
+		}
+		if got := Load(path).Timeout; got != want {
+			t.Errorf("timeout %d loaded as %d, want %d", timeout, got, want)
+		}
+	}
+}

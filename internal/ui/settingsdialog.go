@@ -11,12 +11,17 @@ import (
 )
 
 // settingsDialog edits the settings the user can choose, on a tab for each
-// sort: General (settingsTabGeneral) and Colours (settingsTabColours).
+// sort: General (settingsTabGeneral), Requests (settingsTabRequests) and
+// Colours (settingsTabColours).
 type settingsDialog struct {
 	*qt.QDialog
 
-	tabs       *qt.QTabWidget
-	font       *qt.QFontComboBox
+	tabs *qt.QTabWidget
+	font *qt.QFontComboBox
+	// timeout is how long a request can take, in seconds, which is zero
+	// for no limit, and redirects whether a REST request follows them.
+	timeout    *qt.QSpinBox
+	redirects  *qt.QCheckBox
 	workspaces *qt.QLineEdit
 	buttons    *qt.QDialogButtonBox
 
@@ -36,6 +41,7 @@ type settingsDialog struct {
 // The tabs of the settings dialog.
 const (
 	settingsTabGeneral = iota
+	settingsTabRequests
 	settingsTabColours
 )
 
@@ -46,6 +52,8 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 		QDialog:     qt.NewQDialog(parent),
 		tabs:        qt.NewQTabWidget2(),
 		font:        qt.NewQFontComboBox2(),
+		timeout:     qt.NewQSpinBox2(),
+		redirects:   qt.NewQCheckBox3("Follow redirects"),
 		workspaces:  qt.NewQLineEdit2(),
 		buttons:     qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel),
 		defaults:    defaults,
@@ -59,6 +67,16 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 
 	d.font.SetCurrentFont(qt.NewQFont2(current.ResponseFont))
 	d.initialFont = d.font.CurrentFont().Family()
+
+	d.timeout.SetRange(0, settings.MaxTimeout)
+	d.timeout.SetSuffix(" s")
+	// Zero is shown as what it means.
+	d.timeout.SetSpecialValueText("No limit")
+	d.timeout.SetValue(current.Timeout)
+	d.timeout.SetToolTip("How long a request can take before it is given up on")
+	d.redirects.SetChecked(!current.NoRedirects)
+	d.redirects.SetToolTip("Send a REST request again to the address a response redirects it to. " +
+		"Without this, the response which redirects is the one shown.")
 
 	d.workspaces.SetText(orDefault(current.WorkspacesDir, defaults.Workspaces))
 
@@ -76,6 +94,11 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	// The note is about the folder above it.
 	form.AddRowWithWidget(note.QWidget)
 
+	requests := qt.NewQWidget2()
+	requestsForm := qt.NewQFormLayout(requests)
+	requestsForm.AddRow3("Timeout", d.timeout.QWidget)
+	requestsForm.AddRow3("", d.redirects.QWidget)
+
 	colours := qt.NewQWidget2()
 	coloursLayout := qt.NewQVBoxLayout(colours)
 	coloursLayout.AddLayout(d.colourGrid().QLayout)
@@ -90,6 +113,7 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 
 	// The order matches the tab constants.
 	d.tabs.AddTab(general, "General")
+	d.tabs.AddTab(requests, "Requests")
 	d.tabs.AddTab(colours, "Colours")
 
 	d.buttons.OnAccepted(d.Accept)
@@ -298,6 +322,8 @@ func (d *settingsDialog) settings(base settings.Settings) settings.Settings {
 		}
 		return ""
 	}
+	base.Timeout = d.timeout.Value()
+	base.NoRedirects = !d.redirects.IsChecked()
 	base.WorkspacesDir = location(d.workspaces, d.defaults.Workspaces)
 	base.JSONColours = d.jsonColours
 	base.Colours = d.colours

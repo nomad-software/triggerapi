@@ -1977,7 +1977,7 @@ func TestColourSettings(t *testing.T) {
 		}
 
 		d := newSettingsDialog(w.QWidget, w.config, files.Files)
-		if d.tabs.Count() != 2 || d.tabs.TabText(settingsTabColours) != "Colours" {
+		if d.tabs.Count() != 3 || d.tabs.TabText(settingsTabRequests) != "Requests" || d.tabs.TabText(settingsTabColours) != "Colours" {
 			t.Errorf("the dialog has %d tabs", d.tabs.Count())
 		}
 		custom := map[colourKind]string{
@@ -4965,6 +4965,284 @@ func TestFunctionVariables(t *testing.T) {
 		id := p.commanded.Body
 		if command := p.command.ToPlainText(); len(id) != 36 || strings.Count(command, id) != 3 || p.commanded.Headers[0].Value != id {
 			t.Errorf("command = %s\nmade from %+v", command, p.commanded)
+		}
+	})
+}
+
+// How long a request can take, and whether redirects are followed, are set
+// in the settings.
+func TestRequestSettings(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/old":
+			http.Redirect(w, r, "/new", http.StatusFound)
+		case "/slow":
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+		default:
+			io.WriteString(w, "arrived")
+		}
+	}))
+	defer srv.Close()
+	defer close(release)
+
+	files := testFiles(t)
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(files.Files)
+		w.Show()
+
+		// There is no limit, and redirects are followed, to begin with.
+		d := newSettingsDialog(w.QWidget, w.config, files.Files)
+		defer d.DeleteLater()
+		if page := d.tabs.Widget(settingsTabRequests); !page.IsAncestorOf(d.timeout.QWidget) || !page.IsAncestorOf(d.redirects.QWidget) {
+			t.Error("the timeout and the redirects are not on the Requests tab")
+		}
+		if d.timeout.Value() != 0 || d.timeout.Text() != "No limit" || !d.redirects.IsChecked() {
+			t.Errorf("at first: timeout %q, redirects %v", d.timeout.Text(), d.redirects.IsChecked())
+		}
+		if got := d.settings(w.config); !reflect.DeepEqual(got, w.config) {
+			t.Errorf("unchanged: %+v", got)
+		}
+
+		w.request.load(rest.Request{Method: "GET", URL: srv.URL + "/old"})
+		w.request.send.Click()
+	})
+	waitFor(t, "the redirect to be followed", func() bool { return fieldValue(w.response, "Status") == "200 OK" })
+
+	mainthread.Wait(func() {
+		d := newSettingsDialog(w.QWidget, w.config, files.Files)
+		defer d.DeleteLater()
+		d.timeout.SetValue(1)
+		d.redirects.SetChecked(false)
+		if d.timeout.Text() != "1 s" {
+			t.Errorf("timeout is shown as %q", d.timeout.Text())
+		}
+		if err := w.applySettings(d.settings(w.config)); err != nil {
+			t.Error(err)
+		}
+		if got := settings.Load(files.Settings); got.Timeout != 1 || !got.NoRedirects {
+			t.Errorf("saved %+v", got)
+		}
+
+		// The command says the same as the settings, at once.
+		w.request.curl.Click()
+		if got, want := w.request.command.ToPlainText(), "curl --max-time 1 "+srv.URL+"/old"; got != want {
+			t.Errorf("command = %q, want %q", got, want)
+		}
+		w.request.curl.Click()
+
+		w.request.send.Click()
+	})
+	waitFor(t, "the redirect to be shown", func() bool { return strings.HasPrefix(fieldValue(w.response, "Status"), "302") })
+
+	mainthread.Wait(func() {
+		w.request.load(rest.Request{Method: "GET", URL: srv.URL + "/slow"})
+		w.request.send.Click()
+	})
+	waitFor(t, "the request to time out", func() bool { return fieldValue(w.response, "Error") != "" })
+	mainthread.Wait(func() {
+		if got := fieldValue(w.response, "Error"); got != "timed out after 1 second, which is the limit in the settings" || !isFailure(w.response) || w.request.send.Text() != "Send" {
+			t.Errorf("error = %q, button %q", got, w.request.send.Text())
+		}
+	})
+}
+
+// A request, a folder and an environment cannot be given an empty name: one
+// that is emptied keeps the name it had.
+func TestNamesCannotBeEmpty(t *testing.T) {
+	files := testFiles(t)
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+
+		w.requests.addFolder()
+		folderItem := w.requests.tree.TopLevelItem(0)
+		folderItem.SetText(colName, "Hotel")
+		w.requests.addRequest()
+		request := w.open
+		requestItem := w.requests.tree.TopLevelItem(0).Child(0)
+		requestItem.SetText(colName, "Book room")
+
+		for _, blank := range []string{"", "   ", "\t"} {
+			w.requests.tree.TopLevelItem(0).SetText(colName, blank)
+			w.requests.tree.TopLevelItem(0).Child(0).SetText(colName, blank)
+			folder := w.requests.store.Folders[0]
+			if folder.Name != "Hotel" || request.Name != "Book room" {
+				t.Errorf("after %q: folder %q, request %q", blank, folder.Name, request.Name)
+			}
+			if got := w.requests.tree.TopLevelItem(0).Text(colName); got != "Hotel" {
+				t.Errorf("after %q the folder is shown as %q", blank, got)
+			}
+			if got := w.requests.tree.TopLevelItem(0).Child(0).Text(colName); got != "Book room" {
+				t.Errorf("after %q the request is shown as %q", blank, got)
+			}
+		}
+		if got := w.tabs.bar.TabText(0); got != "Book room" {
+			t.Errorf("the tab is named %q", got)
+		}
+		if saved, err := collection.Load(files.Requests); err != nil || saved.Folders[0].Name != "Hotel" || saved.Folders[0].Requests[0].Name != "Book room" {
+			t.Errorf("saved %+v, %v", saved, err)
+		}
+
+		// The name of an environment can be emptied on the way to typing
+		// another, which leaves it with the name it had.
+		w.environments.add()
+		w.editor.name.SetText("Local")
+		w.editor.variables.add("host", "example.com")
+		w.editor.name.SetText("")
+		if got := w.environments.store.Environments[0].Name; got != "Local" || w.environments.list.Item(0).Text() != "Local" {
+			t.Errorf("emptied: the environment is named %q", got)
+		}
+		// Its variables are still kept while the field is empty.
+		w.editor.variables.add("port", "80")
+		if e := w.environments.store.Environments[0]; e.Name != "Local" || len(e.Variables) != 2 {
+			t.Errorf("edited while empty: %+v", e)
+		}
+		w.editor.name.SetText("  ")
+		w.editor.name.EditingFinished()
+		if got := w.editor.name.Text(); got != "Local" || w.environments.store.Environments[0].Name != "Local" {
+			t.Errorf("left empty: the field has %q", got)
+		}
+		w.editor.name.SetText("L")
+		if got := w.environments.store.Environments[0].Name; got != "L" {
+			t.Errorf("typed: the environment is named %q", got)
+		}
+		if saved, err := env.Load(files.Environments); err != nil || saved.Environments[0].Name != "L" {
+			t.Errorf("saved %+v, %v", saved, err)
+		}
+	})
+}
+
+// Ctrl+P goes to the search of the requests, Return goes on from it to the
+// tree, where the keyboard moves about without opening anything, and Return
+// there opens the request it has got to.
+func TestQuickOpen(t *testing.T) {
+	files := testFiles(t)
+	store := collection.Store{Folders: []*collection.Folder{
+		{Name: "Health", Requests: []*collection.Request{collection.NewREST("Ping", rest.Request{Method: "GET"})}},
+		{Name: "Hotel",
+			Folders: []*collection.Folder{{Name: "Rooms", Requests: []*collection.Request{
+				collection.NewREST("Book room", rest.Request{Method: "POST"}),
+				collection.NewREST("List rooms", rest.Request{Method: "GET"}),
+			}}},
+			Requests: []*collection.Request{collection.NewGRPC("Availability", rpc.Request{})},
+		},
+	}}
+	if err := store.Save(files.Requests); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+		tree := w.requests.tree
+
+		press := func(key qt.Key) {
+			event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(key), qt.NoModifier)
+			defer event.Delete()
+			qt.QCoreApplication_SendEvent(tree.QObject, event.QEvent)
+		}
+		current := func() string {
+			if item := tree.CurrentItem(); item != nil {
+				return item.Text(colName)
+			}
+			return ""
+		}
+		opened := func() string {
+			if w.open != nil {
+				return w.open.Name
+			}
+			return ""
+		}
+
+		// The search is gone to from another tab of the sidebar.
+		w.sidebar.SetCurrentIndex(tabEnvironments)
+		w.quickOpen()
+		if w.sidebar.CurrentIndex() != tabRequests {
+			t.Error("the requests are not shown")
+		}
+
+		// Return goes to the first request that was found, which is not
+		// opened by that.
+		w.requests.search.SetText("room")
+		w.requests.search.ReturnPressed()
+		if current() != "Book room" || opened() != "" {
+			t.Errorf("after the search: at %q, with %q open", current(), opened())
+		}
+
+		// Nor is anything opened by moving about.
+		press(qt.Key_Down)
+		if current() != "List rooms" || opened() != "" {
+			t.Errorf("after down: at %q, with %q open", current(), opened())
+		}
+		press(qt.Key_Up)
+		press(qt.Key_Up)
+		if current() != "Rooms" || opened() != "" {
+			t.Errorf("after up twice: at %q, with %q open", current(), opened())
+		}
+
+		// Left closes a folder and right opens it, as does Return.
+		folder := tree.CurrentItem()
+		press(qt.Key_Left)
+		if folder.IsExpanded() {
+			t.Error("left did not close the folder")
+		}
+		press(qt.Key_Right)
+		if !folder.IsExpanded() {
+			t.Error("right did not open the folder")
+		}
+		press(qt.Key_Return)
+		if folder.IsExpanded() || opened() != "" {
+			t.Errorf("return on a folder: open %v, with %q open", folder.IsExpanded(), opened())
+		}
+		press(qt.Key_Return)
+
+		// Return opens the request, in the tab that is not pinned.
+		press(qt.Key_Down)
+		press(qt.Key_Down)
+		press(qt.Key_Return)
+		if current() != "List rooms" || opened() != "List rooms" || w.tabs.bar.TabText(w.tabs.bar.CurrentIndex()) != "List rooms" {
+			t.Errorf("after return: at %q, with %q open", current(), opened())
+		}
+		w.tabs.toggle(w.tabs.current())
+
+		// One that is pinned is gone to in its own tab.
+		press(qt.Key_Up)
+		press(qt.Key_Return)
+		if opened() != "Book room" || len(w.tabs.tabs) != 2 {
+			t.Errorf("another: %q open in %d tabs", opened(), len(w.tabs.tabs))
+		}
+		press(qt.Key_Down)
+		if opened() != "Book room" {
+			t.Errorf("moving back opened %q", opened())
+		}
+		press(qt.Key_Return)
+		if opened() != "List rooms" || len(w.tabs.tabs) != 2 || w.tabs.bar.CurrentIndex() != 0 {
+			t.Errorf("the pinned one: %q open in %d tabs, tab %d shown", opened(), len(w.tabs.tabs), w.tabs.bar.CurrentIndex())
+		}
+
+		// Without a search, Return in the box starts where the selection
+		// is, or at the first item if there is none.
+		w.requests.search.SetText("")
+		w.requests.search.ReturnPressed()
+		if current() != "List rooms" {
+			t.Errorf("without a search: at %q", current())
+		}
+		w.requests.deselect()
+		w.requests.search.ReturnPressed()
+		if current() != "Health" {
+			t.Errorf("with nothing selected: at %q", current())
+		}
+
+		// A click still opens a request.
+		tree.SetCurrentItem(tree.TopLevelItem(0).Child(0))
+		if opened() != "Ping" {
+			t.Errorf("selected with the pointer: %q open", opened())
 		}
 	})
 }

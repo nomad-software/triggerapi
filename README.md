@@ -80,6 +80,9 @@ bindings.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically, and
   can be searched by name.
+- Open a request without the mouse: Ctrl+P goes to the search, Return goes
+  on to what was found, the arrow keys move through the folders and requests
+  (left closes a folder and right opens one), and Return opens the request.
 - Pin requests to keep them open in tabs, which are reopened the next time
   TriggerAPI is run.
 - Duplicate a workspace, an environment, a request, or a folder with
@@ -103,6 +106,8 @@ bindings.
 
 - Choose the font used for request and response bodies and the folder the
   workspaces are kept in.
+- Set how long a request can take before it is given up on, and whether a
+  REST request follows redirects or shows the response that redirects.
 - Choose the colours of the interface: the icons of the sidebar and of each
   type of request, the buttons, placeholders, errors, the capture marks, the
   matches of a search and JSON highlighting.
@@ -135,6 +140,49 @@ For example, with a variable `request_id` set to `random_uuid()`, a header of
 A function is only recognised when it is the whole value: `id-random_uuid()`
 is used as it is written. To put a generated value inside other text, do it
 where the variable is used, as in `id-{{request_id}}`.
+
+## Keyboard shortcuts
+
+**Anywhere**
+
+| Keys | Does |
+|---|---|
+| Ctrl+Return | Send the REST request or invoke the gRPC method. While one is in flight, cancel it. |
+| Ctrl+P | Go to the search of the Requests tab, to find a request and open it. |
+| Ctrl+F | Find text in the response. |
+| Escape | Close the environment editor, or else the search of the response, the curl command or the URL preview. |
+| Ctrl+, | Open the settings. |
+| Ctrl+I | Show the about box. |
+| Ctrl+Q | Quit. |
+
+**Sending**
+
+| Keys | Where | Does |
+|---|---|---|
+| Return | The URL of a REST request | Send the request, or cancel the one in flight. |
+| Return | The server address of a gRPC request | Invoke the method, or cancel the call in flight. |
+
+**Finding and opening a request**
+
+| Keys | Where | Does |
+|---|---|---|
+| Return | The search box | Go to the tree, at the first request found. |
+| Up, Down | The tree | Move to the item above or below, without opening it. |
+| Left | The tree | Close the folder, or go to the folder an item is in. |
+| Right | The tree | Open the folder, or go to the first item in it. |
+| Return | The tree | Open the request, in the tab it is pinned in or else the tab that is not pinned. On a folder, open or close it. |
+
+**Finding text in a response**
+
+| Keys | Does |
+|---|---|
+| Return | Go to the next match. |
+| Shift+Return | Go to the previous match. |
+| Escape | Close the search. |
+
+Editing text works as it does elsewhere on the system. Ctrl+Z, for one,
+undoes the formatting of a JSON body. On macOS the Command key takes the
+place of Ctrl.
 
 ## Requirements
 

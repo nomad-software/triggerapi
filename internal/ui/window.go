@@ -284,6 +284,7 @@ func NewWindow(files Files) *Window {
 
 	w.request.expand = w.expand
 	w.request.expander = w.expander
+	w.request.options = w.options
 	w.request.setCodeFont(w.config.ResponseFont)
 	w.grpc.setCodeFont(w.config.ResponseFont)
 	w.request.onChange = func() {
@@ -414,6 +415,7 @@ func NewWindow(files Files) *Window {
 	})
 
 	qt.NewQShortcut3(qt.QKeySequence__Find, w.QObject).OnActivated(w.find)
+	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+P"), w.QObject).OnActivated(w.quickOpen)
 
 	// Selecting an environment beside the tabs selects it in the sidebar,
 	// which is what makes it the active one.
@@ -726,6 +728,11 @@ func (w *Window) applySettings(s settings.Settings) error {
 	w.grpc.setCodeFont(s.ResponseFont)
 	w.grpcResponse.setBodyFont(s.ResponseFont)
 
+	// The curl command says how long the request can take and whether it
+	// follows redirects.
+	w.config.Timeout, w.config.NoRedirects = s.Timeout, s.NoRedirects
+	w.request.updateCurl()
+
 	w.config.JSONColours = s.JSONColours
 	w.applyJSONColours()
 
@@ -807,6 +814,16 @@ func (w *Window) expander() func(string) string {
 	return w.environments.store.Expander()
 }
 
+// options returns how requests are sent, as the settings say.
+func (w *Window) options() rest.Options {
+	return rest.Options{Timeout: w.timeout(), NoRedirects: w.config.NoRedirects}
+}
+
+// timeout returns how long a request can take, which is zero for no limit.
+func (w *Window) timeout() time.Duration {
+	return time.Duration(w.config.Timeout) * time.Second
+}
+
 // environmentChanged refreshes what depends on the active environment, as
 // what the placeholders in the request resolve to may have changed.
 func (w *Window) environmentChanged() {
@@ -859,6 +876,13 @@ func (w *Window) find() {
 	case pageGRPC:
 		w.grpcResponse.find.open()
 	}
+}
+
+// quickOpen shows the requests in the sidebar with the keyboard in their
+// search box, to find a request and open it without the mouse.
+func (w *Window) quickOpen() {
+	w.sidebar.SetCurrentIndex(tabRequests)
+	w.requests.focusSearch()
 }
 
 // closeEditor returns to the request UI.
@@ -946,7 +970,13 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(
 		return
 	}
 
+	// The work is given up on when it has taken as long as the settings
+	// allow, which is the same for every kind of request.
+	limit := w.config.Timeout
 	ctx, cancel := context.WithCancel(context.Background())
+	if limit > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), w.timeout())
+	}
 	w.cancel = cancel
 	shown := w.shown
 	tab := w.tabs.current()
@@ -981,6 +1011,9 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(
 				return
 			case errors.Is(err, context.Canceled):
 				result = func() { response.showCancelled(elapsed) }
+			case errors.Is(err, context.DeadlineExceeded):
+				timedOut := fmt.Errorf("timed out after %s, which is the limit in the settings", plural(limit, "second"))
+				result = func() { response.showError(timedOut, elapsed) }
 			case err != nil:
 				result = func() { response.showError(err, elapsed) }
 			default:
@@ -999,6 +1032,7 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(
 func (w *Window) send() {
 	request := w.request.request()
 	req := request.Expand(w.expander())
+	req.Options = w.options()
 
 	w.run(w.request.send, w.response, func(ctx context.Context) (outcome, error) {
 		res, err := rest.Send(ctx, w.client, req)

@@ -101,6 +101,8 @@ type requestPanel struct {
 	// expander returns a function which does the same, giving a variable
 	// whose value is made by a function the one value wherever it is used.
 	expander func() func(string) string
+	// options returns how a request is sent, which the command says too.
+	options func() rest.Options
 	// commanded is the request that the command on show was made from,
 	// which is the one that Execute is to run.
 	commanded rest.Request
@@ -329,6 +331,9 @@ func (p *requestPanel) updateCurl() {
 	request := p.request()
 	if p.expander != nil {
 		request = request.Expand(p.expander())
+	}
+	if p.options != nil {
+		request.Options = p.options()
 	}
 	p.commanded = request
 

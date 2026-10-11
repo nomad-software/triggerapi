@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strings"
+
 	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/env"
@@ -12,7 +14,11 @@ import (
 type envEditor struct {
 	root *qt.QWidget
 
-	name      *qt.QLineEdit
+	name *qt.QLineEdit
+	// named is the name the environment has. It is not the one in the
+	// field while that is empty, as an environment cannot be without a
+	// name.
+	named     string
 	variables *keyValueTable
 	close     *qt.QPushButton
 
@@ -45,6 +51,12 @@ func newEnvEditor() *envEditor {
 	layout.AddWidget2(e.variables.widget(), 1)
 
 	e.name.OnTextChanged(func(string) { e.changed() })
+	// A field left empty is given back the name the environment has.
+	e.name.OnEditingFinished(func() {
+		if strings.TrimSpace(e.name.Text()) == "" {
+			e.name.SetText(e.named)
+		}
+	})
 	e.variables.onChange = e.changed
 
 	return e
@@ -58,6 +70,7 @@ func (e *envEditor) load(environment *env.Environment) {
 	}
 
 	e.updating = true
+	e.named = environment.Name
 	e.name.SetText(environment.Name)
 	e.variables.setDescribed(items)
 	e.updating = false
@@ -72,5 +85,10 @@ func (e *envEditor) changed() {
 	for _, item := range e.variables.allDescribed() {
 		variables = append(variables, env.Variable{Key: item.Key, Value: item.Value, Enabled: item.Enabled, Description: item.Description})
 	}
-	e.onChange(e.name.Text(), variables)
+	// The name is kept while the field is empty, which it has to be on the
+	// way to another name being typed.
+	if name := e.name.Text(); strings.TrimSpace(name) != "" {
+		e.named = name
+	}
+	e.onChange(e.named, variables)
 }

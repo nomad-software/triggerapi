@@ -100,6 +100,20 @@ type Request struct {
 	// variables of the active environment, as the capture package reads
 	// them. Placeholders in them are not replaced.
 	Captures []capture.Rule `json:"captures,omitempty"`
+
+	// Options say how the request is sent. They are not part of the
+	// request as it is saved: whoever sends it gives them.
+	Options Options `json:"-"`
+}
+
+// Options say how a request is sent, whatever the request is.
+type Options struct {
+	// Timeout is how long the request can take, to the end of its
+	// response. There is no limit if it is zero.
+	Timeout time.Duration
+	// NoRedirects has a response that redirects to another address
+	// returned as it is, where the address would otherwise be followed.
+	NoRedirects bool
 }
 
 // Response is the result of sending a request.
@@ -284,11 +298,27 @@ func encode(pairs []KeyValue) string {
 }
 
 // Send performs the request using the passed client and reads the whole
-// response body. Duration covers the time until the body is fully read.
+// response body. Duration covers the time until the body is fully read. The
+// options of the request say how long it can take and if redirects are
+// followed; a request that takes too long fails with
+// context.DeadlineExceeded.
 func Send(ctx context.Context, client *http.Client, r Request) (*Response, error) {
+	if r.Options.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.Options.Timeout)
+		defer cancel()
+	}
+
 	req, err := r.Build(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if r.Options.NoRedirects {
+		// The client is the caller's, so a copy is the one changed.
+		single := *client
+		single.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		client = &single
 	}
 
 	start := time.Now()

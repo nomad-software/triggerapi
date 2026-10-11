@@ -52,8 +52,15 @@ func (r Request) curlOptions() ([][]string, error) {
 	address := req.URL.String()
 	content := r.content()
 
-	// Send follows redirects, so the command does.
-	first := []string{"--location"}
+	// The command follows redirects if Send would, and gives up when it
+	// would.
+	var first []string
+	if !r.Options.NoRedirects {
+		first = append(first, "--location")
+	}
+	if r.Options.Timeout > 0 {
+		first = append(first, "--max-time", strconv.FormatFloat(r.Options.Timeout.Seconds(), 'f', -1, 64))
+	}
 	switch {
 	case req.Method == http.MethodGet && content == "":
 		// This is what curl does when it is not told otherwise.
@@ -145,6 +152,12 @@ func RunCurl(ctx context.Context, r Request) (*Response, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
+	// This is how curl ends when it has taken too long, which is to be the
+	// error that Send gives.
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == curlTimedOut {
+		return nil, context.DeadlineExceeded
+	}
 	if err != nil {
 		if message := strings.TrimSpace(problem.String()); message != "" {
 			return nil, errors.New(message)
@@ -168,6 +181,10 @@ func RunCurl(ctx context.Context, r Request) (*Response, error) {
 	res.Duration = duration
 	return res, nil
 }
+
+// curlTimedOut is the exit status of curl when a request has taken longer
+// than it was allowed.
+const curlTimedOut = 28
 
 // parseCurlHeaders reads the status and headers of a response from what curl
 // wrote of them. There is a set for each response on the way to the last,
