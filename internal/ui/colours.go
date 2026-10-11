@@ -25,6 +25,7 @@ const (
 	colourError
 	colourCaptured
 	colourNotCaptured
+	colourMatch
 )
 
 // colourKinds are the colours, with what each is called in the settings and
@@ -33,8 +34,9 @@ const (
 // command too. The action buttons are those beside the tabs of a panel, curl
 // and save, and the pin of a request tab. A placeholder that the active
 // environment defines is green, and one that it does not is the colour of an
-// error. The last two are of the tick and the cross which say how capturing
-// from a response went.
+// error. Captured and not captured are of the tick and the cross which say
+// how capturing from a response went, and the last is what marks each place
+// that text looked for in a response was found.
 var colourKinds = []struct {
 	kind     colourKind
 	label    string
@@ -53,6 +55,7 @@ var colourKinds = []struct {
 	{colourError, "Errors", failureColour},
 	{colourCaptured, "Captured", "#2e9e5b"},
 	{colourNotCaptured, "Not captured", failureColour},
+	{colourMatch, "Search matches", "#ffd43b"},
 }
 
 // customColours are the colours the user has chosen. See setColours.
@@ -86,6 +89,8 @@ func customIconColour(custom *settings.Colours, kind colourKind) *string {
 		return &custom.Captured
 	case colourNotCaptured:
 		return &custom.NotCaptured
+	case colourMatch:
+		return &custom.Match
 	default:
 		return &custom.Action
 	}

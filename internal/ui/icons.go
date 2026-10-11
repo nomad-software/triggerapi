@@ -154,6 +154,20 @@ func drawEye(painter *qt.QPainter) {
 	painter.DrawEllipse2(54, 54, 20, 20)
 }
 
+// drawMagnifier draws a magnifying glass, for finding something.
+func drawMagnifier(painter *qt.QPainter) {
+	painter.SetPenWithPen(whitePen())
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	painter.DrawEllipse2(28, 28, 50, 50)
+
+	// The handle.
+	path := qt.NewQPainterPath()
+	path.MoveTo2(72, 72)
+	path.LineTo2(100, 100)
+	painter.DrawPath(path)
+}
+
 // drawTick draws a tick, for something that went well.
 func drawTick(painter *qt.QPainter) {
 	pen := whitePen()

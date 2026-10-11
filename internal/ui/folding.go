@@ -138,6 +138,15 @@ func (f *folder) toggle(line int) {
 	f.apply()
 }
 
+// reveal unfolds whatever a line is folded away in.
+func (f *folder) reveal(line int) {
+	before := len(f.folded)
+	maps.DeleteFunc(f.folded, func(start, end int) bool { return start < line && line < end })
+	if len(f.folded) != before {
+		f.apply()
+	}
+}
+
 // apply hides the lines inside the folded regions and shows the rest.
 func (f *folder) apply() {
 	defer f.gutter.Update()

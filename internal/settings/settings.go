@@ -107,12 +107,15 @@ type Colours struct {
 	// a value was captured from a response, and that one could not be.
 	Captured    string `json:"captured,omitempty"`
 	NotCaptured string `json:"notCaptured,omitempty"`
+	// Match is the colour that marks the places text looked for in a
+	// response was found.
+	Match string `json:"match,omitempty"`
 }
 
 // valid returns the colours with any that are not of the form #rrggbb
 // emptied.
 func (c Colours) valid() Colours {
-	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Captured, &c.NotCaptured)
+	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Captured, &c.NotCaptured, &c.Match)
 	return c
 }
 

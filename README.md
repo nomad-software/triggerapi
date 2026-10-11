@@ -41,6 +41,8 @@ bindings.
   the tab and against each variable shows whether it was captured.
 - JSON bodies, messages and responses are syntax highlighted, and their
   objects and arrays can be folded.
+- Find text in a response with Ctrl+F: every match is marked and counted,
+  and Enter and Shift+Enter go from one to the next.
 - Save the body of a response to a file. JSON is saved formatted.
 
 **Organising requests**
@@ -72,11 +74,11 @@ bindings.
 - Choose the font used for request and response bodies and the folder the
   workspaces are kept in.
 - Choose the colours of the interface: the icons of the sidebar and of each
-  type of request, the buttons, placeholders, errors, the capture marks and
-  JSON highlighting.
+  type of request, the buttons, placeholders, errors, the capture marks, the
+  matches of a search and JSON highlighting.
 - The size and layout of the window are remembered.
-- Escape closes the environment editor, the curl command and the URL
-  preview.
+- Escape closes the environment editor, the search of a response, the curl
+  command and the URL preview.
 
 ## Requirements
 

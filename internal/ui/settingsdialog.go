@@ -130,7 +130,7 @@ var colourSections = [2][]struct {
 		{"Buttons", []colourKind{colourSend, colourAction, colourRemove}},
 	},
 	{
-		{"Text", []colourKind{colourFound, colourNotFound, colourError}},
+		{"Text", []colourKind{colourFound, colourNotFound, colourError, colourMatch}},
 		{"Capture", []colourKind{colourCaptured, colourNotCaptured}},
 	},
 }

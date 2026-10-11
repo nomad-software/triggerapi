@@ -28,6 +28,9 @@ type responsePanel struct {
 	// save writes the body of the response to a file. It is at the right
 	// of the line the tabs are on.
 	save *qt.QToolButton
+	// find is the bar above the body in which text to find in it is typed.
+	// Its button is before save.
+	find *findBar
 
 	// captures is the table of the Capture tab, which belongs to the
 	// request panel, and captured what came of capturing from the response
@@ -93,8 +96,14 @@ func newResponsePanel(bodyFont string) *responsePanel {
 		if isJSON() {
 			p.formats.apply(p.highlighter, text)
 		}
+		// The matches of a search are marked over the colours of JSON.
+		if p.find != nil {
+			p.find.highlight(text)
+		}
 	})
 	p.fold = newFolder(p.body, isJSON)
+	p.find = newFindBar(p.body, p.highlighter, p.fold)
+	p.find.onShow = func() { p.tabs.SetCurrentIndex(tabResponse) }
 	p.setBodyFont(bodyFont)
 
 	p.headers = qt.NewQTableWidget3(0, 2)
@@ -109,8 +118,15 @@ func newResponsePanel(bodyFont string) *responsePanel {
 	p.save.SetEnabled(false)
 	p.save.OnClicked(p.saveBody)
 
-	p.tabs = newButtonTabs(p.save)
-	p.tabs.AddTab(p.body.QWidget, "Response")
+	// The bar to find text with is above the body it is found in.
+	response := qt.NewQWidget2()
+	responseLayout := qt.NewQVBoxLayout(response)
+	responseLayout.SetContentsMargins(0, 0, 0, 0)
+	responseLayout.AddWidget(p.find.root)
+	responseLayout.AddWidget2(p.body.QWidget, 1)
+
+	p.tabs = newButtonTabs(p.find.button, p.save)
+	p.tabs.AddTab(response, "Response")
 	p.tabs.AddTab(p.headers.QWidget, "Headers")
 
 	p.chooseSave = func(name string) (string, bool) {
@@ -201,7 +217,7 @@ func (p *responsePanel) clear() {
 	p.setBody("", false)
 	p.setContent(nil, "")
 	p.headers.SetRowCount(0)
-	p.tabs.SetTabText(1, "Headers")
+	p.tabs.SetTabText(tabResponseHeaders, "Headers")
 	p.setFields()
 	p.showCaptured(nil)
 }
@@ -215,11 +231,17 @@ func (p *responsePanel) setBody(text string, isJSON bool) {
 	p.json = isJSON && len(text) <= maxHighlight
 	p.body.SetPlainText(text)
 	p.fold.reset()
+	// What is being looked for is looked for in the new body.
+	p.find.search()
 }
 
-// tabCapture is the tab of a response panel on which what to capture from
-// the response is set.
-const tabCapture = 2
+// Tabs of a response panel. The last is the one on which what to capture
+// from the response is set.
+const (
+	tabResponse = iota
+	tabResponseHeaders
+	tabCapture
+)
 
 // setCaptureTable adds the Capture tab, which shows the table of what the
 // request captures from its response.
@@ -272,6 +294,7 @@ func (p *responsePanel) showCaptured(results []captureResult) {
 func (p *responsePanel) recolour() {
 	p.setFields(p.fields...)
 	p.showCaptured(p.captured)
+	p.find.recolour()
 }
 
 // setFields fills the bar beneath the response with labelled values. Fields
@@ -390,7 +413,7 @@ func (p *responsePanel) setHeaders(rows [][2]string) {
 		p.headers.SetItem(row, 0, qt.NewQTableWidgetItem2(pair[0]))
 		p.headers.SetItem(row, 1, qt.NewQTableWidgetItem2(pair[1]))
 	}
-	p.tabs.SetTabText(1, fmt.Sprintf("Headers (%d)", len(rows)))
+	p.tabs.SetTabText(tabResponseHeaders, fmt.Sprintf("Headers (%d)", len(rows)))
 }
 
 // failureColour is the colour errors are shown in, until another is chosen

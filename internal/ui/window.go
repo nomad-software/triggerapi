@@ -411,6 +411,8 @@ func NewWindow(files Files) *Window {
 		super(event)
 	})
 
+	qt.NewQShortcut3(qt.QKeySequence__Find, w.QObject).OnActivated(w.find)
+
 	// Selecting an environment beside the tabs selects it in the sidebar,
 	// which is what makes it the active one.
 	w.environment.onEnvironment = w.environments.list.SetCurrentRow
@@ -825,14 +827,28 @@ func (w *Window) requestPage() int {
 }
 
 // escape closes what is open in place of the request: the environment
-// editor, or else the curl command or the preview of the URL of a REST
-// request.
+// editor, or else the bar text is found in the response with, or else the
+// curl command or the preview of the URL of a REST request.
 func (w *Window) escape() {
 	switch w.stack.CurrentIndex() {
 	case pageEditor:
 		w.closeEditor()
 	case pageRequest:
-		w.request.escape()
+		if !w.response.find.close() {
+			w.request.escape()
+		}
+	case pageGRPC:
+		w.grpcResponse.find.close()
+	}
+}
+
+// find opens the bar in which text to find in the response is typed.
+func (w *Window) find() {
+	switch w.stack.CurrentIndex() {
+	case pageRequest:
+		w.response.find.open()
+	case pageGRPC:
+		w.grpcResponse.find.open()
 	}
 }
 

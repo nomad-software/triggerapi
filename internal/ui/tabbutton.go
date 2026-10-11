@@ -20,13 +20,25 @@ func newIconButton(colour colourKind, glyph func(*qt.QPainter), tip string) *qt.
 	return button
 }
 
-// newButtonTabs returns a tab widget with a button at the right of the line
+// newButtonTabs returns a tab widget with buttons at the right of the line
 // its tabs are on.
-func newButtonTabs(button *qt.QToolButton) *qt.QTabWidget {
+func newButtonTabs(buttons ...*qt.QToolButton) *qt.QTabWidget {
+	// More than one button is put in a row.
+	corner := buttons[0].QWidget
+	if len(buttons) > 1 {
+		corner = qt.NewQWidget2()
+		row := qt.NewQHBoxLayout(corner)
+		row.SetContentsMargins(0, 0, 0, 0)
+		row.SetSpacing(2)
+		for _, button := range buttons {
+			row.AddWidget(button.QWidget)
+		}
+	}
+
 	// Something put beside the tabs is given no more than their height, so
-	// they are made tall enough for the button. The size is kept and
+	// they are made tall enough for the buttons. The size is kept and
 	// returned each time, as one made for each call would never be freed.
-	height := button.SizeHint().Height()
+	height := buttons[0].SizeHint().Height()
 	tabSize := qt.NewQSize()
 	bar := qt.NewQTabBar2()
 	bar.OnTabSizeHint(func(super func(int) *qt.QSize, index int) *qt.QSize {
@@ -38,7 +50,7 @@ func newButtonTabs(button *qt.QToolButton) *qt.QTabWidget {
 
 	tabs := qt.NewQTabWidget2()
 	tabs.SetTabBar(bar)
-	tabs.SetCornerWidget2(button.QWidget, qt.TopRightCorner)
+	tabs.SetCornerWidget2(corner, qt.TopRightCorner)
 	return tabs
 }
 
