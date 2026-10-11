@@ -4,7 +4,7 @@ A desktop client for making REST API and gRPC calls. It is written
 in Go with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
 bindings.
 
-![TriggerAPI showing a REST request and its JSON response](docs/screenshot.png)
+![TriggerAPI showing a REST request, its JSON response and a value captured from it](docs/screenshot.png)
 
 ## Features
 
@@ -14,6 +14,10 @@ bindings.
   bearer authorization, and a JSON, text, XML or form body.
 - Params are shown in the URL and kept in step with it both ways. Params,
   headers and form fields can each be switched off without being removed.
+- A long URL is wrapped, with the field growing to show all of it.
+- Preview the URL with the environment's variables filled in, in place of the
+  URL field. Each value is coloured, and a placeholder with no value is
+  marked.
 - Show any request as a `curl` command, with the environment's variables
   filled in, to copy and run in a terminal, or run it from TriggerAPI with the
   installed `curl` and see the response as usual.
@@ -30,6 +34,11 @@ bindings.
 
 - The status, time, size and protocol of a response are shown beneath it,
   with failures in red, and its headers in a tab of their own.
+- Capture values from a response into variables of the selected environment,
+  such as a token from a login to use in later requests. The Capture tab of
+  the response lists the variables to set, each with the path of its value in
+  the JSON of the response, such as `data.items[0].id`. A tick or a cross on
+  the tab and against each variable shows whether it was captured.
 - JSON bodies, messages and responses are syntax highlighted, and their
   objects and arrays can be folded.
 - Save the body of a response to a file. JSON is saved formatted.
@@ -52,21 +61,22 @@ bindings.
 
 - Define environments of variables and use them anywhere in a request as
   `{{name}}` placeholders. Environments exported from Postman can be imported.
-- Capture values from a response into variables of the selected environment,
-  such as a token from a login to use in later requests. The Capture tab of
-  the response lists the variables to set, each with the path of its value in the
-  JSON of the response, such as `data.items[0].id`. A tick or a cross on the
-  tab and against each variable shows whether it was captured.
+- Give each variable a description. Several variables can share a name, to
+  keep the values it is switched between, with the one that is switched on
+  being used.
 - Placeholders are coloured where they are used, differently if the selected
-  environment does not define them, and the URL a request would be sent to
-  can be previewed in place of the URL field. A long URL is wrapped, with the
-  field growing to show all of it.
+  environment does not define them.
 
 **Settings**
 
-- Choose the font used for request and response bodies, the colours JSON is
-  highlighted in, and the folder the workspaces are kept in. The size and
-  layout of the window are remembered.
+- Choose the font used for request and response bodies and the folder the
+  workspaces are kept in.
+- Choose the colours of the interface: the icons of the sidebar and of each
+  type of request, the buttons, placeholders, errors, the capture marks and
+  JSON highlighting.
+- The size and layout of the window are remembered.
+- Escape closes the environment editor, the curl command and the URL
+  preview.
 
 ## Requirements
 
