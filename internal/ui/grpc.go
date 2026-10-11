@@ -26,8 +26,10 @@ type grpcPanel struct {
 	// messageFold folds the objects and arrays of the message.
 	messageFold *folder
 	example     *qt.QPushButton
-	auth        *authEditor
-	metadata    *keyValueTable
+	// format sets out the message.
+	format   *formatButton
+	auth     *authEditor
+	metadata *keyValueTable
 	// captures are the variables to set from the response. See
 	// requestPanel.captures.
 	captures   *keyValueTable
@@ -105,6 +107,8 @@ func newGRPCPanel() *grpcPanel {
 
 	exampleBar := qt.NewQHBoxLayout2()
 	exampleBar.AddWidget(p.example.QWidget)
+	p.format = newFormatButton(p.message)
+	exampleBar.AddWidget(p.format.button.QWidget)
 	exampleBar.AddStretch()
 
 	messageTab := qt.NewQWidget2()

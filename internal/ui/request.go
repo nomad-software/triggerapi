@@ -80,6 +80,9 @@ type requestPanel struct {
 	bodyForm *keyValueTable
 	// bodyFold folds the objects and arrays of a JSON body.
 	bodyFold *folder
+	// format sets out a JSON body. It is beside the type of the body, and
+	// only there when the type is JSON.
+	format *formatButton
 
 	// pages shows the fields of the request, or the request as a command
 	// (pageFields / pageCurl), as chosen with the curl button beside the
@@ -343,6 +346,8 @@ func (p *requestPanel) newBodyTab() *qt.QWidget {
 	p.bodyRaw.OnTextChanged(p.changed)
 	p.highlight.document(p.bodyRaw.Document(), p.bodyIsJSON)
 	p.bodyFold = newFolder(p.bodyRaw, p.bodyIsJSON)
+	p.format = newFormatButton(p.bodyRaw)
+	p.format.button.SetVisible(false)
 
 	p.bodyForm = newKeyValueTable("Key", "Value")
 	p.bodyForm.onChange = p.changed
@@ -362,22 +367,27 @@ func (p *requestPanel) newBodyTab() *qt.QWidget {
 		default:
 			stack.SetCurrentIndex(bodyPageRaw)
 		}
-		// Only a JSON body is coloured and can be folded.
+		// Only a JSON body is coloured and can be folded and set out.
+		p.format.button.SetVisible(p.bodyIsJSON())
 		p.refreshPlaceholders()
 		p.bodyFold.reset()
 		p.changed()
 	})
 
-	return newSelectorTab("Type", p.bodyType, stack)
+	return newSelectorTab("Type", p.bodyType, stack, p.format.button.QWidget)
 }
 
-// newSelectorTab lays out a combo box above the stack of pages it controls.
-func newSelectorTab(label string, selector *qt.QComboBox, stack *qt.QStackedWidget) *qt.QWidget {
+// newSelectorTab lays out a combo box above the stack of pages it controls,
+// with anything else that is to be beside it.
+func newSelectorTab(label string, selector *qt.QComboBox, stack *qt.QStackedWidget, beside ...*qt.QWidget) *qt.QWidget {
 	tab := qt.NewQWidget2()
 
 	top := qt.NewQHBoxLayout2()
 	top.AddWidget(qt.NewQLabel3(label).QWidget)
 	top.AddWidget(selector.QWidget)
+	for _, widget := range beside {
+		top.AddWidget(widget)
+	}
 	top.AddStretch()
 
 	layout := qt.NewQVBoxLayout(tab)

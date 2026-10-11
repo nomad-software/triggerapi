@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"testing"
@@ -4606,7 +4607,11 @@ func TestFindInResponse(t *testing.T) {
 
 		for _, p := range []*responsePanel{w.response, w.grpcResponse} {
 			f := p.find
-			selected := func() string { return p.body.TextCursor().SelectedText() }
+			selected := func() string {
+				cursor := p.body.TextCursor()
+				defer release(cursor)
+				return cursor.SelectedText()
+			}
 			show := func(body string) {
 				p.show(&rest.Response{Status: "200 OK", StatusCode: 200, Headers: http.Header{"Content-Type": {"application/json"}}, Body: []byte(body)})
 			}
@@ -4785,4 +4790,104 @@ func TestClickToCapture(t *testing.T) {
 			}
 		}
 	})
+}
+
+// The Format button sets out the JSON of a REST body and of a gRPC message,
+// keeping the placeholders in it, and leaves alone what is not JSON.
+func TestFormatJSONButton(t *testing.T) {
+	files := testFiles(t)
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+		w.requests.addFolder()
+		w.requests.addRequest()
+		p := w.request
+
+		// The button is beside the type of the body, for a JSON body only.
+		if !p.root.IsAncestorOf(p.format.button.QWidget) || !p.format.button.IsHidden() {
+			t.Fatal("the button is shown without a JSON body, or is not in the panel")
+		}
+		for i, kind := range bodyTypes {
+			p.bodyType.SetCurrentIndex(i)
+			if got, want := !p.format.button.IsHidden(), kind.typ == rest.BodyJSON; got != want {
+				t.Errorf("with a body of %s the button is shown: %v", kind.label, got)
+			}
+		}
+		p.load(rest.Request{BodyType: rest.BodyJSON, Body: `{"id":{{id}},"tags":["a"]}`})
+		if p.format.button.IsHidden() {
+			t.Error("the button is not shown for a loaded JSON body")
+		}
+
+		var warned []string
+		p.format.warn = func(message string) { warned = append(warned, message) }
+
+		// The body is set out and saved, and can be put back.
+		const formatted = "{\n  \"id\": {{id}},\n  \"tags\": [\n    \"a\"\n  ]\n}"
+		p.format.button.Click()
+		if got := p.bodyRaw.ToPlainText(); got != formatted || w.open.Request.Body != formatted || len(warned) != 0 {
+			t.Errorf("body = %q, saved %q, warned %q", got, w.open.Request.Body, warned)
+		}
+		if saved, err := collection.Load(files.Requests); err != nil || saved.Folders[0].Requests[0].Request.Body != formatted {
+			t.Errorf("saved %+v, %v", saved, err)
+		}
+		p.bodyRaw.Undo()
+		if got := p.bodyRaw.ToPlainText(); got != `{"id":{{id}},"tags":["a"]}` {
+			t.Errorf("after undo: %q", got)
+		}
+
+		// What is not JSON is left as it is, and the user told.
+		p.bodyRaw.SetPlainText(`{"id":`)
+		p.format.button.Click()
+		if got := p.bodyRaw.ToPlainText(); got != `{"id":` || len(warned) != 1 || !strings.Contains(warned[0], "not valid JSON") {
+			t.Errorf("body = %q, warned %q", got, warned)
+		}
+
+		// The message of a gRPC request is set out the same way.
+		addGRPCRequest(w)
+		g := w.grpc
+		if !g.root.IsAncestorOf(g.format.button.QWidget) || g.format.button.IsHidden() {
+			t.Fatal("the button of the message is not shown")
+		}
+		g.message.SetPlainText(`{"text":"{{said}}","count":2}`)
+		g.format.button.Click()
+		if got, want := g.message.ToPlainText(), "{\n  \"text\": \"{{said}}\",\n  \"count\": 2\n}"; got != want || w.open.GRPC.Message != want {
+			t.Errorf("message = %q, saved %q", got, w.open.GRPC.Message)
+		}
+	})
+}
+
+// Text cursors are freed on the GUI thread, not by the garbage collector on
+// a thread of its own, which crashed when it came while a document was being
+// changed. Here it is made to come all the time.
+func TestTextCursorsWhileCollecting(t *testing.T) {
+	defer debug.SetGCPercent(debug.SetGCPercent(1))
+
+	const body = "{\n  \"name\": \"a\",\n       \"data\": {\n    \"year\": 2019,\n          \"tags\": [1, 2]\n      }\n   }"
+
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(testFiles(t).Files)
+		w.Show()
+		w.request.bodyType.SetCurrentIndex(1)
+		w.response.find.open()
+		w.response.find.field.SetText("a")
+	})
+
+	var garbage []byte
+	for range 1500 {
+		mainthread.Wait(func() {
+			p := w.request
+			p.bodyRaw.SetPlainText(body)
+			p.bodyFold.reset()
+			p.bodyFold.toggle(2)
+			p.bodyFold.lineAt(4)
+			garbage = make([]byte, 1<<16)
+			p.format.button.Click()
+
+			w.response.setBody(body, true)
+			w.response.find.step(1)
+		})
+	}
+	_ = garbage
 }

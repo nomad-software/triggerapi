@@ -112,7 +112,9 @@ func newResponsePanel(bodyFont string) *responsePanel {
 	p.fold = newFolder(p.body, isJSON)
 	// The menu of the body offers to capture the value it is opened on.
 	p.body.OnContextMenuEvent(func(_ func(*qt.QContextMenuEvent), event *qt.QContextMenuEvent) {
-		menu := p.contextMenu(p.body.CursorForPosition(event.Pos()).Position())
+		cursor := p.body.CursorForPosition(event.Pos())
+		menu := p.contextMenu(cursor.Position())
+		release(cursor)
 		menu.ExecWithPos(event.GlobalPos())
 		menu.DeleteLater()
 	})

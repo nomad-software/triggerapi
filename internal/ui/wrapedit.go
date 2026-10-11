@@ -100,6 +100,7 @@ func (e *wrapEdit) setPieces(pieces []textPiece) {
 
 	e.Clear()
 	cursor := e.TextCursor()
+	defer release(cursor)
 	for _, piece := range pieces {
 		format := piece.format
 		if format == nil {

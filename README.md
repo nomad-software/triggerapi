@@ -43,6 +43,8 @@ bindings.
   the tab and against each variable shows whether it was captured.
 - JSON bodies, messages and responses are syntax highlighted, and their
   objects and arrays can be folded.
+- A Format button sets out the JSON of a request body or a gRPC message,
+  leaving any `{{placeholders}}` in it as they are.
 - Find text in a response with Ctrl+F: every match is marked and counted,
   and Enter and Shift+Enter go from one to the next.
 - Save the body of a response to a file. JSON is saved formatted.

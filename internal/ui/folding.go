@@ -181,7 +181,9 @@ func (f *folder) apply() {
 	}
 
 	// The text cursor must not be left on a line that cannot be seen.
-	if cursor := f.edit.TextCursor(); cursor.BlockNumber() < len(hide) && hide[cursor.BlockNumber()] {
+	cursor := f.edit.TextCursor()
+	defer release(cursor)
+	if cursor.BlockNumber() < len(hide) && hide[cursor.BlockNumber()] {
 		line := cursor.BlockNumber()
 		for line > 0 && hide[line] {
 			line--
@@ -201,8 +203,11 @@ func (f *folder) visibleLines(each func(line, top, height int) bool) {
 	origin := qt.NewQPoint2(0, 0)
 	defer origin.Delete()
 
+	first := f.edit.CursorForPosition(origin)
+	defer release(first)
+
 	height := f.gutter.Height()
-	for block := f.edit.CursorForPosition(origin).Block(); block.IsValid(); block = block.Next() {
+	for block := first.Block(); block.IsValid(); block = block.Next() {
 		if !block.IsVisible() {
 			continue
 		}

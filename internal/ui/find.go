@@ -219,7 +219,11 @@ func (f *findBar) toggled(open bool) {
 		f.onShow()
 	}
 	// Text selected in the response is what to look for.
-	if selected := f.edit.TextCursor().SelectedText(); selected != "" && !strings.ContainsAny(selected, "\n ") {
+	cursor := f.edit.TextCursor()
+	selected := cursor.SelectedText()
+	release(cursor)
+	// A selection of more than one line has U+2029 between its lines.
+	if selected != "" && !strings.ContainsAny(selected, "\n\u2029") {
 		f.field.SetText(selected)
 	}
 	f.search()
@@ -249,12 +253,13 @@ func (f *findBar) search() {
 		f.highlighter.Rehighlight()
 	}
 
+	cursor := f.edit.TextCursor()
+	defer release(cursor)
 	if len(f.matches) > 0 {
-		from := f.edit.TextCursor().SelectionStart()
+		from := cursor.SelectionStart()
 		first := sort.Search(len(f.matches), func(i int) bool { return f.matches[i].start >= from })
 		f.goTo(first % len(f.matches))
 	} else if f.isOpen() {
-		cursor := f.edit.TextCursor()
 		cursor.ClearSelection()
 		f.edit.SetTextCursor(cursor)
 	}
@@ -279,6 +284,7 @@ func (f *findBar) goTo(index int) {
 	f.fold.reveal(f.edit.Document().FindBlock(match.start).BlockNumber())
 
 	cursor := f.edit.TextCursor()
+	defer release(cursor)
 	cursor.SetPosition(match.start)
 	cursor.SetPosition2(match.start+match.length, qt.QTextCursor__KeepAnchor)
 	f.edit.SetTextCursor(cursor)
