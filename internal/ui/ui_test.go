@@ -4743,6 +4743,13 @@ func TestClickToCapture(t *testing.T) {
 			t.Errorf("in text: %q", got)
 		}
 
+		// A body that is JSON whatever it says it is can be captured
+		// from, with the line endings it came with.
+		p.show(&rest.Response{Status: "200 OK", StatusCode: 200, Headers: http.Header{"Content-Type": {"text/plain"}}, Body: []byte("{\r\n  \"token\": \"abc\"\r\n}")})
+		if got, _ := offers(p, `"abc"`, 1); got != "Capture token" {
+			t.Errorf("in JSON sent as text: %q", got)
+		}
+
 		p.show(&rest.Response{Status: "200 OK", StatusCode: 200, Headers: http.Header{"Content-Type": {"application/json"}}, Body: []byte(`{"é😀":"x","data":{"items":[{"id":7},{"id":8}],"a&b":1}}`)})
 		for text, want := range map[string]string{
 			`"data"`: "Capture data",

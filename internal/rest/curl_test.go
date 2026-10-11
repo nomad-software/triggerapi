@@ -141,11 +141,12 @@ func TestRunCurl(t *testing.T) {
 	}
 
 	release := make(chan struct{})
-	var srv *httptest.Server
-	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/old":
-			http.Redirect(w, r, srv.URL+"/new", http.StatusFound)
+			// The address is that of this server, which the handler
+			// cannot be given as the server is made with it.
+			http.Redirect(w, r, "http://"+r.Host+"/new", http.StatusFound)
 		case "/slow":
 			<-release
 		default:

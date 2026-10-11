@@ -4,6 +4,7 @@
 package openapi
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -469,16 +470,45 @@ func (d *document) schemaOf(s *schema) *schema {
 	return nil
 }
 
-// maxDepth limits how deep an example goes, as a schema can contain itself.
+// maxDepth limits how deep an example goes.
 const maxDepth = 8
 
+// maxValues limits how many values are made for one example, counting those
+// there is nothing to go on for. Schemas which refer to one another, as those
+// of a large API do, would otherwise make an example many times the size of
+// the document. The properties of an object there is nothing left for are
+// left out of it.
+const maxValues = 2000
+
+// exampleMaker makes one example from the schemas of a document.
+type exampleMaker struct {
+	*document
+	// within holds the schemas the value being made is inside, as a schema
+	// is not made inside itself, which would never end.
+	within map[*schema]bool
+	// left is the number of values that can still be made.
+	left int
+}
+
 // example makes a value that fits a schema: the example or default it gives,
-// or a placeholder value of its type.
+// or a placeholder value of its type. It is nil if there is nothing to go on.
 func (d *document) example(s *schema, depth int) any {
-	s = d.schemaOf(s)
-	if s == nil || depth > maxDepth {
+	maker := &exampleMaker{document: d, within: map[*schema]bool{}, left: maxValues}
+	return maker.example(s, depth)
+}
+
+func (d *exampleMaker) example(s *schema, depth int) any {
+	if d.left <= 0 {
 		return nil
 	}
+	d.left--
+
+	s = d.schemaOf(s)
+	if s == nil || depth > maxDepth || d.within[s] {
+		return nil
+	}
+	d.within[s] = true
+	defer delete(d.within, s)
 
 	if s.Example != nil {
 		return s.Example
@@ -509,9 +539,19 @@ func (d *document) example(s *schema, depth int) any {
 
 	switch kind := s.kind(); {
 	case kind == "object" || len(s.Properties) > 0:
+		// The properties that are plain values come first, so that they
+		// are not the ones left out if there are too many values.
+		names := slices.Sorted(maps.Keys(s.Properties))
+		slices.SortStableFunc(names, func(a, b string) int {
+			return cmp.Compare(d.nests(s.Properties[a]), d.nests(s.Properties[b]))
+		})
+
 		object := map[string]any{}
-		for name, property := range s.Properties {
-			object[name] = d.example(property, depth+1)
+		for _, name := range names {
+			if d.left <= 0 {
+				break
+			}
+			object[name] = d.example(s.Properties[name], depth+1)
 		}
 		return object
 	case kind == "array":
@@ -537,6 +577,16 @@ func (d *document) example(s *schema, depth int) any {
 		return false
 	}
 	return nil
+}
+
+// nests reports, as 1 or 0, if a schema is of a value that has others inside
+// it.
+func (d *exampleMaker) nests(s *schema) int {
+	s = d.schemaOf(s)
+	if s != nil && (len(s.Properties) > 0 || s.Items != nil || len(s.AllOf)+len(s.OneOf)+len(s.AnyOf) > 0) {
+		return 1
+	}
+	return 0
 }
 
 // kind returns the type of the schema. OpenAPI 3.1 allows a list of types,

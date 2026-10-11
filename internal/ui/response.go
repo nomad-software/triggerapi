@@ -433,9 +433,10 @@ func (p *responsePanel) show(res *rest.Response) {
 	text := res.Text()
 	p.setBody(text, res.IsJSON())
 	// Values are captured from any body that is JSON, whatever it says it
-	// is.
+	// is. It is taken as it is shown, as the editor has its own line
+	// endings.
 	if json.Valid(res.Body) {
-		p.captureDoc = text
+		p.captureDoc = p.body.ToPlainText()
 	}
 	// JSON is saved formatted, as it is shown. Anything else is saved as
 	// it was received, which keeps a file that is not text intact.

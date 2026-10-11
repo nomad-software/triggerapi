@@ -1,6 +1,8 @@
 package openapi
 
 import (
+	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -346,5 +348,42 @@ components:
 	got := *root.Requests[0].Request
 	if got.BodyType != rest.BodyJSON || got.Body != "{\n  \"either\": 0,\n  \"gone\": null,\n  \"loop\": null\n}" || len(got.Params) != 0 || got.Auth != (rest.Auth{}) {
 		t.Errorf("request = %+v", got)
+	}
+}
+
+// Schemas which refer to one another do not make an example that grows
+// without limit: a schema is not made inside itself, and there is a limit to
+// the size of one example.
+func TestExampleOfSchemasThatReferToEachOther(t *testing.T) {
+	const count = 30
+
+	var b strings.Builder
+	b.WriteString("openapi: 3.0.0\ninfo:\n  title: T\npaths:\n  /a:\n    post:\n      requestBody:\n        content:\n          application/json:\n            schema:\n              $ref: '#/components/schemas/N0'\ncomponents:\n  schemas:\n")
+	for i := range count {
+		fmt.Fprintf(&b, "    N%d:\n      type: object\n      properties:\n        name:\n          type: string\n", i)
+		for j := range count {
+			fmt.Fprintf(&b, "        p%d:\n          $ref: '#/components/schemas/N%d'\n", j, j)
+		}
+	}
+
+	folder, err := Import([]byte(b.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := folder.Requests[0].Request.Body
+	if len(body) > 200_000 || !json.Valid([]byte(body)) {
+		t.Errorf("the body is %d bytes, valid %v", len(body), json.Valid([]byte(body)))
+	}
+
+	// The schema itself is not inside the example of it, but another is.
+	var example map[string]any
+	if err := json.Unmarshal([]byte(body), &example); err != nil {
+		t.Fatal(err)
+	}
+	if example["name"] != "string" || example["p0"] != nil {
+		t.Errorf("name = %v, p0 = %v", example["name"], example["p0"])
+	}
+	if inner, ok := example["p1"].(map[string]any); !ok || inner["name"] != "string" {
+		t.Errorf("p1 = %v", example["p1"])
 	}
 }

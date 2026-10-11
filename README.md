@@ -6,6 +6,24 @@ bindings.
 
 ![TriggerAPI showing a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
 
+## Why TriggerAPI
+
+- **No account, no cloud.** There is nothing to sign in to and nothing is
+  synchronised anywhere. TriggerAPI works the same with no network at all.
+- **No telemetry.** The only requests it makes are the ones you send.
+- **Your data is yours.** Requests, environments and settings are plain JSON
+  files in ordinary folders, which you can read, back up, copy to another
+  machine or keep in version control. See [Running](#running) for where they
+  are.
+- **Native.** It is a single compiled program with a Qt interface, not a web
+  browser in a window.
+- **REST and gRPC together.** Both kinds of request live in the same folders,
+  use the same environments and capture values for each other.
+- **Easy to move to.** Postman collections and environments, and OpenAPI and
+  Swagger documents, are imported as folders of requests.
+- **Free software.** It is licensed under the GPL, so it can be used, studied,
+  changed and shared.
+
 ## Features
 
 **REST**
@@ -266,3 +284,8 @@ make test
 ```
 
 The interface tests run Qt offscreen, so they do not need a display.
+
+## License
+
+TriggerAPI is free software, licensed under the
+[GNU General Public License, version 3](LICENSE).
