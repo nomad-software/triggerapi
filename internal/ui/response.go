@@ -67,7 +67,8 @@ const (
 type field struct {
 	label string
 	value string
-	// failure marks the value as an error, which is shown in red.
+	// failure marks the value as an error, which is shown in the colour of
+	// errors.
 	failure bool
 }
 
@@ -98,7 +99,7 @@ func newResponsePanel(bodyFont string) *responsePanel {
 	p.headers.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
 	p.headers.SetSelectionBehavior(qt.QAbstractItemView__SelectRows)
 
-	p.save = newIconButton(saveColour, drawDisk, "Save the response to a file")
+	p.save = newIconButton(colourAction, drawDisk, "Save the response to a file")
 	p.save.SetEnabled(false)
 	p.save.OnClicked(p.saveBody)
 
@@ -130,10 +131,6 @@ func newResponsePanel(bodyFont string) *responsePanel {
 
 	return p
 }
-
-// saveColour is the colour of the save icon, which is that of the buttons of
-// the Requests tab.
-const saveColour = requestsColour
 
 // setContent keeps the body of the response to be saved, and the name to
 // offer for its file. Without a body there is nothing to save.
@@ -213,6 +210,12 @@ func (p *responsePanel) setBody(text string, isJSON bool) {
 	p.fold.reset()
 }
 
+// recolour shows the bar beneath the response again, after the colour of
+// errors has changed.
+func (p *responsePanel) recolour() {
+	p.setFields(p.fields...)
+}
+
 // setFields fills the bar beneath the response with labelled values. Fields
 // with no value are left out.
 func (p *responsePanel) setFields(fields ...field) {
@@ -233,7 +236,7 @@ func (p *responsePanel) setFields(fields ...field) {
 	for _, f := range p.fields {
 		value := html.EscapeString(f.value)
 		if f.failure {
-			value = fmt.Sprintf(`<span style="color: %s">%s</span>`, failureColour, value)
+			value = fmt.Sprintf(`<span style="color: %s">%s</span>`, themeColour(colourError), value)
 		}
 		label := fmt.Sprintf(`<b style="color: %s">%s:</b>`, faded, html.EscapeString(f.label))
 
@@ -332,21 +335,9 @@ func (p *responsePanel) setHeaders(rows [][2]string) {
 	p.tabs.SetTabText(1, fmt.Sprintf("Headers (%d)", len(rows)))
 }
 
-// failureColour is the colour errors are shown in.
+// failureColour is the colour errors are shown in, until another is chosen
+// in the settings (colourError).
 const failureColour = "#ef5350"
-
-func statusColour(code int) string {
-	switch {
-	case code >= 500:
-		return failureColour
-	case code >= 400:
-		return "#d97706"
-	case code >= 300:
-		return "#2f7fd1"
-	default:
-		return "#2e9e5b"
-	}
-}
 
 func formatDuration(d time.Duration) string {
 	if d < time.Second {

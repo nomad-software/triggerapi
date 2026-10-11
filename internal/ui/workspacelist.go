@@ -56,13 +56,13 @@ func newWorkspaceList(dir func() string) *workspaceList {
 	// The buttons are icons along the bottom, each saying what it does in
 	// its tooltip. They are the colour of the icon of the tab, but for the
 	// one which removes.
-	add := newIconButton(workspacesColour, drawPlus, "Add a workspace")
+	add := newIconButton(colourWorkspaces, drawPlus, "Add a workspace")
 	add.OnClicked(s.add)
-	duplicate := newIconButton(workspacesColour, drawCopy, "Duplicate the selected workspace")
+	duplicate := newIconButton(colourWorkspaces, drawCopy, "Duplicate the selected workspace")
 	duplicate.OnClicked(s.duplicate)
-	rename := newIconButton(workspacesColour, drawPencil, "Rename the selected workspace")
+	rename := newIconButton(colourWorkspaces, drawPencil, "Rename the selected workspace")
 	rename.OnClicked(s.rename)
-	remove := newIconButton(removeColour, drawBin, "Remove the selected workspace")
+	remove := newIconButton(colourRemove, drawBin, "Remove the selected workspace")
 	remove.OnClicked(s.remove)
 
 	hint := qt.NewQLabel3("Each workspace has its own environments and requests. The selected workspace is the one in use.")
@@ -113,6 +113,14 @@ func (s *workspaceList) load(selected string) (string, error) {
 	row := max(0, slices.Index(names, selected))
 	s.list.SetCurrentRow(row)
 	return names[row], err
+}
+
+// recolour gives the workspaces their icon again, after its colour has
+// changed.
+func (s *workspaceList) recolour() {
+	for row := range s.list.Count() {
+		s.list.Item(row).SetIcon(workspaceIcon())
+	}
 }
 
 // current returns the name of the workspace in use, or an empty string if
@@ -242,7 +250,7 @@ var workspaceIconCache *qt.QIcon
 // workspaceIcon returns the icon shown before the name of a workspace.
 func workspaceIcon() *qt.QIcon {
 	if workspaceIconCache == nil {
-		workspaceIconCache = drawIcon(iconSize*2, workspacesColour, drawMonitor)
+		workspaceIconCache = drawIcon(iconSize*2, themeColour(colourWorkspaces), drawMonitor)
 	}
 	return workspaceIconCache
 }

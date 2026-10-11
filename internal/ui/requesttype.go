@@ -10,15 +10,16 @@ import (
 // they are offered.
 var requestTypes = []struct {
 	typ    collection.Type
-	colour string
+	colour colourKind
 	// glyph draws the symbol of the type. See drawIcon.
 	glyph func(*qt.QPainter)
 }{
-	{collection.TypeREST, "#2e9e5b", drawBraces},
-	{collection.TypeGRPC, "#2f7fd1", drawArrows},
+	{collection.TypeREST, colourREST, drawBraces},
+	{collection.TypeGRPC, colourGRPC, drawArrows},
 }
 
-// requestTypeIcons holds the icons once they have been drawn.
+// requestTypeIcons holds the icons once they have been drawn. They are drawn
+// again after the colours change.
 var requestTypeIcons = map[collection.Type]*qt.QIcon{}
 
 // requestTypeIcon returns the icon for a type of request, or nil if the type
@@ -30,7 +31,7 @@ func requestTypeIcon(typ collection.Type) *qt.QIcon {
 
 	for _, t := range requestTypes {
 		if t.typ == typ {
-			icon := drawIcon(iconSize*2, t.colour, t.glyph)
+			icon := drawIcon(iconSize*2, themeColour(t.colour), t.glyph)
 			requestTypeIcons[typ] = icon
 			return icon
 		}

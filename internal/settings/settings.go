@@ -46,6 +46,9 @@ type Settings struct {
 
 	// JSONColours are the colours JSON is highlighted in.
 	JSONColours JSONColours `json:"jsonColours,omitzero"`
+
+	// Colours are the colours of the icons and of placeholders.
+	Colours Colours `json:"colours,omitzero"`
 }
 
 // Pin names a request that is kept open in a tab.
@@ -71,12 +74,51 @@ var hexColour = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 // valid returns the colours with any that are not of the form #rrggbb
 // emptied.
 func (c JSONColours) valid() JSONColours {
-	for _, colour := range []*string{&c.Key, &c.String, &c.Number, &c.Literal} {
+	emptyInvalid(&c.Key, &c.String, &c.Number, &c.Literal)
+	return c
+}
+
+// Colours are the colours of the icons and of placeholders, as #rrggbb. The default colour is
+// used for one that is empty.
+type Colours struct {
+	// Workspaces, Environments and Requests are the colours of the tabs of
+	// the sidebar, of the buttons of each and of what they list.
+	Workspaces   string `json:"workspaces,omitempty"`
+	Environments string `json:"environments,omitempty"`
+	Requests     string `json:"requests,omitempty"`
+	// REST and GRPC are the colours of the requests of each type.
+	REST string `json:"rest,omitempty"`
+	GRPC string `json:"grpc,omitempty"`
+	// Remove is the colour of the buttons which remove something.
+	Remove string `json:"remove,omitempty"`
+	// Action is the colour of the buttons beside the tabs of a panel, which
+	// show the curl command and save the response, and of the pin of a
+	// request tab.
+	Action string `json:"action,omitempty"`
+	// Send is the colour of the buttons which send a request.
+	Send string `json:"send,omitempty"`
+	// Found and NotFound are the colours of placeholders: those the active
+	// environment defines, and those it does not.
+	Found    string `json:"found,omitempty"`
+	NotFound string `json:"notFound,omitempty"`
+	// Error is the colour of the text of errors and of failed statuses.
+	Error string `json:"error,omitempty"`
+}
+
+// valid returns the colours with any that are not of the form #rrggbb
+// emptied.
+func (c Colours) valid() Colours {
+	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error)
+	return c
+}
+
+// emptyInvalid empties the colours that are not of the form #rrggbb.
+func emptyInvalid(colours ...*string) {
+	for _, colour := range colours {
 		if !hexColour.MatchString(*colour) {
 			*colour = ""
 		}
 	}
-	return c
 }
 
 // appName is the name of the folder the settings are kept in.
@@ -115,6 +157,7 @@ func Load(path string) Settings {
 	s.SidebarWidth = max(s.SidebarWidth, 0)
 	s.ResponseHeight = max(s.ResponseHeight, 0)
 	s.JSONColours = s.JSONColours.valid()
+	s.Colours = s.Colours.valid()
 	if s.ResponseFont == "" {
 		s.ResponseFont = defaultResponseFont
 	}

@@ -53,8 +53,9 @@ bindings.
 - Define environments of variables and use them anywhere in a request as
   `{{name}}` placeholders. Environments exported from Postman can be imported.
 - Placeholders are coloured where they are used, differently if the selected
-  environment does not define them, and what the URL resolves to is shown
-  beneath it.
+  environment does not define them, and the URL a request would be sent to
+  can be previewed in place of the URL field. A long URL is wrapped, with the
+  field growing to show all of it.
 
 **Settings**
 

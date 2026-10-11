@@ -230,20 +230,16 @@ func TestEnvironments(t *testing.T) {
 		}
 
 		w.request.url.SetText("{{host}}/users/{{id}}")
-		if got := w.request.preview.Text(); !strings.Contains(got, "{{id}}") || !strings.Contains(got, "{{host}}") {
-			t.Errorf("preview = %q", got)
+		if got := w.expand(w.request.url.Text()); !strings.Contains(got, "{{id}}") || !strings.Contains(got, "{{host}}") {
+			t.Errorf("expanded = %q", got)
 		}
 		w.environments.list.SetCurrentRow(0)
-		if got := w.request.preview.Text(); !strings.Contains(got, "{{id}}") || strings.Contains(got, "{{host}}") {
-			t.Errorf("preview = %q", got)
-		}
-		w.request.url.SetText("plain.test")
-		if !w.request.preview.IsHidden() {
-			t.Error("preview shown without placeholders")
+		if got := w.expand(w.request.url.Text()); !strings.Contains(got, "{{id}}") || strings.Contains(got, "{{host}}") {
+			t.Errorf("expanded = %q", got)
 		}
 		w.request.url.SetText("{{host}}/users")
-		if got, want := w.request.preview.Text(), "→ "+srv.URL+"/users"; got != want || w.request.preview.IsHidden() {
-			t.Errorf("preview = %q, want %q", got, want)
+		if got, want := w.expand(w.request.url.Text()), srv.URL+"/users"; got != want {
+			t.Errorf("expanded = %q, want %q", got, want)
 		}
 
 		w.request.headers.add("X-Key", "{{key}}")
@@ -762,7 +758,7 @@ func fieldValue(p *responsePanel, label string) string {
 // isFailure reports if the bar beneath a response shows a failure, which is
 // in red.
 func isFailure(p *responsePanel) bool {
-	return strings.Contains(p.result.Text(), failureColour)
+	return strings.Contains(p.result.Text(), themeColour(colourError))
 }
 
 // itemType returns the type whose icon an item of the request tree has, or
@@ -1590,8 +1586,8 @@ func TestHeader(t *testing.T) {
 		// Selecting an environment in the header makes it the active one.
 		w.request.url.SetText("{{host}}/users")
 		selector.SetCurrentIndex(1)
-		if w.environments.store.Active != 0 || w.environments.list.CurrentRow() != 0 || w.request.preview.Text() != "→ local.test/users" {
-			t.Errorf("active = %d, preview = %q", w.environments.store.Active, w.request.preview.Text())
+		if w.environments.store.Active != 0 || w.environments.list.CurrentRow() != 0 || w.expand(w.request.url.Text()) != "local.test/users" {
+			t.Errorf("active = %d, expanded = %q", w.environments.store.Active, w.expand(w.request.url.Text()))
 		}
 
 		// It is the same one when a gRPC request is shown.
@@ -1837,16 +1833,16 @@ func TestJSONColourSettings(t *testing.T) {
 		}
 
 		d := newSettingsDialog(w.QWidget, w.config, files.Files)
-		if got := d.swatches[tokenKey].Text(); got != defaults[tokenKey] {
+		if got := d.json[tokenKey].button.Text(); got != defaults[tokenKey] {
 			t.Errorf("swatch = %q", got)
 		}
 
-		d.setColour(tokenKey, "#112233")
-		d.setColour(tokenNumber, "#AABBCC")
+		d.json[tokenKey].set("#112233")
+		d.json[tokenNumber].set("#AABBCC")
 		// Choosing the default is not recorded, so it still follows the theme.
-		d.setColour(tokenString, defaults[tokenString])
-		if got := d.swatches[tokenKey].Text(); got != "#112233" || !strings.Contains(d.swatches[tokenKey].StyleSheet(), "background-color: #112233") {
-			t.Errorf("swatch = %q, %q", got, d.swatches[tokenKey].StyleSheet())
+		d.json[tokenString].set(defaults[tokenString])
+		if got := d.json[tokenKey].button.Text(); got != "#112233" || !strings.Contains(d.json[tokenKey].button.StyleSheet(), "background-color: #112233") {
+			t.Errorf("swatch = %q, %q", got, d.json[tokenKey].button.StyleSheet())
 		}
 
 		want := settings.JSONColours{Key: "#112233", Number: "#aabbcc"}
@@ -1873,7 +1869,7 @@ func TestJSONColourSettings(t *testing.T) {
 
 		// Going back to the defaults clears what was chosen.
 		d.resetColours()
-		if d.settings(w.config).JSONColours != (settings.JSONColours{}) || d.swatches[tokenKey].Text() != defaults[tokenKey] {
+		if d.settings(w.config).JSONColours != (settings.JSONColours{}) || d.json[tokenKey].button.Text() != defaults[tokenKey] {
 			t.Errorf("after reset: %+v", d.settings(w.config).JSONColours)
 		}
 	})
@@ -1890,6 +1886,352 @@ func TestJSONColourSettings(t *testing.T) {
 		}
 		if got := formatColour(w.request.highlight.json[tokenLiteral]); got != defaults[tokenLiteral] {
 			t.Errorf("literal colour = %s", got)
+		}
+	})
+}
+
+// iconColour returns the colour an icon is drawn on, as #rrggbb.
+func iconColour(icon *qt.QIcon) string {
+	// The edge of the icon is clear of its symbol. An icon is not made
+	// larger than it was drawn, so the picture can be smaller than asked.
+	image := icon.Pixmap2(64, 64).ToImage()
+	return image.PixelColor(image.Width()/16, image.Height()/2).Name()
+}
+
+func TestColourSettings(t *testing.T) {
+	files := testFiles(t)
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+		w.requests.addFolder()
+		w.requests.addRequest()
+		addGRPCRequest(w)
+		w.tabs.toggle(w.tabs.current())
+
+		folder := func() *qt.QTreeWidgetItem { return w.requests.tree.TopLevelItem(0) }
+		shown := func() map[string]string {
+			return map[string]string{
+				"workspaces tab":   iconColour(w.sidebar.TabIcon(tabWorkspaces)),
+				"workspace":        iconColour(w.workspaces.list.Item(0).Icon()),
+				"environments tab": iconColour(w.sidebar.TabIcon(tabEnvironments)),
+				"requests tab":     iconColour(w.sidebar.TabIcon(tabRequests)),
+				"folder":           iconColour(folder().Icon(colName)),
+				"first request":    iconColour(folder().Child(0).Icon(colName)),
+				"second request":   iconColour(folder().Child(1).Icon(colName)),
+				"pinned tab":       iconColour(w.tabs.current().button.Icon()),
+				"curl":             iconColour(w.request.curl.Icon()),
+				"save":             iconColour(w.response.save.Icon()),
+				"gRPC save":        iconColour(w.grpcResponse.save.Icon()),
+			}
+		}
+		// The two requests are a REST and a gRPC one, in the order of their
+		// names.
+		types := map[collection.Type]colourKind{collection.TypeREST: colourREST, collection.TypeGRPC: colourGRPC}
+		first, second := types[itemType(folder().Child(0))], types[itemType(folder().Child(1))]
+		check := func(when string, colour func(colourKind) string) {
+			t.Helper()
+			want := map[string]string{
+				"workspaces tab":   colour(colourWorkspaces),
+				"workspace":        colour(colourWorkspaces),
+				"environments tab": colour(colourEnvironments),
+				"requests tab":     colour(colourRequests),
+				"folder":           colour(colourRequests),
+				"first request":    colour(first),
+				"second request":   colour(second),
+				"pinned tab":       colour(colourGRPC),
+				"curl":             colour(colourAction),
+				"save":             colour(colourAction),
+				"gRPC save":        colour(colourAction),
+			}
+			for what, got := range shown() {
+				if got != want[what] {
+					t.Errorf("%s: %s is %s, want %s", when, what, got, want[what])
+				}
+			}
+		}
+
+		// The colours are the defaults until others are chosen.
+		check("at first", defaultColour)
+
+		// A placeholder that is not defined, in the URL of the REST panel,
+		// which is filled without it being taken for an edit of the gRPC
+		// request that is open.
+		w.request.updating = true
+		w.request.url.SetText("{{host}}/path")
+		w.request.updating = false
+		// An error, in the bar beneath the response and in the gRPC panel.
+		w.response.setFields(field{label: fieldError, value: "it failed", failure: true})
+		placeholders := func() [3]string {
+			h := w.request.highlight
+			return [3]string{formatColour(h.known), formatColour(h.unknown), w.grpc.status.StyleSheet()}
+		}
+		if got, want := placeholders(), [3]string{defaultColour(colourFound), defaultColour(colourNotFound), "color: " + defaultColour(colourError)}; got != want {
+			t.Errorf("placeholders are %v, want %v", got, want)
+		}
+
+		d := newSettingsDialog(w.QWidget, w.config, files.Files)
+		if d.tabs.Count() != 2 || d.tabs.TabText(settingsTabColours) != "Colours" {
+			t.Errorf("the dialog has %d tabs", d.tabs.Count())
+		}
+		custom := map[colourKind]string{
+			colourWorkspaces:   "#110000",
+			colourEnvironments: "#220000",
+			colourRequests:     "#330000",
+			colourREST:         "#440000",
+			colourGRPC:         "#550000",
+			colourRemove:       "#660000",
+			colourAction:       "#770000",
+			colourSend:         "#aa0000",
+			colourFound:        "#880000",
+			colourNotFound:     "#990000",
+			colourError:        "#bb0000",
+		}
+		for kind, colour := range custom {
+			d.swatches[kind].set(colour)
+		}
+		if got := d.swatches[colourAction].button.Text(); got != "#770000" {
+			t.Errorf("swatch = %q", got)
+		}
+
+		selected := w.requests.selection()
+		chosen := d.settings(w.config)
+		if err := w.applySettings(chosen); err != nil {
+			t.Error(err)
+		}
+
+		// Every icon takes its colour at once, and nothing else changes.
+		check("once chosen", func(kind colourKind) string { return custom[kind] })
+		if w.requests.selection() != selected {
+			t.Error("the selection changed")
+		}
+		w.tabs.hover(w.tabs.current())
+		if got := iconColour(w.tabs.current().button.Icon()); got != "#660000" {
+			t.Errorf("unpin is %s", got)
+		}
+		w.tabs.hover(nil)
+		for name, button := range map[string]*qt.QPushButton{"Send": w.request.send, "Execute": w.request.execute, "Invoke": w.grpc.invoke} {
+			if !strings.Contains(button.StyleSheet(), "background-color: #aa0000;") {
+				t.Errorf("%s is styled %q", name, button.StyleSheet())
+			}
+		}
+		// A tab that is not pinned has the pin, which is an action button.
+		w.tabs.toggle(w.tabs.current())
+		if got := iconColour(w.tabs.current().button.Icon()); got != "#770000" {
+			t.Errorf("pin is %s", got)
+		}
+		if got, want := placeholders(), [3]string{"#880000", "#990000", "color: #bb0000"}; got != want {
+			t.Errorf("placeholders are %v, want %v", got, want)
+		}
+		if !strings.Contains(w.response.result.Text(), `color: #bb0000">it failed`) {
+			t.Errorf("the error is shown as %q", w.response.result.Text())
+		}
+		if got := formatColour(w.grpc.highlight.known); got != "#880000" {
+			t.Errorf("gRPC placeholders are %s", got)
+		}
+
+		// Choosing the default is not recorded.
+		d.swatches[colourAction].set(defaultColour(colourAction))
+		if got := d.settings(w.config).Colours.Action; got != "" {
+			t.Errorf("the default was recorded as %q", got)
+		}
+		d.resetColours()
+		if d.settings(w.config).Colours != (settings.Colours{}) {
+			t.Errorf("after reset: %+v", d.settings(w.config).Colours)
+		}
+	})
+
+	if got := settings.Load(files.Settings).Colours; got.Workspaces != "#110000" || got.Action != "#770000" {
+		t.Errorf("saved %+v", got)
+	}
+
+	// The colours are used from the start of the next run, and the defaults
+	// again once they are given up.
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		if got := iconColour(w.request.curl.Icon()); got != "#770000" {
+			t.Errorf("curl is %s", got)
+		}
+		if got := iconColour(w.sidebar.TabIcon(tabRequests)); got != "#330000" {
+			t.Errorf("requests tab is %s", got)
+		}
+
+		s := w.config
+		s.Colours = settings.Colours{}
+		if err := w.applySettings(s); err != nil {
+			t.Error(err)
+		}
+		if got := iconColour(w.request.curl.Icon()); got != defaultColour(colourAction) {
+			t.Errorf("curl is %s after the defaults", got)
+		}
+	})
+}
+
+// pressEscape presses the Escape key in a widget. It must be called on the
+// main thread.
+func pressEscape(widget *qt.QWidget) {
+	event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(qt.Key_Escape), qt.NoModifier)
+	defer event.Delete()
+	qt.QCoreApplication_SendEvent(widget.QObject, event.QEvent)
+}
+
+func TestURLPreview(t *testing.T) {
+	files := testFiles(t)
+	store := env.Store{Environments: []env.Environment{
+		{Name: "Local", Variables: []env.Variable{{Key: "host", Value: "http://local.test", Enabled: true}, {Key: "page", Value: "", Enabled: true}}},
+		{Name: "Remote", Variables: []env.Variable{{Key: "host", Value: "https://remote.test", Enabled: true}}},
+	}}
+	if err := store.Save(files.Environments); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+		p := w.request
+
+		p.url.SetText("{{host}}/users/{{id}}?page={{page}}&size=2")
+		if p.preview.IsChecked() || p.url.IsHidden() || !p.resolved.IsHidden() {
+			t.Error("the preview is shown at first")
+		}
+
+		// The preview is in place of the field, and cannot be edited. A
+		// placeholder with no value is shown as a mark, whether it is not
+		// defined (id) or is defined as nothing (page).
+		p.preview.Click()
+		if p.resolved.IsHidden() || !p.url.IsHidden() || !p.resolved.IsReadOnly() {
+			t.Error("the preview is not shown")
+		}
+		if got, want := p.resolved.Text(), "http://local.test/users/■?page=■&size=2"; got != want {
+			t.Errorf("preview = %q, want %q", got, want)
+		}
+		// The value is in the colour of a placeholder that is found, the
+		// marks in that of one that is not, and the rest in neither.
+		colourAt := func(position int) string {
+			cursor := qt.NewQTextCursor2(p.resolved.Document())
+			defer cursor.Delete()
+			// The format of a cursor is that of the character before it.
+			cursor.SetPosition(position + 1)
+			format := cursor.CharFormat()
+			if !format.HasProperty(int(qt.QTextFormat__ForegroundBrush)) {
+				return ""
+			}
+			return formatColour(format)
+		}
+		found, missing := themeColour(colourFound), themeColour(colourNotFound)
+		for position, want := range map[int]string{0: found, 16: found, 17: "", 24: missing, 25: "", 31: missing, 32: ""} {
+			if got := colourAt(position); got != want {
+				t.Errorf("character %d is %q, want %q", position, got, want)
+			}
+		}
+		if got, want := p.url.Text(), "{{host}}/users/{{id}}?page={{page}}&size=2"; got != want {
+			t.Errorf("the URL became %q", got)
+		}
+
+		// It follows the environment and the request.
+		w.environments.list.SetCurrentRow(1)
+		if got, want := p.resolved.Text(), "https://remote.test/users/■?page=■&size=2"; got != want {
+			t.Errorf("preview = %q, want %q", got, want)
+		}
+		p.params.setItems([]rest.KeyValue{{Key: "size", Value: "5", Enabled: true}})
+		p.paramsChanged()
+		if got, want := p.resolved.Text(), "https://remote.test/users/■?size=5"; got != want {
+			t.Errorf("preview = %q, want %q", got, want)
+		}
+
+		// Escape goes back to the field, as does the button.
+		pressEscape(p.resolved.QWidget)
+		if p.preview.IsChecked() || p.url.IsHidden() || !p.resolved.IsHidden() {
+			t.Error("Escape did not close the preview")
+		}
+		p.preview.Click()
+		p.preview.Click()
+		if p.url.IsHidden() || !p.resolved.IsHidden() {
+			t.Error("the button did not close the preview")
+		}
+
+		// The curl command is closed before the preview beneath it.
+		p.preview.Click()
+		p.curl.Click()
+		pressEscape(p.command.QWidget)
+		if p.pages.CurrentIndex() != pageFields || !p.preview.IsChecked() {
+			t.Errorf("after Escape: page %d, preview %v", p.pages.CurrentIndex(), p.preview.IsChecked())
+		}
+		pressEscape(p.resolved.QWidget)
+		if p.preview.IsChecked() {
+			t.Error("Escape did not close the preview")
+		}
+
+		// The environment editor is closed first of all, and what is under
+		// it is left alone.
+		p.preview.Click()
+		w.environments.edit()
+		if w.stack.CurrentIndex() != pageEditor {
+			t.Error("the editor did not open")
+		}
+		pressEscape(w.QWidget)
+		if w.stack.CurrentIndex() != pageRequest || !p.preview.IsChecked() {
+			t.Errorf("after Escape: page %d, preview %v", w.stack.CurrentIndex(), p.preview.IsChecked())
+		}
+	})
+}
+
+func TestURLWraps(t *testing.T) {
+	files := testFiles(t)
+	var w *Window
+	var short int
+	sent := 0
+
+	mainthread.Wait(func() {
+		w = NewWindow(files.Files)
+		w.Show()
+		w.request.url.SetText("example.test/users")
+	})
+	waitFor(t, "the URL field to be laid out", func() bool { return w.request.url.Height() > 0 && w.request.url.Width() > 100 })
+
+	mainthread.Wait(func() {
+		url := w.request.url
+		short = url.Height()
+
+		// A URL too long for the field is wrapped, and all of it is kept.
+		long := "example.test/users?" + strings.Repeat("filter=some-long-value&", 40) + "end=1"
+		url.SetText(long)
+		if url.Text() != long || w.request.request().URL != "example.test/users" {
+			t.Errorf("the URL became %q", url.Text())
+		}
+	})
+	waitFor(t, "the URL field to grow", func() bool { return w.request.url.Height() >= 3*short-short/2 })
+
+	mainthread.Wait(func() {
+		url := w.request.url
+		url.SetText("example.test/users")
+	})
+	waitFor(t, "the URL field to shrink", func() bool { return w.request.url.Height() == short })
+
+	mainthread.Wait(func() {
+		url := w.request.url
+
+		// It is one line however it is filled.
+		url.SetPlainText("example.test/\nusers\r\n")
+		if got := url.Text(); got != "example.test/users" || url.ToPlainText() != got {
+			t.Errorf("text = %q, shown as %q", got, url.ToPlainText())
+		}
+
+		// Return sends the request and adds nothing.
+		url.onReturn = func() { sent++ }
+		event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(qt.Key_Return), qt.NoModifier)
+		defer event.Delete()
+		qt.QCoreApplication_SendEvent(url.QObject, event.QEvent)
+		if sent != 1 || url.Text() != "example.test/users" {
+			t.Errorf("sent %d times, text = %q", sent, url.Text())
+		}
+
+		// Recolouring the placeholders is not an edit.
+		changes := 0
+		url.onChange = func(string) { changes++ }
+		w.request.highlight.refresh()
+		if changes != 0 {
+			t.Errorf("recolouring was reported as %d changes", changes)
 		}
 	})
 }

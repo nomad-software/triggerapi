@@ -11,7 +11,7 @@ import (
 func TestSaveLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 
-	want := Settings{Width: 900, Height: 600, Maximized: true, SidebarWidth: 310, ResponseHeight: 240, ResponseFont: "Hack", WorkspacesDir: "/a/workspaces", Workspace: "Default", Pinned: []Pin{{Workspace: "Default", Path: []string{"Folder", "Request"}}}, JSONColours: JSONColours{Key: "#A31515", Number: "#098658"}}
+	want := Settings{Width: 900, Height: 600, Maximized: true, SidebarWidth: 310, ResponseHeight: 240, ResponseFont: "Hack", WorkspacesDir: "/a/workspaces", Workspace: "Default", Pinned: []Pin{{Workspace: "Default", Path: []string{"Folder", "Request"}}}, JSONColours: JSONColours{Key: "#A31515", Number: "#098658"}, Colours: Colours{Workspaces: "#112233", GRPC: "#445566"}}
 	if err := want.Save(path); err != nil {
 		t.Fatal(err)
 	}
@@ -48,12 +48,21 @@ func TestLoadInvalidColours(t *testing.T) {
 	}
 }
 
+func TestLoadInvalidIconColours(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	os.WriteFile(path, []byte(`{"colours": {"workspaces": "orange", "requests": "#17807c", "remove": "#f00", "action": "#0B4F6C", "found": "#abcdef", "notFound": "nope"}}`), 0o644)
+
+	if got, want := Load(path).Colours, (Colours{Requests: "#17807c", Action: "#0B4F6C", Found: "#abcdef"}); got != want {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
 func TestDefaultColoursNotSaved(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	if err := (Settings{Width: 900, Height: 600}).Save(path); err != nil {
 		t.Fatal(err)
 	}
-	if data, _ := os.ReadFile(path); strings.Contains(string(data), "jsonColours") {
+	if data, _ := os.ReadFile(path); strings.Contains(strings.ToLower(string(data)), "colours") {
 		t.Errorf("default colours were saved: %s", data)
 	}
 }

@@ -137,6 +137,23 @@ func drawPrompt(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
+// drawEye draws an eye, for looking at how something will turn out.
+func drawEye(painter *qt.QPainter) {
+	painter.SetPenWithPen(whitePen())
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	path := qt.NewQPainterPath()
+	// The lids, from corner to corner.
+	path.MoveTo2(24, 64)
+	path.QuadTo2(64, 20, 104, 64)
+	path.QuadTo2(64, 108, 24, 64)
+	painter.DrawPath(path)
+
+	// The pupil.
+	painter.SetBrush(qt.NewQBrush3(qt.NewQColor6("#ffffff")))
+	painter.DrawEllipse2(54, 54, 20, 20)
+}
+
 // drawDisk draws a floppy disk, for saving something to a file.
 func drawDisk(painter *qt.QPainter) {
 	painter.SetPenWithPen(whitePen())
@@ -345,14 +362,6 @@ func drawMonitor(painter *qt.QPainter) {
 	path.LineTo2(84, 100)
 	painter.DrawPath(path)
 }
-
-// The colours of the sidebar tab icons, and of the buttons of each tab. The
-// workspaces have the colour of the Send button.
-const (
-	workspacesColour   = primaryColour
-	environmentsColour = "#8e6fd8"
-	requestsColour     = "#17807c"
-)
 
 // whitePen returns a pen for drawing the lines of a symbol.
 func whitePen() *qt.QPen {

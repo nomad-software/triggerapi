@@ -67,15 +67,15 @@ func newEnvList(store *env.Store, path string) *envList {
 	// The buttons are icons along the bottom, each saying what it does in
 	// its tooltip. They are the colour of the icon of the tab, but for the one
 	// which removes, and the one which imports is apart at the right.
-	add := newIconButton(environmentsColour, drawPlus, "Add an environment")
+	add := newIconButton(colourEnvironments, drawPlus, "Add an environment")
 	add.OnClicked(s.add)
-	duplicate := newIconButton(environmentsColour, drawCopy, "Duplicate the selected environment")
+	duplicate := newIconButton(colourEnvironments, drawCopy, "Duplicate the selected environment")
 	duplicate.OnClicked(s.duplicate)
-	importButton := newIconButton(environmentsColour, drawImport, "Import an environment exported from Postman")
+	importButton := newIconButton(colourEnvironments, drawImport, "Import an environment exported from Postman")
 	importButton.OnClicked(s.importDocument)
-	edit := newIconButton(environmentsColour, drawPencil, "Edit the selected environment")
+	edit := newIconButton(colourEnvironments, drawPencil, "Edit the selected environment")
 	edit.OnClicked(s.edit)
-	remove := newIconButton(removeColour, drawBin, "Remove the selected environment")
+	remove := newIconButton(colourRemove, drawBin, "Remove the selected environment")
 	remove.OnClicked(s.remove)
 
 	hint := qt.NewQLabel3("Use {{variable}} in any request field to insert a value from the selected environment.")
@@ -119,6 +119,14 @@ func (s *envList) load(store *env.Store, path string) {
 		s.list.AddItemWithItem(item)
 	}
 	s.list.SetCurrentRow(store.Active)
+}
+
+// recolour gives the environments their icon again, after its colour has
+// changed.
+func (s *envList) recolour() {
+	for row := range s.list.Count() {
+		s.list.Item(row).SetIcon(environmentIcon())
+	}
 }
 
 // selected reports a change of the active environment and saves it.
@@ -285,7 +293,7 @@ var environmentIconCache *qt.QIcon
 // environmentIcon returns the icon shown before the name of an environment.
 func environmentIcon() *qt.QIcon {
 	if environmentIconCache == nil {
-		environmentIconCache = drawIcon(iconSize*2, environmentsColour, drawGlobe)
+		environmentIconCache = drawIcon(iconSize*2, themeColour(colourEnvironments), drawGlobe)
 	}
 	return environmentIconCache
 }

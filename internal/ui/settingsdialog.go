@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -9,18 +10,22 @@ import (
 	"github.com/nomad-software/triggerapi/internal/settings"
 )
 
-// settingsDialog edits the settings the user can choose.
+// settingsDialog edits the settings the user can choose, on a tab for each
+// sort: General (settingsTabGeneral) and Colours (settingsTabColours).
 type settingsDialog struct {
 	*qt.QDialog
 
+	tabs       *qt.QTabWidget
 	font       *qt.QFontComboBox
 	workspaces *qt.QLineEdit
 	buttons    *qt.QDialogButtonBox
 
-	// colours are the JSON colours the user has chosen. One that is empty
-	// is the default, which is what its swatch shows.
-	colours  settings.JSONColours
-	swatches map[tokenKind]*qt.QPushButton
+	// colours and jsonColours are the colours the user has chosen. One
+	// that is empty is the default, which is what its swatch shows.
+	colours     settings.Colours
+	jsonColours settings.JSONColours
+	swatches    map[colourKind]*swatch
+	json        map[tokenKind]*swatch
 
 	// initialFont is the family the font selector started on. It can differ
 	// from the setting if that font is not installed.
@@ -28,20 +33,29 @@ type settingsDialog struct {
 	defaults    Files
 }
 
+// The tabs of the settings dialog.
+const (
+	settingsTabGeneral = iota
+	settingsTabColours
+)
+
 // newSettingsDialog creates the dialog showing the current settings. The
 // defaults are the locations used when the settings do not name one.
 func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults Files) *settingsDialog {
 	d := &settingsDialog{
-		QDialog:    qt.NewQDialog(parent),
-		font:       qt.NewQFontComboBox2(),
-		workspaces: qt.NewQLineEdit2(),
-		buttons:    qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel),
-		defaults:   defaults,
-		colours:    current.JSONColours,
-		swatches:   map[tokenKind]*qt.QPushButton{},
+		QDialog:     qt.NewQDialog(parent),
+		tabs:        qt.NewQTabWidget2(),
+		font:        qt.NewQFontComboBox2(),
+		workspaces:  qt.NewQLineEdit2(),
+		buttons:     qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel),
+		defaults:    defaults,
+		colours:     current.Colours,
+		jsonColours: current.JSONColours,
+		swatches:    map[colourKind]*swatch{},
+		json:        map[tokenKind]*swatch{},
 	}
 	d.SetWindowTitle("Settings")
-	d.SetMinimumWidth(560)
+	d.SetMinimumWidth(620)
 
 	d.font.SetCurrentFont(qt.NewQFont2(current.ResponseFont))
 	d.initialFont = d.font.CurrentFont().Family()
@@ -55,34 +69,34 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	note.SetWordWrap(true)
 	note.SetEnabled(false)
 
-	form := qt.NewQFormLayout2()
+	general := qt.NewQWidget2()
+	form := qt.NewQFormLayout(general)
 	form.AddRow3("Response font", d.font.QWidget)
 	form.AddRow4("Workspaces folder", d.folderRow(d.workspaces, "Workspaces Folder"))
 	// The note is about the folder above it.
 	form.AddRowWithWidget(note.QWidget)
 
-	for _, t := range tokenKinds {
-		swatch := qt.NewQPushButton2()
-		swatch.SetToolTip("Choose the colour")
-		swatch.OnClicked(func() { d.pickColour(t.kind, t.label) })
-		d.swatches[t.kind] = swatch
-		form.AddRow3("JSON "+strings.ToLower(t.label[:1])+t.label[1:], swatch.QWidget)
-		d.showColour(t.kind)
-	}
+	colours := qt.NewQWidget2()
+	coloursLayout := qt.NewQVBoxLayout(colours)
+	coloursLayout.AddLayout(d.colourGrid().QLayout)
+	coloursLayout.AddStretch()
 
 	reset := qt.NewQPushButton3("Use Default Colours")
 	reset.OnClicked(d.resetColours)
 	resetRow := qt.NewQHBoxLayout2()
-	resetRow.AddWidget(reset.QWidget)
 	resetRow.AddStretch()
-	form.AddRow4("", resetRow.QLayout)
+	resetRow.AddWidget(reset.QWidget)
+	coloursLayout.AddLayout(resetRow.QLayout)
+
+	// The order matches the tab constants.
+	d.tabs.AddTab(general, "General")
+	d.tabs.AddTab(colours, "Colours")
 
 	d.buttons.OnAccepted(d.Accept)
 	d.buttons.OnRejected(d.Reject)
 
 	layout := qt.NewQVBoxLayout(d.QWidget)
-	layout.AddLayout(form.QLayout)
-	layout.AddStretch()
+	layout.AddWidget2(d.tabs.QWidget, 1)
 	layout.AddWidget(d.buttons.QWidget)
 
 	return d
@@ -103,54 +117,161 @@ func (d *settingsDialog) folderRow(edit *qt.QLineEdit, caption string) *qt.QLayo
 	return row.QLayout
 }
 
-// colour returns the colour shown for a kind of token: the one chosen, or
-// the default if none has been.
-func (d *settingsDialog) colour(kind tokenKind) string {
-	return jsonColours(d.colours)[kind]
+// colourSections are the colours as they are set out on the Colours tab: in
+// two columns of sections, each a heading above the colours of one sort.
+// Those of JSON are a section of their own, after the last of these.
+var colourSections = [2][]struct {
+	title string
+	kinds []colourKind
+}{
+	{
+		{"Sidebar", []colourKind{colourWorkspaces, colourEnvironments, colourRequests}},
+		{"Request types", []colourKind{colourREST, colourGRPC}},
+		{"Buttons", []colourKind{colourSend, colourAction, colourRemove}},
+	},
+	{
+		{"Text", []colourKind{colourFound, colourNotFound, colourError}},
+	},
 }
 
-// showColour fills the swatch of a kind of token with its colour and names
-// the colour on it, in black or white, whichever can be read against it.
-func (d *settingsDialog) showColour(kind tokenKind) {
-	colour := d.colour(kind)
+// swatchWidth is the width of every swatch, so that they line up.
+const swatchWidth = 110
+
+// colourGrid lays out the swatches of every colour. Each of the two columns
+// of sections is a column of names and one of swatches, with a gap between
+// the two.
+func (d *settingsDialog) colourGrid() *qt.QGridLayout {
+	const gap = 2
+
+	grid := qt.NewQGridLayout2()
+	grid.SetHorizontalSpacing(12)
+	grid.SetVerticalSpacing(6)
+	// The names are as wide as they need to be, and what width is left
+	// over goes between the two columns of sections.
+	grid.SetColumnMinimumWidth(gap, 32)
+	grid.SetColumnStretch(gap, 1)
+
+	// rows counts the rows used in each of the two columns of sections.
+	var rows [2]int
+	heading := func(side int, title string) {
+		label := qt.NewQLabel3(title)
+		font := label.Font()
+		font.SetBold(true)
+		label.SetFont(font)
+		if rows[side] > 0 {
+			// A section stands apart from the one above it.
+			label.SetContentsMargins(0, 12, 0, 0)
+		}
+		grid.AddWidget3(label.QWidget, rows[side], side*(gap+1), 1, 2)
+		rows[side]++
+	}
+	row := func(side int, name string, s *swatch) {
+		label := qt.NewQLabel3(name)
+		// The names are set in from the heading they are under.
+		label.SetContentsMargins(12, 0, 0, 0)
+		grid.AddWidget2(label.QWidget, rows[side], side*(gap+1))
+		grid.AddWidget2(s.button.QWidget, rows[side], side*(gap+1)+1)
+		rows[side]++
+	}
+
+	for side, sections := range colourSections {
+		for _, section := range sections {
+			heading(side, section.title)
+			for _, k := range colourKinds {
+				if !slices.Contains(section.kinds, k.kind) {
+					continue
+				}
+				s := d.newSwatch(k.label, customIconColour(&d.colours, k.kind), func() string { return k.fallback })
+				d.swatches[k.kind] = s
+			}
+			// The colours are in the order the section gives them.
+			for _, kind := range section.kinds {
+				row(side, colourLabel(kind), d.swatches[kind])
+			}
+		}
+	}
+
+	heading(1, "JSON")
+	for _, t := range tokenKinds {
+		s := d.newSwatch("JSON "+strings.ToLower(t.label[:1])+t.label[1:], customColour(&d.jsonColours, t.kind), func() string { return defaultJSONColours()[t.kind] })
+		d.json[t.kind] = s
+		row(1, t.label, s)
+	}
+
+	return grid
+}
+
+// swatch is a button which shows one of the colours and lets the user choose
+// another for it.
+type swatch struct {
+	button *qt.QPushButton
+	// chosen is where the colour the user has chosen is kept, which is
+	// empty for the default.
+	chosen *string
+	// fallback returns the default colour.
+	fallback func() string
+}
+
+// newSwatch returns a swatch for the colour kept at chosen, which is called
+// label.
+func (d *settingsDialog) newSwatch(label string, chosen *string, fallback func() string) *swatch {
+	s := &swatch{button: qt.NewQPushButton2(), chosen: chosen, fallback: fallback}
+	s.button.SetFixedWidth(swatchWidth)
+	s.button.SetToolTip("Choose the colour")
+	s.button.OnClicked(func() {
+		picked := qt.QColorDialog_GetColor3(qt.NewQColor6(s.colour()), d.QWidget, "Colour of "+label)
+		if picked.IsValid() {
+			s.set(picked.Name())
+		}
+	})
+	s.show()
+	return s
+}
+
+// colour returns the colour shown: the one chosen, or the default if none
+// has been.
+func (s *swatch) colour() string {
+	return orDefault(*s.chosen, s.fallback())
+}
+
+// show fills the swatch with its colour and names the colour on it, in
+// black or white, whichever can be read against it.
+func (s *swatch) show() {
+	colour := s.colour()
 
 	text := "#ffffff"
 	if qt.NewQColor6(colour).Lightness() > 140 {
 		text = "#000000"
 	}
 
-	swatch := d.swatches[kind]
-	swatch.SetText(colour)
-	swatch.SetStyleSheet(fmt.Sprintf(
-		"QPushButton { background-color: %s; color: %s; border: 1px solid #888888; border-radius: 3px; padding: 4px 12px; }",
+	s.button.SetText(colour)
+	s.button.SetStyleSheet(fmt.Sprintf(
+		"QPushButton { background-color: %s; color: %s; border: 1px solid #888888; border-radius: 3px; padding: 4px 0; }",
 		colour, text,
 	))
 }
 
-// setColour chooses the colour for a kind of token. Choosing the default
-// colour is the same as not choosing, so that it still follows the theme.
-func (d *settingsDialog) setColour(kind tokenKind, colour string) {
+// set chooses the colour. Choosing the default colour is the same as not
+// choosing, so that it still follows the default, which for JSON depends on
+// the theme.
+func (s *swatch) set(colour string) {
 	colour = strings.ToLower(colour)
-	if colour == defaultJSONColours()[kind] {
+	if colour == s.fallback() {
 		colour = ""
 	}
-	*customColour(&d.colours, kind) = colour
-	d.showColour(kind)
+	*s.chosen = colour
+	s.show()
 }
 
-// pickColour lets the user choose the colour for a kind of token.
-func (d *settingsDialog) pickColour(kind tokenKind, label string) {
-	chosen := qt.QColorDialog_GetColor3(qt.NewQColor6(d.colour(kind)), d.QWidget, "Colour of "+label)
-	if chosen.IsValid() {
-		d.setColour(kind, chosen.Name())
-	}
-}
-
-// resetColours goes back to the default colour for every kind of token.
+// resetColours goes back to the default for every colour.
 func (d *settingsDialog) resetColours() {
-	d.colours = settings.JSONColours{}
-	for kind := range d.swatches {
-		d.showColour(kind)
+	d.colours = settings.Colours{}
+	d.jsonColours = settings.JSONColours{}
+	for _, s := range d.swatches {
+		s.show()
+	}
+	for _, s := range d.json {
+		s.show()
 	}
 }
 
@@ -177,7 +298,8 @@ func (d *settingsDialog) settings(base settings.Settings) settings.Settings {
 		return ""
 	}
 	base.WorkspacesDir = location(d.workspaces, d.defaults.Workspaces)
-	base.JSONColours = d.colours
+	base.JSONColours = d.jsonColours
+	base.Colours = d.colours
 
 	return base
 }

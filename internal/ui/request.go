@@ -2,7 +2,6 @@ package ui
 
 import (
 	"slices"
-	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
 
@@ -36,18 +35,23 @@ const (
 	pageCurl
 )
 
-// curlColour is the colour of the curl icon.
-const curlColour = "#0b4f6c"
-
 // requestPanel holds the widgets used to compose a request.
 type requestPanel struct {
 	root *qt.QWidget
 
 	method *qt.QComboBox
-	url    *qt.QLineEdit
-	send   *qt.QPushButton
-	// preview shows the URL with environment variables substituted.
-	preview *qt.QLabel
+	// url is the URL field, which wraps a URL too long for it and grows
+	// taller to show it all.
+	url  *wrapEdit
+	send *qt.QPushButton
+
+	// preview, the button between the URL field and Send, shows in place
+	// of the field what the URL resolves to.
+	preview *qt.QToolButton
+	// resolved is the URL with the variables of the active environment in
+	// place, and a mark where a placeholder has no value. It cannot be
+	// edited.
+	resolved *wrapEdit
 
 	params  *keyValueTable
 	headers *keyValueTable
@@ -94,27 +98,55 @@ func newRequestPanel() *requestPanel {
 	p.method.AddItems(rest.Methods)
 	p.method.OnCurrentIndexChanged(func(int) { p.changed() })
 
-	p.url = qt.NewQLineEdit2()
+	p.url = newWrapEdit()
 	p.url.SetPlaceholderText("Enter URL, e.g. https://api.example.com/users or {{host}}/users")
-	p.url.OnTextChanged(func(string) { p.urlChanged() })
+	p.url.onChange = func(string) { p.urlChanged() }
 
-	p.highlight.lineEdit(p.url)
+	p.highlight.document(p.url.Document(), func() bool { return false })
 
 	p.send = qt.NewQPushButton3("Send")
 	makePrimary(p.send)
 	p.send.SetToolTip("Ctrl+Return")
 
-	bar := qt.NewQHBoxLayout2()
-	bar.AddWidget(p.method.QWidget)
-	bar.AddWidget2(p.url.QWidget, 1)
-	bar.AddWidget(p.send.QWidget)
+	// Only one of the two is on show, and the other takes no room.
+	p.resolved = newWrapEdit()
+	p.resolved.SetReadOnly(true)
+	p.resolved.SetVisible(false)
 
-	p.preview = qt.NewQLabel2()
-	p.preview.SetTextFormat(qt.PlainText)
-	p.preview.SetTextInteractionFlags(qt.TextSelectableByMouse)
-	// Stop a long URL from forcing the window wider.
-	p.preview.SetSizePolicy2(qt.QSizePolicy__Ignored, qt.QSizePolicy__Preferred)
-	p.preview.SetVisible(false)
+	p.preview = newIconButton(colourAction, drawEye, "Show the URL with the values of its placeholders")
+	p.preview.SetCheckable(true)
+	p.preview.OnToggled(func(checked bool) {
+		p.url.SetVisible(!checked)
+		p.resolved.SetVisible(checked)
+		if checked {
+			p.updatePreview()
+		} else {
+			p.url.SetFocus()
+		}
+	})
+
+	// What is beside the URL stays level with its first line as it grows:
+	// each is put in the middle of a line as tall as the tallest of them.
+	bar := qt.NewQHBoxLayout2()
+	line := max(p.method.SizeHint().Height(), p.preview.SizeHint().Height(), p.send.SizeHint().Height())
+	beside := func(widget *qt.QWidget) {
+		widget.SetFixedHeight(widget.SizeHint().Height())
+		holder := qt.NewQVBoxLayout2()
+		holder.SetContentsMargins(0, (line-widget.SizeHint().Height())/2, 0, 0)
+		holder.AddWidget(widget)
+		holder.AddStretch()
+		bar.AddLayout(holder.QLayout)
+	}
+	urls := qt.NewQVBoxLayout2()
+	urls.SetContentsMargins(0, max(0, (line-p.url.Height())/2), 0, 0)
+	urls.AddWidget(p.url.QWidget)
+	urls.AddWidget(p.resolved.QWidget)
+	urls.AddStretch()
+
+	beside(p.method.QWidget)
+	bar.AddLayout2(urls.QLayout, 1)
+	beside(p.preview.QWidget)
+	beside(p.send.QWidget)
 
 	p.params = newKeyValueTable("Key", "Value")
 	p.params.onChange = p.paramsChanged
@@ -127,7 +159,7 @@ func newRequestPanel() *requestPanel {
 	p.highlight.table(p.headers.table)
 
 	// The curl button is at the right of the line the tabs are on.
-	p.curl = newIconButton(curlColour, drawPrompt, "Show the request as a curl command")
+	p.curl = newIconButton(colourAction, drawPrompt, "Show the request as a curl command")
 	p.curl.SetCheckable(true)
 	p.curl.OnToggled(func(checked bool) {
 		if checked {
@@ -148,8 +180,8 @@ func newRequestPanel() *requestPanel {
 	fieldsLayout := qt.NewQVBoxLayout(fields)
 	fieldsLayout.SetContentsMargins(0, 0, 0, 0)
 	fieldsLayout.AddLayout(bar.QLayout)
-	fieldsLayout.AddWidget(p.preview.QWidget)
-	fieldsLayout.AddWidget(tabs.QWidget)
+	// The line of the URL is only as tall as the URL makes it.
+	fieldsLayout.AddWidget2(tabs.QWidget, 1)
 
 	p.pages = qt.NewQStackedWidget2()
 	p.pages.AddWidget(fields)
@@ -199,6 +231,60 @@ func (p *requestPanel) newCurlPage() *qt.QWidget {
 func (p *requestPanel) setCodeFont(family string) {
 	p.bodyRaw.SetFont(fixedFont(family))
 	p.command.SetFont(fixedFont(family))
+}
+
+// missingValue is shown in the preview of the URL where a placeholder has no
+// value: a black square, for something that is not there.
+const missingValue = "\u25a0"
+
+// updatePreview shows the URL as it is with the variables of the active
+// environment in place, if the preview is on show. The values are in the
+// colour of placeholders that are found, and where the environment does not
+// define one, or defines it as nothing, there is a mark, in the colour of
+// those that are not.
+func (p *requestPanel) updatePreview() {
+	if !p.preview.IsChecked() {
+		return
+	}
+
+	expand := p.expand
+	if expand == nil {
+		expand = func(text string) string { return text }
+	}
+
+	var pieces []textPiece
+	url, last := p.url.Text(), 0
+	for _, loc := range env.FindPlaceholders(url) {
+		pieces = append(pieces, textPiece{text: url[last:loc[0]]})
+
+		match := url[loc[0]:loc[1]]
+		// A placeholder that is defined as nothing is as much a gap in
+		// the URL as one that is not defined.
+		if value := expand(match); value != match && value != "" {
+			pieces = append(pieces, textPiece{value, p.highlight.known})
+		} else {
+			pieces = append(pieces, textPiece{missingValue, p.highlight.unknown})
+		}
+		last = loc[1]
+	}
+	pieces = append(pieces, textPiece{text: url[last:]})
+
+	p.resolved.setPieces(pieces)
+}
+
+// escape closes what is shown in place of the fields of the request: the
+// curl command, or else the preview of the URL. It reports if there was
+// anything to close.
+func (p *requestPanel) escape() bool {
+	switch {
+	case p.curl.IsChecked():
+		p.curl.SetChecked(false)
+	case p.preview.IsChecked():
+		p.preview.SetChecked(false)
+	default:
+		return false
+	}
+	return true
 }
 
 // updateCurl shows the request, with the variables of the active
@@ -291,6 +377,7 @@ func (p *requestPanel) bodyIsJSON() bool {
 }
 
 func (p *requestPanel) changed() {
+	p.updatePreview()
 	if !p.updating && p.onChange != nil {
 		p.onChange()
 	}
@@ -305,6 +392,7 @@ func (p *requestPanel) refreshPlaceholders() {
 
 	p.highlight.refresh()
 	p.updateCurl()
+	p.updatePreview()
 }
 
 // urlChanged copies the query string typed into the URL to the params table.
@@ -374,24 +462,5 @@ func (p *requestPanel) load(r rest.Request) {
 	p.bodyFold.reset()
 	p.bodyForm.setItems(r.Form)
 	p.updateCurl()
-}
-
-// updatePreview shows what the URL resolves to when it contains placeholders,
-// or which of them are not defined in the active environment.
-func (p *requestPanel) updatePreview(expand func(string) string) {
-	url := p.url.Text()
-	if len(env.Placeholders(url)) == 0 {
-		p.preview.SetVisible(false)
-		return
-	}
-
-	resolved := expand(url)
-	if unknown := env.Placeholders(resolved); len(unknown) > 0 {
-		p.preview.SetText("Not defined in the selected environment: " + strings.Join(unknown, ", "))
-		p.preview.SetStyleSheet("color: " + unknownColour)
-	} else {
-		p.preview.SetText("→ " + resolved)
-		p.preview.SetStyleSheet("color: " + knownColour)
-	}
-	p.preview.SetVisible(true)
+	p.updatePreview()
 }

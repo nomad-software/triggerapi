@@ -9,11 +9,11 @@ import (
 // sidebar.
 const iconButtonSize = 32
 
-// newIconButton returns a button shown as an icon, a symbol on a colour,
-// with what it does as its tooltip. See drawIcon.
-func newIconButton(colour string, glyph func(*qt.QPainter), tip string) *qt.QToolButton {
+// newIconButton returns a button shown as an icon, a symbol on one of the
+// colours of the settings, with what it does as its tooltip. See drawIcon.
+func newIconButton(colour colourKind, glyph func(*qt.QPainter), tip string) *qt.QToolButton {
 	button := qt.NewQToolButton2()
-	button.SetIcon(drawIcon(iconButtonSize*2, colour, glyph))
+	followColours(button, func() { button.SetIcon(drawIcon(iconButtonSize*2, themeColour(colour), glyph)) })
 	button.SetIconSize(qt.NewQSize2(iconButtonSize, iconButtonSize))
 	button.SetToolTip(tip)
 	button.SetAutoRaise(true)
@@ -41,10 +41,6 @@ func newButtonTabs(button *qt.QToolButton) *qt.QTabWidget {
 	tabs.SetCornerWidget2(button.QWidget, qt.TopRightCorner)
 	return tabs
 }
-
-// removeColour is the colour of the buttons which remove something. The
-// other buttons along the bottom of the sidebar are the colour of their tab.
-const removeColour = "#e03131"
 
 // newButtonRow lays out icon buttons in a row from the left, to go along the
 // bottom of a tab of the sidebar.

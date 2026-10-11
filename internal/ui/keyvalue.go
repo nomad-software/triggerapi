@@ -167,14 +167,18 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 // removeIcon is the icon of the buttons which remove a row, once drawn.
 var removeIcon *qt.QIcon
 
+// removeRowIcon returns the icon of the buttons which remove a row.
+func removeRowIcon() *qt.QIcon {
+	if removeIcon == nil {
+		removeIcon = drawIcon(removeIconSize*2, themeColour(colourRemove), drawBin)
+	}
+	return removeIcon
+}
+
 // newRemoveButton returns a button which removes the row it is in.
 func (t *keyValueTable) newRemoveButton() *qt.QWidget {
-	if removeIcon == nil {
-		removeIcon = drawIcon(removeIconSize*2, removeColour, drawBin)
-	}
-
 	button := qt.NewQToolButton2()
-	button.SetIcon(removeIcon)
+	followColours(button, func() { button.SetIcon(removeRowIcon()) })
 	button.SetIconSize(qt.NewQSize2(removeIconSize, removeIconSize))
 	button.SetToolTip("Remove this row")
 	button.SetAutoRaise(true)

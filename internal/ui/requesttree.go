@@ -111,17 +111,17 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	// its tooltip. They are the colour of the icon of the tab, but for the one
 	// which removes, and the one which imports is apart at the right. There
 	// is none to open a request, as selecting it does that.
-	addFolder := newIconButton(requestsColour, drawFolderPlus, "Add a folder")
+	addFolder := newIconButton(colourRequests, drawFolderPlus, "Add a folder")
 	addFolder.OnClicked(t.addFolder)
-	addRequest := newIconButton(requestsColour, drawPagePlus, "Add a request")
+	addRequest := newIconButton(colourRequests, drawPagePlus, "Add a request")
 	addRequest.OnClicked(t.addRequest)
-	duplicate := newIconButton(requestsColour, drawCopy, "Duplicate the selected folder or request")
+	duplicate := newIconButton(colourRequests, drawCopy, "Duplicate the selected folder or request")
 	duplicate.OnClicked(t.duplicate)
-	rename := newIconButton(requestsColour, drawLetters, "Rename the selected folder or request")
+	rename := newIconButton(colourRequests, drawLetters, "Rename the selected folder or request")
 	rename.OnClicked(t.rename)
-	remove := newIconButton(removeColour, drawBin, "Remove the selected folder or request")
+	remove := newIconButton(colourRemove, drawBin, "Remove the selected folder or request")
 	remove.OnClicked(t.remove)
-	importButton := newIconButton(requestsColour, drawImport, "Import a folder of requests from an OpenAPI document or a Postman collection")
+	importButton := newIconButton(colourRequests, drawImport, "Import a folder of requests from an OpenAPI document or a Postman collection")
 	importButton.OnClicked(t.importDocument)
 
 	buttons := newButtonRow(addFolder, addRequest, duplicate, rename, remove)
@@ -502,7 +502,7 @@ func (t *requestTree) newItem(parent *qt.QTreeWidgetItem, index int, name string
 		item.SetToolTip(colName, typeLabels[typ])
 	} else {
 		if folderIcon == nil {
-			folderIcon = drawIcon(iconSize*2, requestsColour, drawFolder)
+			folderIcon = drawIcon(iconSize*2, themeColour(colourRequests), drawFolder)
 		}
 		item.SetIcon(colName, folderIcon)
 	}

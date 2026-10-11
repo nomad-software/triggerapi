@@ -65,8 +65,9 @@ func newRequestTabs() *requestTabs {
 		bar: qt.NewQTabBar2(),
 		// A pinned tab is unpinned with the icon of the buttons which
 		// remove.
-		pinnedIcon:   drawIcon(pinIconSize*2, removeColour, drawBin),
-		unpinnedIcon: drawIcon(pinIconSize*2, primaryColour, drawPin),
+		pinnedIcon: drawIcon(pinIconSize*2, themeColour(colourRemove), drawBin),
+		// The pin is one of the action buttons.
+		unpinnedIcon: drawIcon(pinIconSize*2, themeColour(colourAction), drawPin),
 	}
 
 	s.bar.SetExpanding(false)
@@ -237,6 +238,16 @@ func (s *requestTabs) refresh(tab *requestTab) {
 			tab.button.SetIcon(icon)
 		}
 		tab.button.SetToolTip(typeLabels[tab.request.Type] + " request, pinned")
+	}
+}
+
+// recolour gives the buttons of the tabs their icons again, after the colours
+// have changed.
+func (s *requestTabs) recolour() {
+	s.pinnedIcon = drawIcon(pinIconSize*2, themeColour(colourRemove), drawBin)
+	s.unpinnedIcon = drawIcon(pinIconSize*2, themeColour(colourAction), drawPin)
+	for _, tab := range s.tabs {
+		s.refresh(tab)
 	}
 }
 

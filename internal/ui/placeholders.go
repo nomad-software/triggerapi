@@ -45,18 +45,9 @@ func utf16Len(s string) int {
 	return n
 }
 
-// The colours of placeholders, and of what the URL resolves to beneath it. A
-// placeholder that the active environment defines is a lighter shade of the
-// colour of the Send button, and one that it does not is the colour of a
-// failure.
-const (
-	knownColour   = "#ff9d5c"
-	unknownColour = failureColour
-)
-
 // placeholderHighlighter colours the placeholders in line edits and text
-// documents: in the colour of a successful response if the active environment
-// defines them, and in the warning colour if not.
+// documents: in one of the colours of the settings if the active environment
+// defines them (colourFound), and in another if not (colourNotFound).
 type placeholderHighlighter struct {
 	// expand substitutes the variables of the active environment.
 	expand func(string) string
@@ -79,23 +70,32 @@ type placeholderHighlighter struct {
 }
 
 func newPlaceholderHighlighter() *placeholderHighlighter {
-	format := func(colour string) *qt.QTextCharFormat {
-		f := qt.NewQTextCharFormat()
-		f.SetForeground(qt.NewQBrush3(qt.NewQColor6(colour)))
-		return f
-	}
-
-	return &placeholderHighlighter{
+	h := &placeholderHighlighter{
 		expand:  func(s string) string { return s },
-		known:   format(knownColour),
-		unknown: format(unknownColour),
+		known:   qt.NewQTextCharFormat(),
+		unknown: qt.NewQTextCharFormat(),
 		json:    newJSONFormats(),
-
-		knownColour:     qt.NewQColor6(knownColour),
-		unknownColour:   qt.NewQColor6(unknownColour),
-		knownSelected:   qt.NewQColor6("#ffd8a8"),
-		unknownSelected: qt.NewQColor6("#ffc9c9"),
 	}
+	h.setColours()
+	return h
+}
+
+// setColours takes the colours of placeholders from the settings. Text that
+// has already been coloured keeps its colours until refresh is called.
+func (h *placeholderHighlighter) setColours() {
+	// pale returns a colour mixed with white.
+	pale := func(colour *qt.QColor) *qt.QColor {
+		mix := func(c int) int { return c + (255-c)*3/5 }
+		return qt.NewQColor3(mix(colour.Red()), mix(colour.Green()), mix(colour.Blue()))
+	}
+
+	h.knownColour = qt.NewQColor6(themeColour(colourFound))
+	h.unknownColour = qt.NewQColor6(themeColour(colourNotFound))
+	h.knownSelected = pale(h.knownColour)
+	h.unknownSelected = pale(h.unknownColour)
+
+	h.known.SetForeground(qt.NewQBrush3(h.knownColour))
+	h.unknown.SetForeground(qt.NewQBrush3(h.unknownColour))
 }
 
 func (h *placeholderHighlighter) format(r placeholderRange) *qt.QTextCharFormat {

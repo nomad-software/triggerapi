@@ -194,6 +194,8 @@ func NewWindow(files Files) *Window {
 	// Restore the window size, and remember it again when the window closes.
 	w.files = files
 	w.config = settings.Load(files.Settings)
+	// The icons are drawn in the colours of the settings as they are made.
+	setColours(w.config.Colours)
 	w.response = newResponsePanel(w.config.ResponseFont)
 	w.grpcResponse = newResponsePanel(w.config.ResponseFont)
 	w.Resize(w.config.Width, w.config.Height)
@@ -279,7 +281,6 @@ func NewWindow(files Files) *Window {
 	w.request.setCodeFont(w.config.ResponseFont)
 	w.grpc.setCodeFont(w.config.ResponseFont)
 	w.request.onChange = func() {
-		w.updatePreview()
 		if w.open != nil && w.open.Type == collection.TypeREST {
 			request := w.request.request()
 			w.open.Request = &request
@@ -288,7 +289,7 @@ func NewWindow(files Files) *Window {
 	}
 	w.request.send.OnClicked(w.send)
 	w.request.execute.OnClicked(w.executeCurl)
-	w.request.url.OnReturnPressed(w.send)
+	w.request.url.onReturn = w.send
 
 	w.grpc.onChange = func() {
 		if w.open != nil && w.open.Type == collection.TypeGRPC {
@@ -354,9 +355,10 @@ func NewWindow(files Files) *Window {
 	w.sidebar.SetTabPosition(qt.QTabWidget__West)
 	w.sidebar.SetIconSize(qt.NewQSize2(sidebarIconSize, sidebarIconSize))
 	// The order matches the tab constants.
-	w.sidebar.AddTab2(w.workspaces.root, drawTabIcon(workspacesColour, drawMonitor), "")
-	w.sidebar.AddTab2(w.environments.root, drawTabIcon(environmentsColour, drawGlobe), "")
-	w.sidebar.AddTab2(w.requests.root, drawTabIcon(requestsColour, drawFolder), "")
+	w.sidebar.AddTab(w.workspaces.root, "")
+	w.sidebar.AddTab(w.environments.root, "")
+	w.sidebar.AddTab(w.requests.root, "")
+	w.drawSidebarIcons()
 	w.sidebar.SetTabToolTip(tabWorkspaces, "Workspaces")
 	w.sidebar.SetTabToolTip(tabEnvironments, "Environments")
 	w.sidebar.SetTabToolTip(tabRequests, "Requests")
@@ -393,6 +395,16 @@ func NewWindow(files Files) *Window {
 			w.laidOut = true
 			w.later(w.restoreLayout)
 		}
+	})
+
+	// Escape reaches the window when what has the keyboard has no use for
+	// it, so it still cancels the editing of a name or a cell.
+	w.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
+		if event.Key() == int(qt.Key_Escape) {
+			w.escape()
+			return
+		}
+		super(event)
 	})
 
 	// Selecting an environment beside the tabs selects it in the sidebar,
@@ -578,7 +590,6 @@ func (w *Window) showTab(tab *requestTab, sync bool) {
 	w.show(tab.request)
 	if tab.request == nil && tab.draft != nil {
 		w.request.load(*tab.draft)
-		w.updatePreview()
 	}
 	if tab.replay != nil {
 		tab.replay()
@@ -710,6 +721,11 @@ func (w *Window) applySettings(s settings.Settings) error {
 	w.config.JSONColours = s.JSONColours
 	w.applyJSONColours()
 
+	if s.Colours != w.config.Colours {
+		w.config.Colours = s.Colours
+		w.applyColours()
+	}
+
 	setting, previous := w.config.WorkspacesDir, w.workspacesDir()
 	w.config.WorkspacesDir = s.WorkspacesDir
 	if dir := w.workspacesDir(); filepath.Clean(dir) != filepath.Clean(previous) {
@@ -739,6 +755,38 @@ func (w *Window) applyJSONColours() {
 	w.grpcResponse.setJSONColours(colours)
 }
 
+// drawSidebarIcons gives the tabs of the sidebar their icons.
+func (w *Window) drawSidebarIcons() {
+	w.sidebar.SetTabIcon(tabWorkspaces, drawTabIcon(themeColour(colourWorkspaces), drawMonitor))
+	w.sidebar.SetTabIcon(tabEnvironments, drawTabIcon(themeColour(colourEnvironments), drawGlobe))
+	w.sidebar.SetTabIcon(tabRequests, drawTabIcon(themeColour(colourRequests), drawFolder))
+}
+
+// applyColours shows the icons, the buttons which send, the placeholders and
+// the errors in the colours of the settings, everywhere they are shown.
+func (w *Window) applyColours() {
+	setColours(w.config.Colours)
+
+	w.drawSidebarIcons()
+	w.workspaces.recolour()
+	w.environments.recolour()
+	w.requests.draw(w.requests.selection())
+	w.tabs.recolour()
+
+	for _, button := range []*qt.QPushButton{w.request.send, w.request.execute, w.grpc.invoke} {
+		makePrimary(button)
+	}
+
+	w.request.highlight.setColours()
+	w.request.refreshPlaceholders()
+	w.grpc.highlight.setColours()
+	w.grpc.refreshPlaceholders()
+
+	w.grpc.recolour()
+	w.response.recolour()
+	w.grpcResponse.recolour()
+}
+
 // expand substitutes the variables of the active environment into text.
 func (w *Window) expand(text string) string {
 	return w.environments.store.Expand(text)
@@ -748,13 +796,8 @@ func (w *Window) expand(text string) string {
 // what the placeholders in the request resolve to may have changed.
 func (w *Window) environmentChanged() {
 	w.updateHeaders()
-	w.updatePreview()
 	w.request.refreshPlaceholders()
 	w.grpc.refreshPlaceholders()
-}
-
-func (w *Window) updatePreview() {
-	w.request.updatePreview(w.expand)
 }
 
 // openEditor shows the selected environment in place of the request UI. The
@@ -775,6 +818,18 @@ func (w *Window) requestPage() int {
 		return pageGRPC
 	}
 	return pageRequest
+}
+
+// escape closes what is open in place of the request: the environment
+// editor, or else the curl command or the preview of the URL of a REST
+// request.
+func (w *Window) escape() {
+	switch w.stack.CurrentIndex() {
+	case pageEditor:
+		w.closeEditor()
+	case pageRequest:
+		w.request.escape()
+	}
 }
 
 // closeEditor returns to the request UI.
@@ -816,7 +871,6 @@ func (w *Window) show(r *collection.Request) {
 	w.updateHeaders()
 
 	if w.requestPage() == pageRequest {
-		w.updatePreview()
 		w.response.clear()
 	}
 	if w.stack.CurrentIndex() != pageEditor {
@@ -943,7 +997,7 @@ func (w *Window) reflect(force bool) {
 	target, err := req.Target()
 	if err != nil {
 		// There is no server to ask yet.
-		w.grpc.setStatus("", "")
+		w.grpc.setStatus("")
 		return
 	}
 
@@ -952,7 +1006,7 @@ func (w *Window) reflect(force bool) {
 		return
 	}
 
-	w.grpc.setStatus("", "")
+	w.grpc.setStatus("")
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), reflectTimeout)
@@ -985,13 +1039,13 @@ func (w *Window) useExample() {
 	target, _ := req.Target()
 	schema, ok := w.schemas[target]
 	if !ok {
-		w.grpc.setStatus("An example needs the service definition, which has not been loaded. Enter the server address and press Reload.", statusColour(400))
+		w.grpc.setStatus("An example needs the service definition, which has not been loaded. Enter the server address and press Reload.")
 		return
 	}
 
 	example, err := schema.Example(req.Method)
 	if err != nil {
-		w.grpc.setStatus("An example could not be made: "+err.Error(), statusColour(400))
+		w.grpc.setStatus("An example could not be made: " + err.Error())
 		return
 	}
 	w.grpc.message.SetPlainText(example)

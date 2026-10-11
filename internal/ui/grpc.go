@@ -84,6 +84,7 @@ func newGRPCPanel() *grpcPanel {
 	p.status.SetWordWrap(true)
 	p.status.SetTextInteractionFlags(qt.TextSelectableByMouse)
 	p.status.SetVisible(false)
+	p.recolour()
 
 	fixed := qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont)
 
@@ -193,19 +194,19 @@ func (p *grpcPanel) load(r rpc.Request) {
 	p.auth.load(r.Auth)
 
 	p.definition.SetPlainText("")
-	p.setStatus("", "")
+	p.setStatus("")
 }
 
-// setStatus shows a message about the service definition, or hides it if
-// text is empty.
-func (p *grpcPanel) setStatus(text, colour string) {
+// setStatus shows what went wrong with the service definition, in the colour
+// of errors, or hides the message if text is empty.
+func (p *grpcPanel) setStatus(text string) {
 	p.status.SetText(text)
-	if colour == "" {
-		p.status.SetStyleSheet("")
-	} else {
-		p.status.SetStyleSheet("color: " + colour)
-	}
 	p.status.SetVisible(text != "")
+}
+
+// recolour gives the status line the colour of errors in the settings.
+func (p *grpcPanel) recolour() {
+	p.status.SetStyleSheet("color: " + themeColour(colourError))
 }
 
 // setSchema offers the methods of the server to choose from. The method of
@@ -226,7 +227,7 @@ func (p *grpcPanel) setSchema(schema *rpc.Schema) {
 	p.updating = false
 
 	// Only a failure to load the definition is reported.
-	p.setStatus("", "")
+	p.setStatus("")
 
 	if p.method.current() != current {
 		p.changed()
@@ -236,7 +237,7 @@ func (p *grpcPanel) setSchema(schema *rpc.Schema) {
 // setSchemaError reports that the service definition could not be loaded.
 func (p *grpcPanel) setSchemaError(err error) {
 	p.definition.SetPlainText("")
-	p.setStatus("The service definition could not be loaded: "+err.Error(), statusColour(400))
+	p.setStatus("The service definition could not be loaded: " + err.Error())
 }
 
 // refreshPlaceholders recolours the placeholders after the environment has
