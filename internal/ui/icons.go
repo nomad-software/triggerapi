@@ -406,24 +406,64 @@ func drawArrows(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
-// drawBolt draws a bolt of lightning, for a request that is fired off.
-func drawBolt(painter *qt.QPainter) {
+// drawRevolver draws a revolver seen from the side, pointing right: the
+// program is named after its trigger.
+func drawRevolver(painter *qt.QPainter) {
 	white := qt.NewQColor6("#ffffff")
-	pen := qt.NewQPen3(white)
-	pen.SetWidth(6)
-	pen.SetJoinStyle(qt.RoundJoin)
-	painter.SetPenWithPen(pen)
+	painter.SetPenWithStyle(qt.NoPen)
 	painter.SetBrush(qt.NewQBrush3(white))
 
-	path := qt.NewQPainterPath()
-	path.MoveTo2(74, 22)
-	path.LineTo2(38, 72)
-	path.LineTo2(61, 72)
-	path.LineTo2(54, 106)
-	path.LineTo2(91, 55)
-	path.LineTo2(68, 55)
-	path.CloseSubpath()
-	painter.DrawPath(path)
+	// The barrel, with the front sight on top and the rod beneath it.
+	painter.DrawRoundedRect2(72, 30, 44, 14, 3, 3)
+	painter.DrawRect2(107, 23, 5, 9)
+	painter.DrawRoundedRect2(78, 47, 24, 5, 2, 2)
+
+	// The frame: a strap above the cylinder and one below it, joined
+	// behind it and in front of it.
+	painter.DrawRect2(32, 30, 44, 5)
+	painter.DrawRect2(34, 67, 44, 5)
+	painter.DrawRect2(30, 30, 9, 42)
+	painter.DrawRect2(71, 30, 7, 42)
+
+	// The cylinder, clear of the frame all round.
+	painter.DrawRoundedRect2(42, 38, 26, 26, 5, 5)
+
+	// The hammer, cocked back above the grip.
+	hammer := qt.NewQPainterPath()
+	hammer.MoveTo2(36, 31)
+	hammer.LineTo2(27, 19)
+	hammer.LineTo2(21, 24)
+	hammer.LineTo2(28, 33)
+	hammer.CloseSubpath()
+	painter.DrawPath(hammer)
+
+	// The grip, curving down and back from the frame.
+	grip := qt.NewQPainterPath()
+	grip.MoveTo2(30, 42)
+	grip.LineTo2(47, 70)
+	grip.QuadTo2(40, 86, 42, 100)
+	grip.QuadTo2(42, 108, 34, 108)
+	grip.LineTo2(22, 108)
+	grip.QuadTo2(14, 108, 15, 100)
+	grip.QuadTo2(18, 70, 30, 42)
+	grip.CloseSubpath()
+	painter.DrawPath(grip)
+
+	// The trigger guard, and the trigger inside it.
+	pen := qt.NewQPen3(white)
+	pen.SetWidth(6)
+	pen.SetCapStyle(qt.RoundCap)
+	pen.SetJoinStyle(qt.RoundJoin)
+	painter.SetPenWithPen(pen)
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	guard := qt.NewQPainterPath()
+	guard.MoveTo2(45, 90)
+	guard.LineTo2(62, 90)
+	guard.QuadTo2(75, 90, 75, 73)
+	guard.MoveTo2(60, 73)
+	guard.QuadTo2(63, 79, 59, 83)
+	painter.DrawPath(guard)
 }
 
 // appIconColour is the colour of the program's icon.
@@ -434,7 +474,7 @@ var appIconCache *qt.QIcon
 // appIcon returns the icon of the program.
 func appIcon() *qt.QIcon {
 	if appIconCache == nil {
-		appIconCache = drawIcon(256, appIconColour, drawBolt)
+		appIconCache = drawIcon(256, appIconColour, drawRevolver)
 	}
 	return appIconCache
 }
