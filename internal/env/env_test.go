@@ -158,3 +158,19 @@ func TestSet(t *testing.T) {
 		t.Errorf("got %+v, want %+v", e.Variables, want)
 	}
 }
+
+func TestSetAmongDuplicates(t *testing.T) {
+	// The one in use is set: the last that is enabled.
+	e := Environment{Variables: []Variable{{Key: "host", Value: "a"}, {Key: "host", Value: "b", Enabled: true}, {Key: "host", Value: "c"}}}
+	e.Set("host", "new")
+	if e.Variables[0].Value != "a" || e.Variables[1].Value != "new" || e.Variables[2].Value != "c" || e.Expand("{{host}}") != "new" {
+		t.Errorf("got %+v", e.Variables)
+	}
+
+	// With none enabled it is the first.
+	e = Environment{Variables: []Variable{{Key: "host", Value: "a"}, {Key: "host", Value: "b"}}}
+	e.Set("host", "new")
+	if e.Variables[0] != (Variable{Key: "host", Value: "new", Enabled: true}) || e.Variables[1].Enabled {
+		t.Errorf("got %+v", e.Variables)
+	}
+}

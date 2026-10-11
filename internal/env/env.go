@@ -15,6 +15,10 @@ type Variable struct {
 	Key     string `json:"key"`
 	Value   string `json:"value"`
 	Enabled bool   `json:"enabled"`
+	// Description says what the variable is for. It is only for the
+	// reader: several variables can have one name, to keep the values it
+	// is switched between, and the description tells them apart.
+	Description string `json:"description,omitempty"`
 }
 
 // Environment is a named set of variables.
@@ -57,16 +61,22 @@ func (e Environment) Expand(s string) string {
 }
 
 // Set gives the variable with a key a value, and enables it. The variable is
-// added if there is none.
+// added if there is none. If several have the key, it is the one in use that
+// is set: the last that is enabled, which is the one Expand takes the value
+// of, or the first of them if none is.
 func (e *Environment) Set(key, value string) {
-	for i := range e.Variables {
-		if e.Variables[i].Key == key {
-			e.Variables[i].Value = value
-			e.Variables[i].Enabled = true
-			return
+	found := -1
+	for i, v := range e.Variables {
+		if v.Key == key && (found < 0 || v.Enabled) {
+			found = i
 		}
 	}
-	e.Variables = append(e.Variables, Variable{Key: key, Value: value, Enabled: true})
+	if found < 0 {
+		e.Variables = append(e.Variables, Variable{Key: key, Value: value, Enabled: true})
+		return
+	}
+	e.Variables[found].Value = value
+	e.Variables[found].Enabled = true
 }
 
 // Placeholders returns the {{key}} placeholders found in s.

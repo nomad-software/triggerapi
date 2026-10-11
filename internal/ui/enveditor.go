@@ -31,6 +31,7 @@ func newEnvEditor() *envEditor {
 	}
 
 	e.name.SetPlaceholderText("Environment name")
+	e.variables.describe("Description")
 
 	bar := qt.NewQHBoxLayout2()
 	bar.AddWidget(qt.NewQLabel3("Environment").QWidget)
@@ -49,14 +50,14 @@ func newEnvEditor() *envEditor {
 
 // load shows the environment without calling onChange.
 func (e *envEditor) load(environment *env.Environment) {
-	items := make([]rest.KeyValue, 0, len(environment.Variables))
+	items := make([]describedPair, 0, len(environment.Variables))
 	for _, v := range environment.Variables {
-		items = append(items, rest.KeyValue{Key: v.Key, Value: v.Value, Enabled: v.Enabled})
+		items = append(items, describedPair{rest.KeyValue{Key: v.Key, Value: v.Value, Enabled: v.Enabled}, v.Description})
 	}
 
 	e.updating = true
 	e.name.SetText(environment.Name)
-	e.variables.setItems(items)
+	e.variables.setDescribed(items)
 	e.updating = false
 }
 
@@ -66,8 +67,8 @@ func (e *envEditor) changed() {
 	}
 
 	var variables []env.Variable
-	for _, item := range e.variables.items() {
-		variables = append(variables, env.Variable{Key: item.Key, Value: item.Value, Enabled: item.Enabled})
+	for _, item := range e.variables.allDescribed() {
+		variables = append(variables, env.Variable{Key: item.Key, Value: item.Value, Enabled: item.Enabled, Description: item.Description})
 	}
 	e.onChange(e.name.Text(), variables)
 }

@@ -14,12 +14,32 @@ const (
 	colEnabled = iota
 	colKey
 	colValue
+	// colDescription holds a description of the pair. It is hidden unless
+	// the table is one whose pairs have descriptions. See describe.
+	colDescription
 	// colStatus holds an icon which says something of the row. It is
 	// hidden unless the table is one that shows statuses. See showStatuses.
 	colStatus
 	// colRemove holds the button which removes the row.
 	colRemove
 )
+
+// describedPair is a pair and the description of it, which is empty in a
+// table whose pairs do not have descriptions.
+type describedPair struct {
+	rest.KeyValue
+	Description string
+}
+
+// compareDescribed gives the order the rows of a table are kept in: that of
+// their keys, and for pairs with the same key, of their descriptions. Both
+// ignore case.
+func compareDescribed(a, b describedPair) int {
+	if c := rest.ComparePairs(a.KeyValue, b.KeyValue); c != 0 {
+		return c
+	}
+	return strings.Compare(strings.ToLower(a.Description), strings.ToLower(b.Description))
+}
 
 // rowStatus is what is shown of a row in its status column: an icon, with
 // what it means as its tooltip.
@@ -34,7 +54,8 @@ const removeIconSize = 18
 // keyValueTable is an editable list of key/value pairs, each of which can be
 // switched off. An empty row is always kept at the bottom for new entries.
 // The pairs are kept in alphabetical order of their keys. Each row but the
-// empty one has a button at its right which removes it.
+// empty one has a button at its right which removes it. A table can also
+// have a description of each pair (describe).
 type keyValueTable struct {
 	table    *qt.QTableWidget
 	updating bool
@@ -47,12 +68,16 @@ type keyValueTable struct {
 	// taken away because of that.
 	statuses bool
 	onStale  func()
+
+	// faint is the brush descriptions are written with, once made.
+	faint *qt.QBrush
 }
 
 func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
-	t := &keyValueTable{table: qt.NewQTableWidget3(0, 5)}
+	t := &keyValueTable{table: qt.NewQTableWidget3(0, 6)}
 
-	t.table.SetHorizontalHeaderLabels([]string{"", keyLabel, valueLabel, "", ""})
+	t.table.SetHorizontalHeaderLabels([]string{"", keyLabel, valueLabel, "", "", ""})
+	t.table.SetColumnHidden(colDescription, true)
 	t.table.SetColumnHidden(colStatus, true)
 	t.table.SetIconSize(qt.NewQSize2(removeIconSize, removeIconSize))
 	t.table.VerticalHeader().SetVisible(false)
@@ -61,6 +86,7 @@ func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
 	header.SetSectionResizeMode2(colEnabled, qt.QHeaderView__ResizeToContents)
 	header.SetSectionResizeMode2(colKey, qt.QHeaderView__Stretch)
 	header.SetSectionResizeMode2(colValue, qt.QHeaderView__Stretch)
+	header.SetSectionResizeMode2(colDescription, qt.QHeaderView__Stretch)
 	header.SetSectionResizeMode2(colStatus, qt.QHeaderView__ResizeToContents)
 	header.SetSectionResizeMode2(colRemove, qt.QHeaderView__ResizeToContents)
 
@@ -69,7 +95,7 @@ func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
 			return
 		}
 		last := t.table.RowCount() - 1
-		if item.Row() == last && (t.text(last, colKey) != "" || t.text(last, colValue) != "") {
+		if item.Row() == last && (t.text(last, colKey) != "" || t.text(last, colValue) != "" || t.text(last, colDescription) != "") {
 			t.addRow("", "", true)
 		}
 		t.changed()
@@ -98,20 +124,27 @@ func (t *keyValueTable) editing() bool {
 	return focus != nil && t.table.Viewport().IsAncestorOf(focus)
 }
 
-// sort puts the rows in alphabetical order of their keys, keeping the
-// current cell on the pair it was on, and calls onChange if any moved.
+// describe shows the column of descriptions, under a heading.
+func (t *keyValueTable) describe(label string) {
+	t.table.HorizontalHeaderItem(colDescription).SetText(label)
+	t.table.SetColumnHidden(colDescription, false)
+}
+
+// sort puts the rows in alphabetical order of their keys, and of their
+// descriptions where the keys are the same, keeping the current cell on the
+// pair it was on, and calls onChange if any moved.
 func (t *keyValueTable) sort() {
 	type entry struct {
-		rest.KeyValue
+		describedPair
 		row int
 	}
 
 	rows := make([]entry, t.table.RowCount()-1)
 	for row := range rows {
-		rows[row] = entry{t.pair(row), row}
+		rows[row] = entry{t.described(row), row}
 	}
 	sorted := slices.Clone(rows)
-	slices.SortStableFunc(sorted, func(a, b entry) int { return rest.ComparePairs(a.KeyValue, b.KeyValue) })
+	slices.SortStableFunc(sorted, func(a, b entry) int { return compareDescribed(a.describedPair, b.describedPair) })
 	if slices.Equal(rows, sorted) {
 		return
 	}
@@ -122,6 +155,7 @@ func (t *keyValueTable) sort() {
 	for row, e := range sorted {
 		t.table.Item(row, colKey).SetText(e.Key)
 		t.table.Item(row, colValue).SetText(e.Value)
+		t.table.Item(row, colDescription).SetText(e.Description)
 		t.table.Item(row, colEnabled).SetCheckState(checkState(e.Enabled))
 		if e.row == current {
 			t.table.SetCurrentCell(row, column)
@@ -146,6 +180,11 @@ func (t *keyValueTable) pair(row int) rest.KeyValue {
 		Value:   t.text(row, colValue),
 		Enabled: t.table.Item(row, colEnabled).CheckState() == qt.Checked,
 	}
+}
+
+// described returns the contents of a row, with its description.
+func (t *keyValueTable) described(row int) describedPair {
+	return describedPair{t.pair(row), t.text(row, colDescription)}
 }
 
 func (t *keyValueTable) widget() *qt.QWidget {
@@ -202,6 +241,17 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 	t.table.SetItem(row, colEnabled, check)
 	t.table.SetItem(row, colKey, qt.NewQTableWidgetItem2(key))
 	t.table.SetItem(row, colValue, qt.NewQTableWidgetItem2(value))
+
+	// A description is fainter than what it describes: the colour of the
+	// text beside it, half transparent.
+	description := qt.NewQTableWidgetItem()
+	if t.faint == nil {
+		// The colour is copied, as the one returned is the palette's own.
+		text := t.table.Palette().ColorWithCr(qt.QPalette__Text)
+		t.faint = qt.NewQBrush3(qt.NewQColor11(text.Red(), text.Green(), text.Blue(), 127))
+	}
+	description.SetForeground(t.faint)
+	t.table.SetItem(row, colDescription, description)
 
 	// Nothing is typed or selected in the cell of the status, which is
 	// left enabled so that its icon is not greyed, or in that of the button.
@@ -279,6 +329,37 @@ func (t *keyValueTable) setItems(items []rest.KeyValue) {
 		t.addRow(item.Key, item.Value, item.Enabled)
 	}
 	t.addRow("", "", true)
+}
+
+// setDescribed replaces the contents of the table with pairs that have
+// descriptions, in order, without calling onChange.
+func (t *keyValueTable) setDescribed(pairs []describedPair) {
+	pairs = slices.Clone(pairs)
+	slices.SortStableFunc(pairs, compareDescribed)
+
+	items := make([]rest.KeyValue, len(pairs))
+	for i, p := range pairs {
+		items[i] = p.KeyValue
+	}
+	// The order is already that of the items, which are not moved.
+	t.setItems(items)
+
+	defer func(prev bool) { t.updating = prev }(t.updating)
+	t.updating = true
+	for row, p := range pairs {
+		t.table.Item(row, colDescription).SetText(p.Description)
+	}
+}
+
+// allDescribed returns every row that has a key, with its description.
+func (t *keyValueTable) allDescribed() []describedPair {
+	var pairs []describedPair
+	for row := range t.table.RowCount() {
+		if pair := t.described(row); pair.Key != "" {
+			pairs = append(pairs, pair)
+		}
+	}
+	return pairs
 }
 
 // remove deletes a row, keeping the trailing empty row.

@@ -2491,6 +2491,74 @@ func TestCaptureGRPC(t *testing.T) {
 	})
 }
 
+func TestVariableDescriptions(t *testing.T) {
+	files := testFiles(t)
+	store := env.Store{Environments: []env.Environment{{Name: "Local", Variables: []env.Variable{
+		{Key: "host", Value: "https://staging.test", Description: "Staging"},
+		{Key: "token", Value: "abc", Enabled: true},
+		{Key: "host", Value: "http://local.test", Enabled: true, Description: "local machine"},
+		{Key: "Host", Value: "https://live.test", Description: "Live"},
+	}}}}
+	if err := store.Save(files.Environments); err != nil {
+		t.Fatal(err)
+	}
+
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(files.Files)
+		w.Show()
+		w.environments.edit()
+		table := w.editor.variables
+
+		// The descriptions are in a column after the values, in text that
+		// is half transparent.
+		if table.table.IsColumnHidden(colDescription) || colDescription != colValue+1 || table.table.HorizontalHeaderItem(colDescription).Text() != "Description" {
+			t.Error("the descriptions are not shown after the values")
+		}
+		if alpha := table.table.Item(0, colDescription).Foreground().Color().Alpha(); alpha != 127 {
+			t.Errorf("alpha = %d", alpha)
+		}
+		// The other tables have none.
+		if !w.request.params.table.IsColumnHidden(colDescription) {
+			t.Error("the params have descriptions")
+		}
+
+		// The variables are in order of their names, and those with one
+		// name in order of their descriptions, both ignoring case.
+		descriptions := func() []string {
+			var got []string
+			for _, p := range table.allDescribed() {
+				got = append(got, p.Key+"/"+p.Description)
+			}
+			return got
+		}
+		if got, want := descriptions(), []string{"Host/Live", "host/local machine", "host/Staging", "token/"}; !slices.Equal(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+
+		// A description that is edited is saved, and the rows put in order.
+		table.table.Item(0, colDescription).SetText("Zurich")
+		table.sort()
+		if got, want := descriptions(), []string{"host/local machine", "host/Staging", "Host/Zurich", "token/"}; !slices.Equal(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	saved, err := env.Load(files.Environments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []env.Variable{
+		{Key: "host", Value: "http://local.test", Enabled: true, Description: "local machine"},
+		{Key: "host", Value: "https://staging.test", Description: "Staging"},
+		{Key: "Host", Value: "https://live.test", Description: "Zurich"},
+		{Key: "token", Value: "abc", Enabled: true},
+	}
+	if !slices.Equal(saved.Environments[0].Variables, want) {
+		t.Errorf("saved %+v", saved.Environments[0].Variables)
+	}
+}
+
 // treeItem finds an item of the request tree by the names on the way to it
 // from the top. It returns nil if there is none.
 func treeItem(tree *qt.QTreeWidget, names ...string) *qt.QTreeWidgetItem {
