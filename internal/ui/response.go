@@ -210,9 +210,10 @@ func (p *responsePanel) saveBody() {
 const maxFileStem = 80
 
 // saveFileName returns the name to offer for the file a response is saved
-// to: the name of its request and the time, with underscores between them,
-// and the extension, as in book_room_20261011_173005.json. A request with
-// no name is called response.
+// to: the name of its request, the time and resp, which says that it is a
+// response, with underscores between them, and the extension, as in
+// book_room_20261011_173005_resp.json. A request with no name is called
+// untitled, as its tab is.
 //
 // The name is one that is no trouble on any system or in a shell. Letters
 // are made lower case, and anything that is not a letter or a digit, such as
@@ -237,9 +238,9 @@ func saveFileName(request string, at time.Time, extension string) string {
 		count++
 	}
 	if count == 0 {
-		stem.WriteString("response")
+		stem.WriteString("untitled")
 	}
-	return stem.String() + "_" + at.Format("20060102_150405") + extension
+	return stem.String() + "_" + at.Format("20060102_150405") + "_resp" + extension
 }
 
 // responseFileName returns a name for the file a response is saved to which

@@ -73,7 +73,7 @@ bindings.
   next.
 - Save the body of a response to a file. JSON is saved formatted. The name
   offered for the file is that of the request and the time, such as
-  `book_room_20261011_173005.json`, in lower case with underscores for
+  `book_room_20261011_173005_resp.json`, in lower case with underscores for
   anything that is not a letter or a digit.
 
 **Organising requests**

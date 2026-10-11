@@ -3796,7 +3796,7 @@ func TestSaveResponse(t *testing.T) {
 				t.Fatal("the save button is not enabled")
 			}
 			p.save.Click()
-			if got, err := os.ReadFile(target); err != nil || string(got) != "{\n  \"a\": 1\n}" || string(got) != p.body.ToPlainText() || !reflect.DeepEqual(offered, []string{"response_20261011_173005.json"}) {
+			if got, err := os.ReadFile(target); err != nil || string(got) != "{\n  \"a\": 1\n}" || string(got) != p.body.ToPlainText() || !reflect.DeepEqual(offered, []string{"untitled_20261011_173005_resp.json"}) {
 				t.Errorf("saved %q, %v, offered %q", got, err, offered)
 			}
 
@@ -3854,22 +3854,22 @@ func TestSaveResponse(t *testing.T) {
 			p.chooseSave = func(name string) (string, bool) { offered = name; return "", false }
 			p.show(&rest.Response{Status: "200 OK", StatusCode: 200, Headers: http.Header{"Content-Type": {"text/xml"}}, Body: []byte("<a/>")})
 			p.save.Click()
-			if want := "book_room_v2_20261011_173005.xml"; offered != want {
+			if want := "book_room_v2_20261011_173005_resp.xml"; offered != want {
 				t.Errorf("offered %q, want %q", offered, want)
 			}
 		}
 
 		at := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.Local)
 		for request, want := range map[string]string{
-			"":                         "response_20260102_030405.json",
-			"  ":                       "response_20260102_030405.json",
-			"../..":                    "response_20260102_030405.json",
-			"Ping":                     "ping_20260102_030405.json",
-			"  List   Rooms  ":         "list_rooms_20260102_030405.json",
-			"GET /users/{id}?a=b&c":    "get_users_id_a_b_c_20260102_030405.json",
-			"a.b-c_d:e*f\\g\"h'i|j<k>": "a_b_c_d_e_f_g_h_i_j_k_20260102_030405.json",
-			"Café Zürich №5":           "café_zürich_5_20260102_030405.json",
-			strings.Repeat("Ab ", 60):  strings.TrimSuffix(strings.Repeat("ab_", 40), "_") + "_20260102_030405.json",
+			"":                         "untitled_20260102_030405_resp.json",
+			"  ":                       "untitled_20260102_030405_resp.json",
+			"../..":                    "untitled_20260102_030405_resp.json",
+			"Ping":                     "ping_20260102_030405_resp.json",
+			"  List   Rooms  ":         "list_rooms_20260102_030405_resp.json",
+			"GET /users/{id}?a=b&c":    "get_users_id_a_b_c_20260102_030405_resp.json",
+			"a.b-c_d:e*f\\g\"h'i|j<k>": "a_b_c_d_e_f_g_h_i_j_k_20260102_030405_resp.json",
+			"Café Zürich №5":           "café_zürich_5_20260102_030405_resp.json",
+			strings.Repeat("Ab ", 60):  strings.TrimSuffix(strings.Repeat("ab_", 40), "_") + "_20260102_030405_resp.json",
 		} {
 			if got := saveFileName(request, at, ".json"); got != want {
 				t.Errorf("saveFileName(%q) = %q, want %q", request, got, want)
