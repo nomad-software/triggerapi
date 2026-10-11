@@ -71,7 +71,10 @@ bindings.
 - Find text in a response with Ctrl+F, or the button beside its tabs: every
   match is marked and counted, and Enter and Shift+Enter go from one to the
   next.
-- Save the body of a response to a file. JSON is saved formatted.
+- Save the body of a response to a file. JSON is saved formatted. The name
+  offered for the file is that of the request and the time, such as
+  `book_room_20261011_173005.json`, in lower case with underscores for
+  anything that is not a letter or a digit.
 
 **Organising requests**
 

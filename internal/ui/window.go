@@ -203,6 +203,15 @@ func NewWindow(files Files) *Window {
 	// it is kept by the request.
 	w.response.setCaptureTable(w.request.captures)
 	w.grpcResponse.setCaptureTable(w.grpc.captures)
+	// A response is saved to a file named after its request.
+	for _, response := range []*responsePanel{w.response, w.grpcResponse} {
+		response.requestName = func() string {
+			if w.open == nil {
+				return ""
+			}
+			return w.open.Name
+		}
+	}
 	w.Resize(w.config.Width, w.config.Height)
 	if w.config.Maximized {
 		w.SetWindowState(qt.WindowMaximized)

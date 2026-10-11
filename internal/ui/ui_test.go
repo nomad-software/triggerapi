@@ -3782,6 +3782,7 @@ func TestSaveResponse(t *testing.T) {
 			target := filepath.Join(dir, "saved")
 			p.chooseSave = func(name string) (string, bool) { offered = append(offered, name); return target, true }
 			p.warn = func(message string) { warned = append(warned, message) }
+			p.now = func() time.Time { return time.Date(2026, time.October, 11, 17, 30, 5, 0, time.Local) }
 
 			// There is nothing to save until there is a response.
 			if p.save.IsEnabled() || !p.root.IsAncestorOf(p.save.QWidget) {
@@ -3795,7 +3796,7 @@ func TestSaveResponse(t *testing.T) {
 				t.Fatal("the save button is not enabled")
 			}
 			p.save.Click()
-			if got, err := os.ReadFile(target); err != nil || string(got) != "{\n  \"a\": 1\n}" || string(got) != p.body.ToPlainText() || !reflect.DeepEqual(offered, []string{"response.json"}) {
+			if got, err := os.ReadFile(target); err != nil || string(got) != "{\n  \"a\": 1\n}" || string(got) != p.body.ToPlainText() || !reflect.DeepEqual(offered, []string{"response_20261011_173005.json"}) {
 				t.Errorf("saved %q, %v, offered %q", got, err, offered)
 			}
 
@@ -3841,6 +3842,37 @@ func TestSaveResponse(t *testing.T) {
 			p.showError(io.EOF, time.Second)
 			if p.save.IsEnabled() {
 				t.Error("an error can be saved")
+			}
+		}
+
+		// The file is named after the request that is open, and the time.
+		w.requests.addFolder()
+		w.requests.addRequest()
+		w.open.Name = "Book Room (v2)"
+		for _, p := range []*responsePanel{w.response, w.grpcResponse} {
+			var offered string
+			p.chooseSave = func(name string) (string, bool) { offered = name; return "", false }
+			p.show(&rest.Response{Status: "200 OK", StatusCode: 200, Headers: http.Header{"Content-Type": {"text/xml"}}, Body: []byte("<a/>")})
+			p.save.Click()
+			if want := "book_room_v2_20261011_173005.xml"; offered != want {
+				t.Errorf("offered %q, want %q", offered, want)
+			}
+		}
+
+		at := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.Local)
+		for request, want := range map[string]string{
+			"":                         "response_20260102_030405.json",
+			"  ":                       "response_20260102_030405.json",
+			"../..":                    "response_20260102_030405.json",
+			"Ping":                     "ping_20260102_030405.json",
+			"  List   Rooms  ":         "list_rooms_20260102_030405.json",
+			"GET /users/{id}?a=b&c":    "get_users_id_a_b_c_20260102_030405.json",
+			"a.b-c_d:e*f\\g\"h'i|j<k>": "a_b_c_d_e_f_g_h_i_j_k_20260102_030405.json",
+			"Café Zürich №5":           "café_zürich_5_20260102_030405.json",
+			strings.Repeat("Ab ", 60):  strings.TrimSuffix(strings.Repeat("ab_", 40), "_") + "_20260102_030405.json",
+		} {
+			if got := saveFileName(request, at, ".json"); got != want {
+				t.Errorf("saveFileName(%q) = %q, want %q", request, got, want)
 			}
 		}
 

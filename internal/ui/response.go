@@ -7,10 +7,12 @@ import (
 	"maps"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
 
@@ -42,10 +44,16 @@ type responsePanel struct {
 	captures *keyValueTable
 	captured []captureResult
 	// content is the body as it is saved: JSON formatted as it is shown,
-	// and any other HTTP response as it was received. fileName is the name
-	// offered for the file.
+	// and any other HTTP response as it was received. fileName is a name
+	// for the file with the extension for what the content is, of which
+	// only the extension is used: see saveFileName.
 	content  []byte
 	fileName string
+	// requestName returns the name of the request the response is to,
+	// which is empty if it has not been saved, and now the time. The file
+	// is named after both.
+	requestName func() string
+	now         func() time.Time
 	// captureDoc is the JSON that values are captured from, which the
 	// body ends with as it is shown: all of a REST response, and the last
 	// message of a gRPC one. It is empty if there is none.
@@ -145,6 +153,7 @@ func newResponsePanel(bodyFont string) *responsePanel {
 	p.tabs.AddTab(response, "Response")
 	p.tabs.AddTab(p.headers.QWidget, "Headers")
 
+	p.now = time.Now
 	p.chooseSave = func(name string) (string, bool) {
 		path := qt.QFileDialog_GetSaveFileName3(p.root, "Save Response", name)
 		return path, path != ""
@@ -183,7 +192,11 @@ func (p *responsePanel) saveBody() {
 	if len(p.content) == 0 {
 		return
 	}
-	path, ok := p.chooseSave(p.fileName)
+	request := ""
+	if p.requestName != nil {
+		request = p.requestName()
+	}
+	path, ok := p.chooseSave(saveFileName(request, p.now(), filepath.Ext(p.fileName)))
 	if !ok {
 		return
 	}
@@ -192,8 +205,45 @@ func (p *responsePanel) saveBody() {
 	}
 }
 
-// responseFileName returns a name to offer for the file a response is saved
-// to, from the type of content it says it is.
+// maxFileStem is the most characters of the name of a request that go into
+// the name of a file.
+const maxFileStem = 80
+
+// saveFileName returns the name to offer for the file a response is saved
+// to: the name of its request and the time, with underscores between them,
+// and the extension, as in book_room_20261011_173005.json. A request with
+// no name is called response.
+//
+// The name is one that is no trouble on any system or in a shell. Letters
+// are made lower case, and anything that is not a letter or a digit, such as
+// a space, a slash or a dot, becomes an underscore, of which there is never
+// more than one together or any at either end.
+func saveFileName(request string, at time.Time, extension string) string {
+	var stem strings.Builder
+	count, gap := 0, false
+	for _, r := range strings.ToLower(request) {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			gap = true
+			continue
+		}
+		if count == maxFileStem {
+			break
+		}
+		if gap && count > 0 {
+			stem.WriteByte('_')
+		}
+		gap = false
+		stem.WriteRune(r)
+		count++
+	}
+	if count == 0 {
+		stem.WriteString("response")
+	}
+	return stem.String() + "_" + at.Format("20060102_150405") + extension
+}
+
+// responseFileName returns a name for the file a response is saved to which
+// has the extension for the type of content it says it is.
 func responseFileName(contentType string) string {
 	contentType = strings.ToLower(contentType)
 	for _, kind := range []struct{ part, extension string }{
