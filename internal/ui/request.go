@@ -98,6 +98,12 @@ type requestPanel struct {
 	closeCurl *qt.QPushButton
 	// expand substitutes the variables of the active environment into text.
 	expand func(string) string
+	// expander returns a function which does the same, giving a variable
+	// whose value is made by a function the one value wherever it is used.
+	expander func() func(string) string
+	// commanded is the request that the command on show was made from,
+	// which is the one that Execute is to run.
+	commanded rest.Request
 
 	// highlight colours the placeholders in the fields of the request.
 	highlight *placeholderHighlighter
@@ -321,9 +327,10 @@ func (p *requestPanel) updateCurl() {
 	}
 
 	request := p.request()
-	if p.expand != nil {
-		request = request.Expand(p.expand)
+	if p.expander != nil {
+		request = request.Expand(p.expander())
 	}
+	p.commanded = request
 
 	command, err := request.Curl()
 	if err != nil {

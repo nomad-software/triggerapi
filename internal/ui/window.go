@@ -283,6 +283,7 @@ func NewWindow(files Files) *Window {
 	}
 
 	w.request.expand = w.expand
+	w.request.expander = w.expander
 	w.request.setCodeFont(w.config.ResponseFont)
 	w.grpc.setCodeFont(w.config.ResponseFont)
 	w.request.onChange = func() {
@@ -799,6 +800,13 @@ func (w *Window) expand(text string) string {
 	return w.environments.store.Expand(text)
 }
 
+// expander returns a function which substitutes the variables of the active
+// environment into each part of one request. A value made by a function,
+// such as a random one, is then the same in every part.
+func (w *Window) expander() func(string) string {
+	return w.environments.store.Expander()
+}
+
 // environmentChanged refreshes what depends on the active environment, as
 // what the placeholders in the request resolve to may have changed.
 func (w *Window) environmentChanged() {
@@ -990,7 +998,7 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(
 // send starts the REST request, or cancels the request in flight.
 func (w *Window) send() {
 	request := w.request.request()
-	req := request.Expand(w.expand)
+	req := request.Expand(w.expander())
 
 	w.run(w.request.send, w.response, func(ctx context.Context) (outcome, error) {
 		res, err := rest.Send(ctx, w.client, req)
@@ -1002,7 +1010,9 @@ func (w *Window) send() {
 // shown for it, or cancels the request in flight.
 func (w *Window) executeCurl() {
 	request := w.request.request()
-	req := request.Expand(w.expand)
+	// What runs is the command as it is shown: a value made by a function
+	// would not be the same if it were made again.
+	req := w.request.commanded
 
 	w.run(w.request.execute, w.response, func(ctx context.Context) (outcome, error) {
 		res, err := rest.RunCurl(ctx, req)
@@ -1031,7 +1041,7 @@ func (w *Window) restOutcome(res *rest.Response, captures []capture.Rule) outcom
 // invoke starts the gRPC request, or cancels the request in flight.
 func (w *Window) invoke() {
 	request := w.grpc.request()
-	req := request.Expand(w.expand)
+	req := request.Expand(w.expander())
 
 	// The service definition is loaded by the call if it has not been yet.
 	var schema *rpc.Schema

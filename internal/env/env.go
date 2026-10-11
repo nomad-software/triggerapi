@@ -38,26 +38,41 @@ var placeholder = regexp.MustCompile(`\{\{\s*([^{}]*?)\s*\}\}`)
 
 // Expand replaces each {{key}} placeholder in s with the value of the enabled
 // variable of that name. If a key is defined more than once the last one wins.
-// Unknown placeholders are left untouched.
+// Unknown placeholders are left untouched. A value that is a call of a
+// built-in function is worked out each time (see Evaluate); use Expander to
+// have it the same in several texts.
 func (e Environment) Expand(s string) string {
 	if !strings.Contains(s, "{{") {
 		return s
 	}
+	return e.Expander()(s)
+}
 
+// Expander returns a function which does as Expand does to each text it is
+// given, with the values as they are now. A value that is a call of a
+// built-in function is worked out once, so it is the same wherever its
+// variable is used: in every part of one request, say.
+func (e Environment) Expander() func(string) string {
+	at := now()
 	values := map[string]string{}
 	for _, v := range e.Variables {
 		if v.Enabled && v.Key != "" {
 			values[v.Key] = v.Value
+			if made, ok := Evaluate(v.Value, at); ok {
+				values[v.Key] = made
+			}
 		}
 	}
 
-	return placeholder.ReplaceAllStringFunc(s, func(match string) string {
-		key := placeholder.FindStringSubmatch(match)[1]
-		if value, ok := values[key]; ok {
-			return value
-		}
-		return match
-	})
+	return func(s string) string {
+		return placeholder.ReplaceAllStringFunc(s, func(match string) string {
+			key := placeholder.FindStringSubmatch(match)[1]
+			if value, ok := values[key]; ok {
+				return value
+			}
+			return match
+		})
+	}
 }
 
 // Set gives the variable with a key a value, and enables it. The variable is
@@ -104,6 +119,15 @@ func (s *Store) Expand(text string) string {
 		return e.Expand(text)
 	}
 	return text
+}
+
+// Expander returns a function which substitutes the variables of the active
+// environment into each text it is given. See Environment.Expander.
+func (s *Store) Expander() func(string) string {
+	if e, ok := s.Current(); ok {
+		return e.Expander()
+	}
+	return func(text string) string { return text }
 }
 
 // Sort puts the environments in alphabetical order, ignoring case. The

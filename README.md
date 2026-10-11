@@ -4,7 +4,7 @@ A desktop client for making REST API and gRPC calls. It is written
 in Go with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
 bindings.
 
-![TriggerAPI showing a REST request, its JSON response and a value captured from it](docs/screenshot.png)
+![TriggerAPI showing a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
 
 ## Features
 
@@ -15,6 +15,10 @@ bindings.
 - Params are shown in the URL and kept in step with it both ways. Params,
   headers and form fields can each be switched off without being removed.
 - A long URL is wrapped, with the field growing to show all of it.
+- Opening a request, or changing its method, shows the tab it is likely to
+  need: the body for POST, PUT and PATCH, and the params for the rest.
+- A Format button beside the type of a JSON body sets the JSON out, one value
+  to a line, leaving any `{{placeholders}}` in it as they are.
 - Preview the URL with the environment's variables filled in, in place of the
   URL field. Each value is coloured, and a placeholder with no value is
   marked.
@@ -29,6 +33,7 @@ bindings.
 - The methods of a server are discovered using gRPC server reflection, so no
   protobuf files are needed, and an example message can be filled in for the
   method chosen.
+- A Format button sets out the JSON of the message, as it does a REST body.
 
 **Responses**
 
@@ -38,15 +43,16 @@ bindings.
   such as a token from a login to use in later requests. The Capture tab of
   the response lists the variables to set, each with the path of its value in
   the JSON of the response, such as `data.items[0].id`, and optionally a
-  regex to keep only part of that value. Right-clicking a value in the
-  response adds the variable for it. A tick or a cross on
-  the tab and against each variable shows whether it was captured.
+  regex to keep only part of that value: what the regex matches, or what its
+  first group matches if it has one. A tick or a cross on the tab and against
+  each variable shows whether it was captured.
+- Right-click a value in a JSON response and choose Capture to add the
+  variable for it, with its path filled in.
 - JSON bodies, messages and responses are syntax highlighted, and their
   objects and arrays can be folded.
-- A Format button sets out the JSON of a request body or a gRPC message,
-  leaving any `{{placeholders}}` in it as they are.
-- Find text in a response with Ctrl+F: every match is marked and counted,
-  and Enter and Shift+Enter go from one to the next.
+- Find text in a response with Ctrl+F, or the button beside its tabs: every
+  match is marked and counted, and Enter and Shift+Enter go from one to the
+  next.
 - Save the body of a response to a file. JSON is saved formatted.
 
 **Organising requests**
@@ -72,6 +78,8 @@ bindings.
   other off.
 - Placeholders are coloured where they are used, differently if the selected
   environment does not define them.
+- Give a variable a function as its value to have the value generated for
+  each request. See [Functions](#functions).
 
 **Settings**
 
@@ -83,6 +91,30 @@ bindings.
 - The size and layout of the window are remembered.
 - Escape closes the environment editor, the search of a response, the curl
   command and the URL preview.
+
+## Functions
+
+A variable whose value is one of these functions, and nothing else, is given a
+freshly generated value each time a request is sent. Within one request the
+value is the same everywhere the variable is used.
+
+| Value | Generates | Example |
+|---|---|---|
+| `random_uuid()` | A random UUID | `3f2b8c1e-9a4d-4e7b-b1c6-5d8e2f0a7c94` |
+| `iso_date()` | Today's date | `2026-10-11` |
+| `iso_date(1)` | The date that many days from today | `2026-10-12` |
+| `iso_timestamp()` | The time now, in UTC | `2026-10-11T15:04:05Z` |
+| `iso_timestamp(2)` | The same time that many days from now | `2026-10-13T15:04:05Z` |
+
+The number of days can be negative, so `iso_date(-1)` is yesterday. Dates are
+in the local time zone and timestamps in UTC.
+
+For example, with a variable `request_id` set to `random_uuid()`, a header of
+`X-Request-Id: {{request_id}}` carries a new UUID on every request.
+
+A function is only recognised when it is the whole value: `id-random_uuid()`
+is used as it is written. To put a generated value inside other text, do it
+where the variable is used, as in `id-{{request_id}}`.
 
 ## Requirements
 

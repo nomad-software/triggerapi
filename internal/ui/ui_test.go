@@ -13,6 +13,8 @@ import (
 	"runtime/debug"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf16"
@@ -4890,4 +4892,72 @@ func TestTextCursorsWhileCollecting(t *testing.T) {
 		})
 	}
 	_ = garbage
+}
+
+// A variable whose value is a call of a built-in function is given a new
+// value for each request, which is the same in every part of that request.
+func TestFunctionVariables(t *testing.T) {
+	var seen sync.Map
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		seen.Store(requests.Add(1), []string{r.URL.Query().Get("id"), r.Header.Get("X-Id"), string(body), r.URL.Query().Get("day")})
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{}`)
+	}))
+	defer srv.Close()
+
+	files := testFiles(t)
+	store := &env.Store{Active: 0, Environments: []env.Environment{
+		{Name: "Local", Variables: []env.Variable{
+			{Key: "host", Value: srv.URL, Enabled: true},
+			{Key: "id", Value: "random_uuid()", Enabled: true},
+			{Key: "day", Value: "iso_date(1)", Enabled: true},
+		}},
+	}}
+	if err := store.Save(files.Environments); err != nil {
+		t.Fatal(err)
+	}
+
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(files.Files)
+		w.Show()
+		w.request.load(rest.Request{
+			Method:   "POST",
+			URL:      "{{host}}/a",
+			Params:   []rest.KeyValue{{Key: "day", Value: "{{day}}", Enabled: true}, {Key: "id", Value: "{{id}}", Enabled: true}},
+			Headers:  []rest.KeyValue{{Key: "X-Id", Value: "{{id}}", Enabled: true}},
+			BodyType: rest.BodyText,
+			Body:     "{{id}}",
+		})
+		w.request.send.Click()
+	})
+	waitFor(t, "the first request", func() bool { return requests.Load() == 1 && fieldValue(w.response, "Status") != "" })
+	mainthread.Wait(func() { w.request.send.Click() })
+	waitFor(t, "the second request", func() bool { return requests.Load() == 2 })
+
+	first, _ := seen.Load(int32(1))
+	second, _ := seen.Load(int32(2))
+	a, b := first.([]string), second.([]string)
+	if len(a[0]) != 36 || a[0] != a[1] || a[0] != a[2] {
+		t.Errorf("the first request had %q", a)
+	}
+	if len(b[0]) != 36 || b[0] != b[1] || b[0] != b[2] || b[0] == a[0] {
+		t.Errorf("the second request had %q after %q", b, a)
+	}
+	if want := time.Now().AddDate(0, 0, 1).Format(time.DateOnly); a[3] != want {
+		t.Errorf("day = %q, want %q", a[3], want)
+	}
+
+	// The curl command has one value throughout too, and it is the command
+	// as shown that Execute runs.
+	mainthread.Wait(func() {
+		p := w.request
+		p.curl.Click()
+		id := p.commanded.Body
+		if command := p.command.ToPlainText(); len(id) != 36 || strings.Count(command, id) != 3 || p.commanded.Headers[0].Value != id {
+			t.Errorf("command = %s\nmade from %+v", command, p.commanded)
+		}
+	})
 }
