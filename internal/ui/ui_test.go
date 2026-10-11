@@ -4540,3 +4540,40 @@ func TestWorkspacesMoved(t *testing.T) {
 		}
 	})
 }
+
+// The tab of the request shown is the one its method is likely to need: the
+// body for a method that sends one, and otherwise the params.
+func TestRequestTabFollowsMethod(t *testing.T) {
+	files := testFiles(t)
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		p := w.request
+
+		for _, method := range rest.Methods {
+			want := tabParams
+			if method == "POST" || method == "PUT" || method == "PATCH" {
+				want = tabBody
+			}
+
+			// Another tab is chosen first, to see that it is left.
+			p.tabs.SetCurrentIndex(tabHeaders)
+			p.load(rest.Request{Method: method})
+			if got := p.tabs.CurrentIndex(); got != want {
+				t.Errorf("tab after loading %s = %d, want %d", method, got, want)
+			}
+
+			// The method is chosen from another, or it is no change.
+			other := "OPTIONS"
+			if method == other {
+				other = "HEAD"
+			}
+			p.load(rest.Request{Method: other})
+			p.tabs.SetCurrentIndex(tabHeaders)
+			p.method.SetCurrentIndex(slices.Index(rest.Methods, method))
+			if got := p.tabs.CurrentIndex(); got != want {
+				t.Errorf("tab after choosing %s = %d, want %d", method, got, want)
+			}
+		}
+	})
+}

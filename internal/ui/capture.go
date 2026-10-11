@@ -39,7 +39,7 @@ func captureIcon(captured bool) *qt.QIcon {
 // the variables to set from the response, each with the path of its value in the
 // JSON of the response.
 func newCaptureTable() *keyValueTable {
-	table := newKeyValueTable("Variable", "Path in the response, e.g. data.items[0].id")
+	table := newKeyValueTable("Environment Variable", "Path in the response, e.g. data.items[0].id")
 	table.table.SetToolTip("After a response that is not a failure, each variable is set, in the selected environment, " +
 		"to the value at its path in the JSON of the response.\n" +
 		"Names are separated by dots and an index into an array is in brackets: data.items[0].id")

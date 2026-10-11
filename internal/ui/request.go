@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"net/http"
 	"slices"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -35,6 +36,14 @@ const (
 	pageCurl
 )
 
+// Tabs of the request panel.
+const (
+	tabBody = iota
+	tabParams
+	tabAuthorization
+	tabHeaders
+)
+
 // requestPanel holds the widgets used to compose a request.
 type requestPanel struct {
 	root *qt.QWidget
@@ -62,6 +71,9 @@ type requestPanel struct {
 	captures *keyValueTable
 
 	auth *authEditor
+
+	// tabs holds the parts of the request (tabBody, tabParams, ...).
+	tabs *qt.QTabWidget
 
 	bodyType *qt.QComboBox
 	bodyRaw  *qt.QPlainTextEdit
@@ -101,7 +113,10 @@ func newRequestPanel() *requestPanel {
 
 	p.method = qt.NewQComboBox2()
 	p.method.AddItems(rest.Methods)
-	p.method.OnCurrentIndexChanged(func(int) { p.changed() })
+	p.method.OnCurrentIndexChanged(func(int) {
+		p.showLikelyTab()
+		p.changed()
+	})
 
 	p.url = newWrapEdit()
 	p.url.SetPlaceholderText("Enter URL, e.g. https://api.example.com/users or {{host}}/users")
@@ -178,18 +193,18 @@ func newRequestPanel() *requestPanel {
 		}
 	})
 
-	tabs := newButtonTabs(p.curl)
-	tabs.AddTab(p.newBodyTab(), "Body")
-	tabs.AddTab(p.params.widget(), "Params")
-	tabs.AddTab(p.auth.root, "Authorization")
-	tabs.AddTab(p.headers.widget(), "Headers")
+	p.tabs = newButtonTabs(p.curl)
+	p.tabs.AddTab(p.newBodyTab(), "Body")
+	p.tabs.AddTab(p.params.widget(), "Params")
+	p.tabs.AddTab(p.auth.root, "Authorization")
+	p.tabs.AddTab(p.headers.widget(), "Headers")
 
 	fields := qt.NewQWidget2()
 	fieldsLayout := qt.NewQVBoxLayout(fields)
 	fieldsLayout.SetContentsMargins(0, 0, 0, 0)
 	fieldsLayout.AddLayout(bar.QLayout)
 	// The line of the URL is only as tall as the URL makes it.
-	fieldsLayout.AddWidget2(tabs.QWidget, 1)
+	fieldsLayout.AddWidget2(p.tabs.QWidget, 1)
 
 	p.pages = qt.NewQStackedWidget2()
 	p.pages.AddWidget(fields)
@@ -384,6 +399,17 @@ func (p *requestPanel) bodyIsJSON() bool {
 	return bodyTypes[p.bodyType.CurrentIndex()].typ == rest.BodyJSON
 }
 
+// showLikelyTab selects the tab most likely to be wanted for the method: the
+// body for a method that sends one, and otherwise the params.
+func (p *requestPanel) showLikelyTab() {
+	switch p.method.CurrentText() {
+	case http.MethodPost, http.MethodPut, http.MethodPatch:
+		p.tabs.SetCurrentIndex(tabBody)
+	default:
+		p.tabs.SetCurrentIndex(tabParams)
+	}
+}
+
 func (p *requestPanel) changed() {
 	p.updatePreview()
 	if !p.updating && p.onChange != nil {
@@ -471,6 +497,7 @@ func (p *requestPanel) load(r rest.Request) {
 	p.bodyFold.reset()
 	p.bodyForm.setItems(r.Form)
 	p.captures.setItems(r.Captures)
+	p.showLikelyTab()
 	p.updateCurl()
 	p.updatePreview()
 }
