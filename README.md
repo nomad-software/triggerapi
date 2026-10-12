@@ -279,6 +279,39 @@ The first build compiles the whole Qt binding and takes around five minutes,
 printing a lot of compiler warnings from the Qt headers which can be ignored.
 Later builds use the Go build cache and take a few seconds.
 
+## AppImage
+
+Releases for Linux are an [AppImage](https://appimage.org): one file with
+TriggerAPI and the Qt libraries it needs inside it, which runs without
+installing anything.
+
+```sh
+chmod +x TriggerAPI-*-x86_64.AppImage
+./TriggerAPI-*-x86_64.AppImage
+```
+
+It is built by a GitHub workflow (`.github/workflows/appimage.yml`), which runs
+`packaging/appimage.sh` on Ubuntu 22.04 with Qt's own build of Qt 6.8:
+
+- Pushing a tag that starts with `v` builds it and attaches it to a release of
+  that name: `git tag v1.0.0 && git push origin v1.0.0`.
+- It can also be run by hand from the Actions tab of the repository (AppImage >
+  Run workflow), which leaves the AppImage as an artifact of the run to
+  download.
+
+It runs under both X11 and Wayland, using Wayland where the session is one.
+To use the other, set `QT_QPA_PLATFORM` to `xcb` or `wayland` when starting
+it.
+
+The C library of the system (glibc) is not put in the AppImage, as it cannot
+be reliably: it has to match the system's graphics drivers. It is built on an
+old distribution instead, and runs on any with glibc 2.35 or later (Ubuntu
+22.04, Debian 12, Fedora 36 and anything newer, or rolling). `curl`, which the
+Execute button of the curl command uses, is not in it either.
+
+`make appimage` runs the same script locally, but an AppImage built on a newer
+system only runs on systems at least as new.
+
 ## gRPC
 
 A gRPC request needs a server with

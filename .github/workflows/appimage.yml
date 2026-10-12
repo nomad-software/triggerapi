@@ -1,0 +1,98 @@
+# Builds the AppImage for Linux.
+#
+# It runs when a tag starting with v is pushed (git tag v1.0.0 && git push
+# origin v1.0.0), and attaches the AppImage to a release of that name. It can
+# also be run by hand from the Actions tab of the repository, in which case
+# the AppImage is only kept as an artifact of the run to download.
+name: AppImage
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  # To make the release.
+  contents: write
+
+env:
+  # The Qt that is built with and put in the AppImage. It is Qt's own build,
+  # as the Qt of Ubuntu 22.04 (6.2) is too old for the bindings.
+  QT_VERSION: "6.8.3"
+  QT_ROOT: /opt/qt/6.8.3/gcc_64
+
+jobs:
+  appimage:
+    runs-on: ubuntu-latest
+    # An AppImage runs on systems as new as the one it was built on, or
+    # newer. Ubuntu 22.04 has glibc 2.35, which is the oldest to support.
+    container: ubuntu:22.04
+    steps:
+      # Besides the tools, these are the system libraries Qt's own build
+      # uses, most of which go into the AppImage with it.
+      - name: Install what building needs
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential pkg-config git curl ca-certificates file python3-pip \
+            libgl1-mesa-dev libegl1 libglib2.0-0 libdbus-1-3 libfontconfig1 libfreetype6 \
+            libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 \
+            libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libx11-xcb1 \
+            libwayland-client0 libwayland-cursor0 libwayland-egl1
+
+      - uses: actions/cache@v4
+        id: qt
+        with:
+          path: /opt/qt
+          key: qt-${{ env.QT_VERSION }}-linux_gcc_64-waylandcompositor
+
+      - name: Install Qt
+        if: steps.qt.outputs.cache-hit != 'true'
+        run: |
+          pip3 install aqtinstall
+          aqt install-qt linux desktop "$QT_VERSION" linux_gcc_64 --outputdir /opt/qt --modules qtwaylandcompositor
+
+      # Where the compiler, the bundling tool and the program itself find
+      # that Qt.
+      - name: Use that Qt
+        run: |
+          echo "$QT_ROOT/bin" >> "$GITHUB_PATH"
+          echo "PKG_CONFIG_PATH=$QT_ROOT/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$QT_ROOT/lib" >> "$GITHUB_ENV"
+          echo "QMAKE=$QT_ROOT/bin/qmake" >> "$GITHUB_ENV"
+          PKG_CONFIG_PATH="$QT_ROOT/lib/pkgconfig" pkg-config --modversion Qt6Widgets
+
+      - uses: actions/checkout@v4
+
+      # In a container the files belong to another user than the one that
+      # runs the steps, which git refuses to work with unless told to, and
+      # Go asks git for the version it builds.
+      - name: Let git read the repository
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # This also keeps what is compiled from one run to the next, as the
+      # Qt bindings take a long time to compile.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build the AppImage
+        env:
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+        run: packaging/appimage.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TriggerAPI-AppImage
+          path: build/*.AppImage
+          if-no-files-found: error
+
+      - name: Attach it to the release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/*.AppImage
+          generate_release_notes: true

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=TriggerAPI
+Comment=Make REST API and gRPC calls
+Exec=triggerapi
+Icon=triggerapi
+Categories=Development;Network;
+Terminal=false

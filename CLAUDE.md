@@ -75,6 +75,8 @@ make test                 # go test ./...
 go test ./path/to/pkg -run TestName   # single test
 ```
 
+Releases for Linux are an AppImage, built by `.github/workflows/appimage.yml` (on a `v*` tag, which makes a release, or by hand) in an `ubuntu:22.04` container, so that it runs on glibc 2.35 and later; glibc itself is not bundled. The Qt of that system (6.2) is too old for the bindings, so the workflow installs Qt's own build (`QT_VERSION`, with aqtinstall, into `/opt/qt`) and points `PKG_CONFIG_PATH`, `LD_LIBRARY_PATH` and `QMAKE` at it. `packaging/appimage.sh` (`make appimage`) does the work with linuxdeploy and its Qt plugin, asks for the Wayland plugins as well as the xcb ones that come by default, refuses to make an AppImage without both, and starts what it made offscreen to check that it runs, from `packaging/triggerapi.desktop` and `packaging/triggerapi.png`. The PNG is the one image file there is: it is `appIcon()` saved at 256 pixels, and has to be made again if the icon is changed.
+
 Always build the binary without debug symbols (`-ldflags "-s -w"`), either with `make build` or by passing the flags to `go build`.
 
 Smoke-test the GUI without a display:
