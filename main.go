@@ -42,6 +42,10 @@ func main() {
 	}
 
 	qt.NewQApplication(os.Args)
+	// Under Wayland this is the name a window goes by, which a desktop
+	// matches to the desktop file of that name for its icon and its place
+	// in the task bar. It is the name of packaging/triggerapi.desktop.
+	qt.QGuiApplication_SetDesktopFileName("triggerapi")
 
 	window := ui.NewWindow(files)
 	window.Show()

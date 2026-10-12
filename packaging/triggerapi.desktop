@@ -6,3 +6,4 @@ Exec=triggerapi
 Icon=triggerapi
 Categories=Development;Network;
 Terminal=false
+StartupWMClass=triggerapi

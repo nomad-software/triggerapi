@@ -291,7 +291,7 @@ chmod +x TriggerAPI-*-x86_64.AppImage
 ```
 
 It is built by a GitHub workflow (`.github/workflows/appimage.yml`), which runs
-`packaging/appimage.sh` on Ubuntu 22.04 with Qt's own build of Qt 6.8:
+`packaging/appimage.sh` on Ubuntu 22.04 with Qt's own build of Qt 6.9:
 
 - Pushing a tag that starts with `v` builds it and attaches it to a release of
   that name: `git tag v1.0.0 && git push origin v1.0.0`.

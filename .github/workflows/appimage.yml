@@ -17,9 +17,12 @@ permissions:
 
 env:
   # The Qt that is built with and put in the AppImage. It is Qt's own build,
-  # as the Qt of Ubuntu 22.04 (6.2) is too old for the bindings.
-  QT_VERSION: "6.8.3"
-  QT_ROOT: /opt/qt/6.8.3/gcc_64
+  # as the Qt of Ubuntu 22.04 (6.2) is too old for the bindings. It is 6.9
+  # or later because that is the first which can give a window its icon
+  # under Wayland, where a window otherwise only has the icon of an
+  # installed desktop file, which an AppImage does not have.
+  QT_VERSION: "6.9.3"
+  QT_ROOT: /opt/qt/6.9.3/gcc_64
 
 jobs:
   appimage:

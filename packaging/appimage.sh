@@ -43,13 +43,57 @@ fetch "linuxdeploy-plugin-qt-$ARCH.AppImage" \
 # These tools are AppImages themselves, which unpack rather than mount where
 # there is no FUSE, as in a container.
 export APPIMAGE_EXTRACT_AND_RUN=1
+# The strip the tool carries is too old for the libraries of a recent
+# system, and fails on them. The program is built without symbols already,
+# and libraries come without them, so nothing is lost by leaving it out.
+export NO_STRIP=1
 export QMAKE="${QMAKE:-$(command -v qmake6 || command -v qmake)}"
+# On a desktop system the folder of Qt's plugins also has those of the
+# desktop (KDE's image formats, theme and style, for one), which would all go
+# into the AppImage with everything they use, and stop it being made if one
+# of them is broken. Qt's own are all named lib*.so, so where there are
+# others a copy of the folder with only Qt's is made, and the tool is given
+# a qmake which says that is where the plugins are. Qt's own build, as the
+# GitHub workflow uses, has no others.
+PLUGINS="$("$QMAKE" -query QT_INSTALL_PLUGINS)"
+if [ -n "$(find "$PLUGINS" -mindepth 2 -maxdepth 2 -name '*.so' ! -name 'lib*' | head -n 1)" ]; then
+	STAGE="$PWD/$BUILD/qt-plugins"
+	rm -rf "$STAGE"
+	for dir in "$PLUGINS"/*/; do
+		name="$(basename "$dir")"
+		if ls "$dir"lib*.so >/dev/null 2>&1; then
+			mkdir -p "$STAGE/$name"
+			cp "$dir"lib*.so "$STAGE/$name/"
+		fi
+	done
+
+	REAL_QMAKE="$QMAKE"
+	QMAKE="$PWD/$TOOLS/qmake"
+	cat > "$QMAKE" <<WRAPPER
+#!/bin/sh
+"$REAL_QMAKE" "\$@" | sed "s|$PLUGINS|$STAGE|"
+WRAPPER
+	chmod +x "$QMAKE"
+	export QMAKE
+	echo "Using only Qt's own plugins, from $STAGE"
+fi
+
 # The AppImage has to run under both X11 and Wayland. The Qt plugin takes
 # what X11 needs (xcb) by default, and Wayland has to be asked for: its
 # platform plugins here, and the module which has the plugin bring the rest
 # of what Wayland loads (shell integration, decorations, graphics). The
-# offscreen platform is for the check below, which has no display.
-export EXTRA_PLATFORM_PLUGINS="libqwayland-egl.so;libqwayland-generic.so;libqoffscreen.so"
+# offscreen platform is for the check below, which has no display. Older
+# versions of Qt have two platform plugins for Wayland (libqwayland-egl.so
+# and libqwayland-generic.so) and newer ones a single libqwayland.so, so
+# those the Qt in use has are the ones asked for.
+PLATFORMS="$("$QMAKE" -query QT_INSTALL_PLUGINS)/platforms"
+EXTRA_PLATFORM_PLUGINS="libqoffscreen.so"
+for plugin in "$PLATFORMS"/libqwayland*.so; do
+	if [ -e "$plugin" ]; then
+		EXTRA_PLATFORM_PLUGINS="$EXTRA_PLATFORM_PLUGINS;$(basename "$plugin")"
+	fi
+done
+export EXTRA_PLATFORM_PLUGINS
 export EXTRA_QT_MODULES="waylandcompositor"
 # The name of the file made, which the newer and the older versions of the
 # tool read from different variables.
@@ -61,6 +105,7 @@ export LINUXDEPLOY_OUTPUT_VERSION="$VERSION"
 	--executable "$BUILD/triggerapi" \
 	--desktop-file packaging/triggerapi.desktop \
 	--icon-file packaging/triggerapi.png \
+	--custom-apprun packaging/AppRun \
 	--plugin qt
 
 # Without one of these the AppImage would be made, and then not start under
@@ -68,10 +113,10 @@ export LINUXDEPLOY_OUTPUT_VERSION="$VERSION"
 missing=0
 for plugin in \
 	platforms/libqxcb.so \
-	platforms/libqwayland-generic.so \
-	platforms/libqwayland-egl.so \
+	'platforms/libqwayland*.so' \
 	wayland-shell-integration/libxdg-shell.so; do
-	if [ ! -e "$APPDIR/usr/plugins/$plugin" ]; then
+	# The pattern is left to match here, where it is not in quotes.
+	if ! ls "$APPDIR/usr/plugins/"$plugin >/dev/null 2>&1; then
 		echo "Missing from the AppImage: $plugin" >&2
 		missing=1
 	fi
