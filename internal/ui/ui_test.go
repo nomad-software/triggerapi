@@ -2029,7 +2029,7 @@ func TestColourSettings(t *testing.T) {
 		}
 
 		d := newSettingsDialog(w.QWidget, w.config, files.Files)
-		if d.tabs.Count() != 3 || d.tabs.TabText(settingsTabRequests) != "Requests" || d.tabs.TabText(settingsTabColours) != "Colours" {
+		if d.tabs.Count() != 3 || d.tabs.TabText(settingsTabRequests) != "Requests" || d.tabs.TabText(settingsTabWorkspaces) != "Workspaces" || d.tabs.TabText(settingsTabInterface) != "User interface" {
 			t.Errorf("the dialog has %d tabs", d.tabs.Count())
 		}
 		custom := map[colourKind]string{
@@ -5538,6 +5538,88 @@ func TestEncryptionSettings(t *testing.T) {
 		d.privateKey.SetText("")
 		if got := d.settings(current); got.PublicKey != "/other/id.pub" || got.PrivateKey != "" {
 			t.Errorf("settings = %+v", got)
+		}
+	})
+}
+
+func TestExportAndImportWorkspaces(t *testing.T) {
+	files := testFiles(t)
+	keyDir := t.TempDir()
+	theirPublic, theirPrivate := crypttest.Pair(t, keyDir, "theirs", "")
+	archive := filepath.Join(t.TempDir(), "export.zip")
+
+	// Someone else has a window of their own, with their own keys.
+	theirFiles := testFiles(t)
+	if err := (settings.Settings{PublicKey: theirPublic, PrivateKey: theirPrivate}).Save(theirFiles.Settings); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.environments.add()
+		w.requests.addFolder()
+
+		// The workspaces are exported for their public key alone.
+		if err := w.exportWorkspaces(theirPublic, archive); err != nil {
+			t.Error(err)
+			return
+		}
+		// They are not encrypted for the keys they came from.
+		if _, err := w.importWorkspaces(archive); err == nil {
+			t.Error("imported workspaces that were exported for someone else")
+		}
+		if !reflect.DeepEqual(w.workspaces.names, []string{"Default"}) {
+			t.Errorf("workspaces = %q", w.workspaces.names)
+		}
+		if err := w.exportWorkspaces(filepath.Join(keyDir, "none.pub"), archive); err == nil {
+			t.Error("exported for a key that is not there")
+		}
+	})
+
+	mainthread.Wait(func() {
+		w := NewWindow(theirFiles.Files)
+		added, err := w.importWorkspaces(archive)
+		if err != nil || !reflect.DeepEqual(added, []string{"Default 2"}) {
+			t.Errorf("added = %q, %v", added, err)
+			return
+		}
+		// The workspace in use stays so, and the new one is listed.
+		if !reflect.DeepEqual(w.workspaces.names, []string{"Default", "Default 2"}) || w.workspaces.current() != "Default" || w.environments.list.Count() != 0 {
+			t.Errorf("workspaces = %q, current %q", w.workspaces.names, w.workspaces.current())
+		}
+
+		// It can be read with their keys.
+		w.workspaces.open("Default 2")
+		if w.environments.list.Count() != 1 || w.requests.tree.TopLevelItemCount() != 1 || w.StatusBar().CurrentMessage() != "" {
+			t.Errorf("the imported workspace was not loaded: status %q", w.StatusBar().CurrentMessage())
+		}
+	})
+}
+
+func TestSettingsTabs(t *testing.T) {
+	mainthread.Wait(func() {
+		d := newSettingsDialog(nil, settings.Settings{}, Files{Workspaces: "workspaces"})
+		defer d.DeleteLater()
+
+		workspaces, ui := d.tabs.Widget(settingsTabWorkspaces), d.tabs.Widget(settingsTabInterface)
+		for _, widget := range []*qt.QWidget{d.workspaces.QWidget, d.publicKey.QWidget, d.privateKey.QWidget, d.exportButton.QWidget, d.importButton.QWidget} {
+			if !workspaces.IsAncestorOf(widget) {
+				t.Error("something is missing from the Workspaces tab")
+			}
+		}
+		if !ui.IsAncestorOf(d.font.QWidget) || !ui.IsAncestorOf(d.swatches[colourSend].button.QWidget) {
+			t.Error("the font or the colours are not on the User interface tab")
+		}
+
+		// The buttons are given the dialog, to be the parent of what they
+		// show.
+		exported, imported := 0, 0
+		d.onExport = func(parent *qt.QWidget) { exported++ }
+		d.onImport = func(parent *qt.QWidget) { imported++ }
+		d.exportButton.Click()
+		d.importButton.Click()
+		if exported != 1 || imported != 1 {
+			t.Errorf("exported %d times, imported %d times", exported, imported)
 		}
 	})
 }

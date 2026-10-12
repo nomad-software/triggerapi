@@ -336,7 +336,7 @@ The environments and requests of every workspace are encrypted with a pair
 of SSH keys, using [age](https://github.com/FiloSottile/age). Give the files of
 the public and the private key (Ed25519 or RSA, such as
 `~/.ssh/id_ed25519.pub` and `~/.ssh/id_ed25519`) under Encryption in the
-General tab of File > Settings. The settings hold the paths of the keys, not
+Workspaces tab of File > Settings. The settings hold the paths of the keys, not
 the keys.
 
 - TriggerAPI needs the keys to work. Without them, as on the first run, it
@@ -353,6 +353,24 @@ the keys.
 
 The settings file itself is not encrypted. Keep a copy of the private key:
 without it the files cannot be recovered.
+
+### Sharing workspaces
+
+Workspaces are given to someone else, and taken from them, under Import and
+export in the Workspaces tab of File > Settings.
+
+- **Export** asks for the file of the other person's public SSH key and for
+  where to save, and writes every workspace to a zip file with its
+  environments and requests encrypted for that key. Only their private key can
+  read it, so not even the keys it was exported with can. Your own files are
+  left as they are.
+- **Import** takes such a zip file, which has to have been exported for your
+  public key, and adds its workspaces to the workspaces folder. A workspace
+  whose name is taken is given a number after it, so nothing is replaced. A
+  file that is not an export, or cannot be read with your keys, adds nothing.
+
+In the zip file each workspace is a folder named after it, holding its
+`environments.json` and `requests.json`.
 
 ## Testing
 

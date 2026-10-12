@@ -820,6 +820,8 @@ func (w *Window) openSettings() {
 	dialog := newSettingsDialog(w.QWidget, w.config, w.files)
 	// A dialog is not destroyed by being closed.
 	defer dialog.DeleteLater()
+	dialog.onExport = w.chooseExport
+	dialog.onImport = w.chooseImport
 
 	if dialog.Exec() != int(qt.QDialog__Accepted) {
 		return
@@ -827,6 +829,76 @@ func (w *Window) openSettings() {
 	if err := w.applySettings(dialog.settings(w.config)); err != nil {
 		qt.QMessageBox_Warning(w.QWidget, "Settings", err.Error())
 	}
+}
+
+// exportName is the name offered for the file the workspaces are exported
+// to.
+const exportName = "triggerapi-workspaces.zip"
+
+// chooseExport asks whose public key the workspaces are to be exported for
+// and where to, and exports them.
+func (w *Window) chooseExport(parent *qt.QWidget) {
+	if w.keys == nil {
+		adviseKeys(parent)
+		return
+	}
+	public := qt.QFileDialog_GetOpenFileName3(parent, "Public Key To Export For", filepath.Join(qt.QDir_HomePath(), ".ssh"))
+	if public == "" {
+		return
+	}
+	archive := qt.QFileDialog_GetSaveFileName4(parent, "Export Workspaces", filepath.Join(qt.QDir_HomePath(), exportName), "Zip files (*.zip)")
+	if archive == "" {
+		return
+	}
+
+	if err := w.exportWorkspaces(public, archive); err != nil {
+		qt.QMessageBox_Warning(parent, "Export Workspaces", fmt.Sprintf("The workspaces were not exported: %v.", err))
+		return
+	}
+	qt.QMessageBox_Information(parent, "Export Workspaces", "The workspaces were exported to "+archive+
+		", which can be read only with the private key that goes with "+public+".")
+}
+
+// exportWorkspaces writes every workspace to a zip file, encrypted for the
+// public key in a file.
+func (w *Window) exportWorkspaces(public, archive string) error {
+	recipient, err := crypt.Recipient(public)
+	if err != nil {
+		return err
+	}
+	return workspace.Export(w.workspacesDir(), archive, w.keys, recipient)
+}
+
+// chooseImport asks for a file of exported workspaces and adds them.
+func (w *Window) chooseImport(parent *qt.QWidget) {
+	if w.keys == nil {
+		adviseKeys(parent)
+		return
+	}
+	archive := qt.QFileDialog_GetOpenFileName4(parent, "Import Workspaces", qt.QDir_HomePath(), "Zip files (*.zip);;All files (*)")
+	if archive == "" {
+		return
+	}
+
+	added, err := w.importWorkspaces(archive)
+	if err != nil {
+		qt.QMessageBox_Warning(parent, "Import Workspaces", fmt.Sprintf("The workspaces were not all imported: %v.", err))
+		return
+	}
+	qt.QMessageBox_Information(parent, "Import Workspaces", "Imported "+strings.Join(added, ", ")+".")
+}
+
+// importWorkspaces adds the workspaces of a zip file made by exporting, which
+// have to be encrypted for the keys of the settings, and returns the names
+// they were given. The workspace in use stays the one in use.
+func (w *Window) importWorkspaces(archive string) ([]string, error) {
+	added, err := workspace.Unpack(w.workspacesDir(), archive, w.keys)
+	if len(added) > 0 {
+		if _, listErr := w.workspaces.load(w.config.Workspace); listErr != nil {
+			err = errors.Join(err, listErr)
+		}
+	}
+	return added, err
 }
 
 // applySettings puts the settings into effect and saves them. A setting that

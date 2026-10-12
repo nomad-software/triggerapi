@@ -12,8 +12,8 @@ import (
 )
 
 // settingsDialog edits the settings the user can choose, on a tab for each
-// sort: General (settingsTabGeneral), Requests (settingsTabRequests) and
-// Colours (settingsTabColours).
+// sort: Workspaces (settingsTabWorkspaces), Requests (settingsTabRequests)
+// and User interface (settingsTabInterface).
 type settingsDialog struct {
 	*qt.QDialog
 
@@ -28,7 +28,14 @@ type settingsDialog struct {
 	// the saved files are encrypted with.
 	publicKey  *qt.QLineEdit
 	privateKey *qt.QLineEdit
-	buttons    *qt.QDialogButtonBox
+	// exportButton and importButton write the workspaces to an archive
+	// for someone else and add those of an archive, by calling onExport
+	// and onImport, which are given the dialog to be the parent of theirs.
+	exportButton *qt.QPushButton
+	importButton *qt.QPushButton
+	onExport     func(parent *qt.QWidget)
+	onImport     func(parent *qt.QWidget)
+	buttons      *qt.QDialogButtonBox
 
 	// colours and jsonColours are the colours the user has chosen. One
 	// that is empty is the default, which is what its swatch shows.
@@ -45,9 +52,9 @@ type settingsDialog struct {
 
 // The tabs of the settings dialog.
 const (
-	settingsTabGeneral = iota
+	settingsTabWorkspaces = iota
 	settingsTabRequests
-	settingsTabColours
+	settingsTabInterface
 )
 
 // tabMargin is the space between the edge of a tab of the settings dialog
@@ -58,23 +65,25 @@ const tabMargin = 20
 // defaults are the locations used when the settings do not name one.
 func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults Files) *settingsDialog {
 	d := &settingsDialog{
-		QDialog:     qt.NewQDialog(parent),
-		tabs:        qt.NewQTabWidget2(),
-		font:        qt.NewQFontComboBox2(),
-		timeout:     qt.NewQSpinBox2(),
-		redirects:   qt.NewQCheckBox3("Follow redirects"),
-		workspaces:  qt.NewQLineEdit2(),
-		publicKey:   qt.NewQLineEdit2(),
-		privateKey:  qt.NewQLineEdit2(),
-		buttons:     qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel),
-		defaults:    defaults,
-		colours:     current.Colours,
-		jsonColours: current.JSONColours,
-		swatches:    map[colourKind]*swatch{},
-		json:        map[tokenKind]*swatch{},
+		QDialog:      qt.NewQDialog(parent),
+		tabs:         qt.NewQTabWidget2(),
+		font:         qt.NewQFontComboBox2(),
+		timeout:      qt.NewQSpinBox2(),
+		redirects:    qt.NewQCheckBox3("Follow redirects"),
+		workspaces:   qt.NewQLineEdit2(),
+		publicKey:    qt.NewQLineEdit2(),
+		privateKey:   qt.NewQLineEdit2(),
+		exportButton: qt.NewQPushButton3("Export…"),
+		importButton: qt.NewQPushButton3("Import…"),
+		buttons:      qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel),
+		defaults:     defaults,
+		colours:      current.Colours,
+		jsonColours:  current.JSONColours,
+		swatches:     map[colourKind]*swatch{},
+		json:         map[tokenKind]*swatch{},
 	}
 	d.SetWindowTitle("Settings")
-	d.SetMinimumWidth(620)
+	d.SetMinimumWidth(680)
 
 	d.font.SetCurrentFont(qt.NewQFont2(current.ResponseFont))
 	d.initialFont = d.font.CurrentFont().Family()
@@ -113,10 +122,37 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	encryption := sectionHeading("Encryption")
 	encryption.SetContentsMargins(0, 12, 0, 0)
 
+	sharing := sectionHeading("Import and export")
+	sharing.SetContentsMargins(0, 12, 0, 0)
+
+	d.exportButton.SetToolTip("Write every workspace to a zip file, encrypted for someone else's public key")
+	d.exportButton.OnClicked(func() {
+		if d.onExport != nil {
+			d.onExport(d.QWidget)
+		}
+	})
+	d.importButton.SetToolTip("Add the workspaces of a zip file that was exported for your public key")
+	d.importButton.OnClicked(func() {
+		if d.onImport != nil {
+			d.onImport(d.QWidget)
+		}
+	})
+	sharingRow := qt.NewQHBoxLayout2()
+	sharingRow.AddWidget(d.exportButton.QWidget)
+	sharingRow.AddWidget(d.importButton.QWidget)
+	sharingRow.AddStretch()
+
+	sharingNote := qt.NewQLabel3("Export asks for the public SSH key of whoever the workspaces are for, " +
+		"and writes every workspace to a zip file encrypted so that only their private key can read it. " +
+		"Your own files are left as they are. " +
+		"Import adds the workspaces of such a file that was exported for your public key. " +
+		"Both use the keys and the folder in effect, not changes made here that have yet to be accepted.")
+	sharingNote.SetWordWrap(true)
+	sharingNote.SetEnabled(false)
+
 	general := qt.NewQWidget2()
 	form := qt.NewQFormLayout(general)
 	form.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
-	form.AddRow3("Code font", d.font.QWidget)
 	form.AddRow4("Workspaces folder", d.folderRow(d.workspaces, "Workspaces Folder"))
 	// The note is about the folder above it.
 	form.AddRowWithWidget(note.QWidget)
@@ -124,6 +160,9 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	form.AddRow4("Public key", d.fileRow(d.publicKey, "Public Key"))
 	form.AddRow4("Private key", d.fileRow(d.privateKey, "Private Key"))
 	form.AddRowWithWidget(keysNote.QWidget)
+	form.AddRowWithWidget(sharing.QWidget)
+	form.AddRowWithLayout(sharingRow.QLayout)
+	form.AddRowWithWidget(sharingNote.QWidget)
 
 	requests := qt.NewQWidget2()
 	requestsForm := qt.NewQFormLayout(requests)
@@ -134,8 +173,18 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	colours := qt.NewQWidget2()
 	coloursLayout := qt.NewQVBoxLayout(colours)
 	coloursLayout.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
+	// The font has the whole width, as the names of fonts are long.
+	fontRow := qt.NewQHBoxLayout2()
+	fontRow.SetContentsMargins(12, 0, 0, 0)
+	fontRow.SetSpacing(16)
+	fontRow.AddWidget(qt.NewQLabel3("Code").QWidget)
+	fontRow.AddWidget2(d.font.QWidget, 1)
+	coloursLayout.AddWidget(sectionHeading("Font").QWidget)
+	coloursLayout.AddLayout(fontRow.QLayout)
+	coloursLayout.AddSpacing(14)
 	coloursLayout.AddLayout(d.colourGrid().QLayout)
 	coloursLayout.AddStretch()
+	coloursLayout.AddSpacing(tabMargin)
 
 	reset := qt.NewQPushButton3("Use Default Colours")
 	reset.OnClicked(d.resetColours)
@@ -145,9 +194,9 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	coloursLayout.AddLayout(resetRow.QLayout)
 
 	// The order matches the tab constants.
-	d.tabs.AddTab(general, "General")
+	d.tabs.AddTab(general, "Workspaces")
 	d.tabs.AddTab(requests, "Requests")
-	d.tabs.AddTab(colours, "Colours")
+	d.tabs.AddTab(colours, "User interface")
 
 	d.buttons.OnAccepted(d.Accept)
 	d.buttons.OnRejected(d.Reject)
@@ -204,7 +253,7 @@ func sectionHeading(title string) *qt.QLabel {
 	return label
 }
 
-// colourSections are the colours as they are set out on the Colours tab: in
+// colourSections are the colours as they are set out on the User interface tab: in
 // two columns of sections, each a heading above the colours of one sort.
 // Those of JSON are a section of their own, after the last of these.
 var colourSections = [2][]struct {
@@ -223,39 +272,37 @@ var colourSections = [2][]struct {
 }
 
 // swatchWidth is the width of every swatch, so that they line up.
-const swatchWidth = 110
+const swatchWidth = 140
 
-// colourGrid lays out the swatches of every colour. Each of the two columns
-// of sections is a column of names and one of swatches, with a gap between
-// the two.
-func (d *settingsDialog) colourGrid() *qt.QGridLayout {
-	const gap = 2
-
-	grid := qt.NewQGridLayout2()
-	grid.SetHorizontalSpacing(12)
-	grid.SetVerticalSpacing(6)
-	// The names are as wide as they need to be, and what width is left
-	// over goes between the two columns of sections.
-	grid.SetColumnMinimumWidth(gap, 32)
-	grid.SetColumnStretch(gap, 1)
-
-	// rows counts the rows used in each of the two columns of sections.
+// colourGrid lays out the swatches of every colour, in two columns of
+// sections side by side. Each is a grid of its own, of names and swatches,
+// so that the rows of one do not have to line up with those of the other.
+func (d *settingsDialog) colourGrid() *qt.QHBoxLayout {
+	var grids [2]*qt.QGridLayout
+	// rows counts the rows used in each.
 	var rows [2]int
+	for side := range grids {
+		grid := qt.NewQGridLayout2()
+		grid.SetHorizontalSpacing(16)
+		grid.SetVerticalSpacing(8)
+		grids[side] = grid
+	}
+
 	heading := func(side int, title string) {
 		label := sectionHeading(title)
 		if rows[side] > 0 {
 			// A section stands apart from the one above it.
-			label.SetContentsMargins(0, 12, 0, 0)
+			label.SetContentsMargins(0, 14, 0, 0)
 		}
-		grid.AddWidget3(label.QWidget, rows[side], side*(gap+1), 1, 2)
+		grids[side].AddWidget3(label.QWidget, rows[side], 0, 1, 2)
 		rows[side]++
 	}
 	row := func(side int, name string, s *swatch) {
 		label := qt.NewQLabel3(name)
 		// The names are set in from the heading they are under.
 		label.SetContentsMargins(12, 0, 0, 0)
-		grid.AddWidget2(label.QWidget, rows[side], side*(gap+1))
-		grid.AddWidget2(s.button.QWidget, rows[side], side*(gap+1)+1)
+		grids[side].AddWidget2(label.QWidget, rows[side], 0)
+		grids[side].AddWidget2(s.button.QWidget, rows[side], 1)
 		rows[side]++
 	}
 
@@ -283,7 +330,21 @@ func (d *settingsDialog) colourGrid() *qt.QGridLayout {
 		row(1, t.label, s)
 	}
 
-	return grid
+	// Each column is as wide as it needs to be, and what width is left
+	// over goes between the two.
+	columns := qt.NewQHBoxLayout2()
+	for side, grid := range grids {
+		if side > 0 {
+			columns.AddSpacing(40)
+			columns.AddStretch()
+		}
+		// A column shorter than the other keeps its rows at the top.
+		column := qt.NewQVBoxLayout2()
+		column.AddLayout(grid.QLayout)
+		column.AddStretch()
+		columns.AddLayout(column.QLayout)
+	}
+	return columns
 }
 
 // swatch is a button which shows one of the colours and lets the user choose
@@ -331,7 +392,7 @@ func (s *swatch) show() {
 
 	s.button.SetText(colour)
 	s.button.SetStyleSheet(fmt.Sprintf(
-		"QPushButton { background-color: %s; color: %s; border: 1px solid #888888; border-radius: 3px; padding: 4px 0; }",
+		"QPushButton { background-color: %s; color: %s; border: 1px solid #888888; border-radius: 4px; padding: 5px 0; }",
 		colour, text,
 	))
 }

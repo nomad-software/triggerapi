@@ -7,6 +7,10 @@ import (
 // noEnvironment is the entry of the environment selector for using none.
 const noEnvironment = "None"
 
+// maxEnvironmentWidth is the most the environment selector widens to for a
+// long name.
+const maxEnvironmentWidth = 480
+
 // environmentSelector selects the environment in use. It is beside the tabs
 // of the requests and not in any of them, as the environment is the same for
 // them all.
@@ -30,7 +34,12 @@ func newEnvironmentSelector() *environmentSelector {
 	label := qt.NewQLabel3("Environment:")
 	label.SetStyleSheet("font-weight: bold")
 
+	// It is as wide as the longest name, which a combo box otherwise is
+	// only for the names it has when first shown, up to a width that leaves
+	// room for the tabs.
 	s.environment.SetMinimumContentsLength(16)
+	s.environment.SetSizeAdjustPolicy(qt.QComboBox__AdjustToContents)
+	s.environment.SetMaximumWidth(maxEnvironmentWidth)
 	s.environment.OnCurrentIndexChanged(func(index int) {
 		if !s.updating && s.onEnvironment != nil {
 			// The first entry is for no environment.

@@ -78,6 +78,24 @@ func Open(public, private string, passphrase func() ([]byte, error)) (*Keys, err
 	return keys, nil
 }
 
+// Recipient reads the public key of someone else from its file. The keys
+// returned encrypt to it, and decrypt nothing, as that takes the private
+// key, which only they have.
+func Recipient(public string) (*Keys, error) {
+	if public == "" {
+		return nil, errors.New("a public key is needed")
+	}
+	line, err := os.ReadFile(home(public))
+	if err != nil {
+		return nil, fmt.Errorf("the public key could not be read: %w", err)
+	}
+	recipient, err := agessh.ParseRecipient(strings.TrimSpace(string(line)))
+	if err != nil {
+		return nil, fmt.Errorf("%s is not a public key that can be used: %w", public, err)
+	}
+	return &Keys{recipient: recipient}, nil
+}
+
 // home returns a path with the ~ it starts with, if it does, replaced by the
 // home folder of the user.
 func home(path string) string {
@@ -178,6 +196,9 @@ func (k *Keys) Decrypt(data []byte) ([]byte, error) {
 	}
 	if k == nil {
 		return nil, errors.New("it is encrypted, and the settings have no keys to decrypt it with")
+	}
+	if k.identity == nil {
+		return nil, errors.New("it is encrypted, and there is no private key to decrypt it with")
 	}
 
 	var src io.Reader = bytes.NewReader(data)
