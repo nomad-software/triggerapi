@@ -103,6 +103,15 @@ func newEnvList(store *env.Store, path string) *envList {
 		s.selected()
 	})
 	s.list.OnItemDoubleClicked(func(*qt.QListWidgetItem) { s.edit() })
+	// F2 does what the edit button does, which is where an environment is
+	// renamed.
+	s.list.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
+		if event.Key() == int(qt.Key_F2) {
+			s.edit()
+			return
+		}
+		super(event)
+	})
 
 	return s
 }

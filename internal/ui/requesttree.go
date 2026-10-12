@@ -213,6 +213,9 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 		switch event.Key() {
 		case int(qt.Key_Return), int(qt.Key_Enter):
 			t.activate()
+		case int(qt.Key_F2):
+			// As the rename button does.
+			t.rename()
 		default:
 			defer func(prev bool) { t.browsing = prev }(t.browsing)
 			t.browsing = true

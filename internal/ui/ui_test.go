@@ -5623,3 +5623,78 @@ func TestSettingsTabs(t *testing.T) {
 		}
 	})
 }
+
+func TestF2Renames(t *testing.T) {
+	files := testFiles(t)
+	f2 := func(widget *qt.QWidget) {
+		event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(qt.Key_F2), qt.NoModifier)
+		defer event.Delete()
+		qt.QCoreApplication_SendEvent(widget.QObject, event.QEvent)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+
+		// A workspace and a folder have their names opened for editing.
+		w.sidebar.SetCurrentIndex(tabWorkspaces)
+		f2(w.workspaces.list.QWidget)
+		if w.workspaces.list.State() != qt.QAbstractItemView__EditingState {
+			t.Error("F2 did not start renaming the workspace")
+		}
+
+		w.requests.addFolder()
+		w.requests.tree.SetFocus()
+		f2(w.requests.tree.QWidget)
+		if w.requests.tree.State() != qt.QAbstractItemView__EditingState {
+			t.Error("F2 did not start renaming the folder")
+		}
+
+		// An environment is opened in the editor, with the keyboard in its
+		// name and the name selected.
+		w.environments.add()
+		w.closeEditor()
+		w.sidebar.SetCurrentIndex(tabEnvironments)
+		w.environments.list.SetFocus()
+		f2(w.environments.list.QWidget)
+		if w.stack.CurrentIndex() != pageEditor {
+			t.Error("F2 did not open the environment editor")
+		}
+		// A window that is not on a screen is not the active one, so it is
+		// asked which of its widgets the keyboard goes to.
+		focused := w.FocusWidget()
+		if focused == nil || focused.UnsafePointer() != w.editor.name.QWidget.UnsafePointer() {
+			t.Error("the name does not have the keyboard")
+		}
+		if w.editor.name.SelectedText() != w.editor.name.Text() || w.editor.name.Text() == "" {
+			t.Errorf("the name is not selected: %q of %q", w.editor.name.SelectedText(), w.editor.name.Text())
+		}
+		w.Close()
+	})
+}
+
+func TestFocusSidebar(t *testing.T) {
+	mainthread.Wait(func() {
+		w := NewWindow(testFiles(t).Files)
+		w.Show()
+
+		// A window that is not on a screen is not the active one, so it is
+		// asked which of its widgets the keyboard goes to.
+		lists := map[int]*qt.QWidget{
+			tabWorkspaces:   w.workspaces.list.QWidget,
+			tabEnvironments: w.environments.list.QWidget,
+			tabRequests:     w.requests.tree.QWidget,
+		}
+		for _, tab := range []int{tabWorkspaces, tabEnvironments, tabRequests} {
+			w.focusSidebar(tab)
+			focused := w.FocusWidget()
+			if w.sidebar.CurrentIndex() != tab || focused == nil || focused.UnsafePointer() != lists[tab].UnsafePointer() {
+				t.Errorf("tab %d: shown %d, and its list does not have the keyboard", tab, w.sidebar.CurrentIndex())
+			}
+		}
+		if w.workspaces.current() != workspace.Default {
+			t.Errorf("the workspace in use changed to %q", w.workspaces.current())
+		}
+		w.Close()
+	})
+}

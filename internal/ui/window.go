@@ -256,7 +256,15 @@ func NewWindow(files Files) *Window {
 	w.environments.onError = saveFailed
 	w.environments.keys = currentKeys
 	w.environments.onChange = w.environmentChanged
-	w.environments.onEdit = w.openEditor
+	w.environments.onEdit = func() {
+		w.openEditor()
+		// Editing starts at the name, ready to be typed over. The editor
+		// following the selection does not take the keyboard from the list.
+		if w.stack.CurrentIndex() == pageEditor {
+			w.editor.name.SetFocus()
+			w.editor.name.SelectAll()
+		}
+	}
 	w.environments.onSelect = func() {
 		// The editor follows the selection while it is open.
 		if w.stack.CurrentIndex() == pageEditor {
@@ -440,6 +448,10 @@ func NewWindow(files Files) *Window {
 
 	qt.NewQShortcut3(qt.QKeySequence__Find, w.QObject).OnActivated(w.find)
 	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+P"), w.QObject).OnActivated(w.quickOpen)
+	// Ctrl+1 to Ctrl+3 go to the tabs of the sidebar, in order.
+	for tab := range w.sidebar.Count() {
+		qt.NewQShortcut2(qt.NewQKeySequence2(fmt.Sprintf("Ctrl+%d", tab+1)), w.QObject).OnActivated(func() { w.focusSidebar(tab) })
+	}
 
 	// Selecting an environment beside the tabs selects it in the sidebar,
 	// which is what makes it the active one.
@@ -1085,6 +1097,21 @@ func (w *Window) find() {
 func (w *Window) quickOpen() {
 	w.sidebar.SetCurrentIndex(tabRequests)
 	w.requests.focusSearch()
+}
+
+// focusSidebar shows a tab of the sidebar with the keyboard in its list, to
+// move through it and act on what is selected without the mouse. The
+// selection is left as it is.
+func (w *Window) focusSidebar(tab int) {
+	w.sidebar.SetCurrentIndex(tab)
+	switch tab {
+	case tabWorkspaces:
+		w.workspaces.list.SetFocus()
+	case tabEnvironments:
+		w.environments.list.SetFocus()
+	case tabRequests:
+		w.requests.tree.SetFocus()
+	}
 }
 
 // closeEditor returns to the request UI.

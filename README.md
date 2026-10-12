@@ -151,6 +151,7 @@ where the variable is used, as in `id-{{request_id}}`.
 | Keys | Does |
 |---|---|
 | Ctrl+Return | Send the REST request or invoke the gRPC method. While one is in flight, cancel it. |
+| Ctrl+1, Ctrl+2, Ctrl+3 | Go to the Workspaces, Environments or Requests tab of the sidebar, with the keyboard in its list. |
 | Ctrl+P | Go to the search of the Requests tab, to find a request and open it. |
 | Ctrl+F | Find text in the response. |
 | Escape | Close the environment editor, or else the search of the response, the curl command or the URL preview. |
@@ -164,6 +165,13 @@ where the variable is used, as in `id-{{request_id}}`.
 |---|---|---|
 | Return | The URL of a REST request | Send the request, or cancel the one in flight. |
 | Return | The server address of a gRPC request | Invoke the method, or cancel the call in flight. |
+
+**The sidebar**
+
+| Keys | Where | Does |
+|---|---|---|
+| F2 | A workspace, a folder or a request | Rename it, as the rename button does. |
+| F2 | An environment | Edit it, as the edit button does, with the keyboard in its name. |
 
 **Finding and opening a request**
 

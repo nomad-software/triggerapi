@@ -53,6 +53,15 @@ func newWorkspaceList(dir func() string) *workspaceList {
 	// Names are only edited through the rename button.
 	s.list.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
 
+	// F2 does what the rename button does.
+	s.list.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
+		if event.Key() == int(qt.Key_F2) {
+			s.rename()
+			return
+		}
+		super(event)
+	})
+
 	// The buttons are icons along the bottom, each saying what it does in
 	// its tooltip. They are the colour of the icon of the tab, but for the
 	// one which removes.
