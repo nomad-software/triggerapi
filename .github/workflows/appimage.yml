@@ -66,7 +66,12 @@ jobs:
           echo "PKG_CONFIG_PATH=$QT_ROOT/lib/pkgconfig" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$QT_ROOT/lib" >> "$GITHUB_ENV"
           echo "QMAKE=$QT_ROOT/bin/qmake" >> "$GITHUB_ENV"
-          PKG_CONFIG_PATH="$QT_ROOT/lib/pkgconfig" pkg-config --modversion Qt6Widgets
+          # The linker is told where the libraries are outright as well, so
+          # that it does not depend on what was compiled by an earlier run
+          # remembering the place of another version.
+          echo "CGO_LDFLAGS=-L$QT_ROOT/lib" >> "$GITHUB_ENV"
+          # What the build is told about Qt, to read if it fails.
+          PKG_CONFIG_PATH="$QT_ROOT/lib/pkgconfig" pkg-config --modversion --cflags --libs Qt6Widgets
 
       - uses: actions/checkout@v4
 
@@ -76,11 +81,21 @@ jobs:
       - name: Let git read the repository
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      # This also keeps what is compiled from one run to the next, as the
-      # Qt bindings take a long time to compile.
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # What is compiled is kept by the step below instead.
+          cache: false
+
+      # The Qt bindings take a long time to compile, so what is compiled is
+      # kept from one run to the next. It is kept for one version of Qt, as
+      # what was compiled for another names the place that one was in.
+      - name: Say where compiled code is kept
+        run: echo "GOCACHE=/opt/go-build" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: /opt/go-build
+          key: go-build-qt-${{ env.QT_VERSION }}-${{ hashFiles('go.sum') }}
 
       - name: Build the AppImage
         env:
