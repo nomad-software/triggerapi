@@ -194,9 +194,9 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	coloursLayout.AddLayout(resetRow.QLayout)
 
 	// The order matches the tab constants.
-	d.tabs.AddTab(general, "Workspaces")
-	d.tabs.AddTab(requests, "Requests")
-	d.tabs.AddTab(colours, "User interface")
+	d.tabs.AddTab(plainPage(general), "Workspaces")
+	d.tabs.AddTab(plainPage(requests), "Requests")
+	d.tabs.AddTab(plainPage(colours), "User interface")
 
 	d.buttons.OnAccepted(d.Accept)
 	d.buttons.OnRejected(d.Reject)

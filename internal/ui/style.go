@@ -59,3 +59,29 @@ func fadedTextColour() string {
 	mix := func(a, b int) int { return (a + b) / 2 }
 	return fmt.Sprintf("#%02x%02x%02x", mix(text.Red(), window.Red()), mix(text.Green(), window.Green()), mix(text.Blue(), window.Blue()))
 }
+
+// plainPage gives the page of a tab widget the background of the window.
+// Some styles, such as the one Qt falls back on where it has none of the
+// desktop's own, draw the pages of a tab widget lighter than the window,
+// which in a dark theme leaves dimmed text hard to read and an empty page a
+// slab of grey. The page is returned.
+func plainPage(page *qt.QWidget) *qt.QWidget {
+	page.SetBackgroundRole(qt.QPalette__Window)
+	page.SetAutoFillBackground(true)
+	return page
+}
+
+// newPanel returns a sunken frame with the background of a text field, as
+// an editor or a list has, with a widget filling it. It is what stands in
+// for an editor where there is nothing to edit.
+func newPanel(content *qt.QWidget) *qt.QWidget {
+	panel := qt.NewQFrame2()
+	panel.SetFrameStyle(int(qt.QFrame__StyledPanel) | int(qt.QFrame__Sunken))
+	panel.SetBackgroundRole(qt.QPalette__Base)
+	panel.SetAutoFillBackground(true)
+
+	layout := qt.NewQVBoxLayout(panel.QWidget)
+	layout.SetContentsMargins(0, 0, 0, 0)
+	layout.AddWidget(content)
+	return panel.QWidget
+}

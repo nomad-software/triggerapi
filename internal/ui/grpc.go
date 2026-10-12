@@ -132,7 +132,7 @@ func newGRPCPanel() *grpcPanel {
 	p.definition.SetPlaceholderText("The services of the server are shown here once they have been loaded using server reflection.")
 
 	tabs := qt.NewQTabWidget2()
-	tabs.AddTab(messageTab, "Message")
+	tabs.AddTab(plainPage(messageTab), "Message")
 	tabs.AddTab(p.auth.root, "Authorization")
 	tabs.AddTab(p.metadata.widget(), "Metadata")
 	tabs.AddTab(p.definition.QWidget, "Service Definition")

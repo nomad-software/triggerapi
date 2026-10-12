@@ -389,9 +389,9 @@ func NewWindow(files Files) *Window {
 	w.sidebar.SetTabPosition(qt.QTabWidget__West)
 	w.sidebar.SetIconSize(qt.NewQSize2(sidebarIconSize, sidebarIconSize))
 	// The order matches the tab constants.
-	w.sidebar.AddTab(w.workspaces.root, "")
-	w.sidebar.AddTab(w.environments.root, "")
-	w.sidebar.AddTab(w.requests.root, "")
+	w.sidebar.AddTab(plainPage(w.workspaces.root), "")
+	w.sidebar.AddTab(plainPage(w.environments.root), "")
+	w.sidebar.AddTab(plainPage(w.requests.root), "")
 	w.drawSidebarIcons()
 	w.sidebar.SetTabToolTip(tabWorkspaces, "Workspaces")
 	w.sidebar.SetTabToolTip(tabEnvironments, "Environments")

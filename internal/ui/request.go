@@ -406,14 +406,16 @@ func newSelectorTab(label string, selector *qt.QComboBox, stack *qt.QStackedWidg
 	layout.AddLayout(top.QLayout)
 	layout.AddWidget2(stack.QWidget, 1)
 
-	return tab
+	return plainPage(tab)
 }
 
+// newHint returns a page which says why it has nothing else on it, set out
+// as the editor it takes the place of.
 func newHint(text string) *qt.QWidget {
 	label := qt.NewQLabel3(text)
 	label.SetAlignment(qt.AlignCenter)
 	label.SetEnabled(false)
-	return label.QWidget
+	return newPanel(label.QWidget)
 }
 
 // bodyIsJSON reports if the body type is JSON.
