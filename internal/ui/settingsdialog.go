@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -23,6 +24,10 @@ type settingsDialog struct {
 	timeout    *qt.QSpinBox
 	redirects  *qt.QCheckBox
 	workspaces *qt.QLineEdit
+	// publicKey and privateKey are the paths of the files of the SSH keys
+	// the saved files are encrypted with.
+	publicKey  *qt.QLineEdit
+	privateKey *qt.QLineEdit
 	buttons    *qt.QDialogButtonBox
 
 	// colours and jsonColours are the colours the user has chosen. One
@@ -45,6 +50,10 @@ const (
 	settingsTabColours
 )
 
+// tabMargin is the space between the edge of a tab of the settings dialog
+// and what is on it.
+const tabMargin = 20
+
 // newSettingsDialog creates the dialog showing the current settings. The
 // defaults are the locations used when the settings do not name one.
 func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults Files) *settingsDialog {
@@ -55,6 +64,8 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 		timeout:     qt.NewQSpinBox2(),
 		redirects:   qt.NewQCheckBox3("Follow redirects"),
 		workspaces:  qt.NewQLineEdit2(),
+		publicKey:   qt.NewQLineEdit2(),
+		privateKey:  qt.NewQLineEdit2(),
 		buttons:     qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel),
 		defaults:    defaults,
 		colours:     current.Colours,
@@ -87,20 +98,42 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	note.SetWordWrap(true)
 	note.SetEnabled(false)
 
+	d.publicKey.SetText(current.PublicKey)
+	d.publicKey.SetPlaceholderText("Such as ~/.ssh/id_ed25519.pub")
+	d.privateKey.SetText(current.PrivateKey)
+	d.privateKey.SetPlaceholderText("Such as ~/.ssh/id_ed25519")
+
+	keysNote := qt.NewQLabel3("The environments and requests of every workspace are encrypted with this pair of SSH keys, " +
+		"which can be Ed25519 or RSA. TriggerAPI needs them to work: without them nothing is loaded or saved. " +
+		"Changing the keys encrypts every file again with the new ones. " +
+		"The passphrase of a private key that has one is asked for when TriggerAPI starts.")
+	keysNote.SetWordWrap(true)
+	keysNote.SetEnabled(false)
+
+	encryption := sectionHeading("Encryption")
+	encryption.SetContentsMargins(0, 12, 0, 0)
+
 	general := qt.NewQWidget2()
 	form := qt.NewQFormLayout(general)
+	form.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
 	form.AddRow3("Code font", d.font.QWidget)
 	form.AddRow4("Workspaces folder", d.folderRow(d.workspaces, "Workspaces Folder"))
 	// The note is about the folder above it.
 	form.AddRowWithWidget(note.QWidget)
+	form.AddRowWithWidget(encryption.QWidget)
+	form.AddRow4("Public key", d.fileRow(d.publicKey, "Public Key"))
+	form.AddRow4("Private key", d.fileRow(d.privateKey, "Private Key"))
+	form.AddRowWithWidget(keysNote.QWidget)
 
 	requests := qt.NewQWidget2()
 	requestsForm := qt.NewQFormLayout(requests)
+	requestsForm.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
 	requestsForm.AddRow3("Timeout", d.timeout.QWidget)
 	requestsForm.AddRow3("", d.redirects.QWidget)
 
 	colours := qt.NewQWidget2()
 	coloursLayout := qt.NewQVBoxLayout(colours)
+	coloursLayout.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
 	coloursLayout.AddLayout(d.colourGrid().QLayout)
 	coloursLayout.AddStretch()
 
@@ -141,6 +174,36 @@ func (d *settingsDialog) folderRow(edit *qt.QLineEdit, caption string) *qt.QLayo
 	return row.QLayout
 }
 
+// fileRow lays out a path field beside a button to browse for the file,
+// which starts in the folder of the path there is, or where SSH keys are
+// kept.
+func (d *settingsDialog) fileRow(edit *qt.QLineEdit, caption string) *qt.QLayout {
+	browse := qt.NewQPushButton3("Browse…")
+	browse.OnClicked(func() {
+		start := strings.TrimSpace(edit.Text())
+		if start == "" {
+			start = filepath.Join(qt.QDir_HomePath(), ".ssh")
+		}
+		if path := qt.QFileDialog_GetOpenFileName3(d.QWidget, caption, start); path != "" {
+			edit.SetText(path)
+		}
+	})
+
+	row := qt.NewQHBoxLayout2()
+	row.AddWidget2(edit.QWidget, 1)
+	row.AddWidget(browse.QWidget)
+	return row.QLayout
+}
+
+// sectionHeading returns the heading of a section of a tab.
+func sectionHeading(title string) *qt.QLabel {
+	label := qt.NewQLabel3(title)
+	font := label.Font()
+	font.SetBold(true)
+	label.SetFont(font)
+	return label
+}
+
 // colourSections are the colours as they are set out on the Colours tab: in
 // two columns of sections, each a heading above the colours of one sort.
 // Those of JSON are a section of their own, after the last of these.
@@ -179,10 +242,7 @@ func (d *settingsDialog) colourGrid() *qt.QGridLayout {
 	// rows counts the rows used in each of the two columns of sections.
 	var rows [2]int
 	heading := func(side int, title string) {
-		label := qt.NewQLabel3(title)
-		font := label.Font()
-		font.SetBold(true)
-		label.SetFont(font)
+		label := sectionHeading(title)
 		if rows[side] > 0 {
 			// A section stands apart from the one above it.
 			label.SetContentsMargins(0, 12, 0, 0)
@@ -325,6 +385,8 @@ func (d *settingsDialog) settings(base settings.Settings) settings.Settings {
 	base.Timeout = d.timeout.Value()
 	base.NoRedirects = !d.redirects.IsChecked()
 	base.WorkspacesDir = location(d.workspaces, d.defaults.Workspaces)
+	base.PublicKey = strings.TrimSpace(d.publicKey.Text())
+	base.PrivateKey = strings.TrimSpace(d.privateKey.Text())
 	base.JSONColours = d.jsonColours
 	base.Colours = d.colours
 

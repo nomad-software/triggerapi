@@ -12,6 +12,7 @@ import (
 	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/openapi"
 	"github.com/nomad-software/triggerapi/internal/postman"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -65,6 +66,9 @@ type requestTree struct {
 	// onRemove is called after a request is removed.
 	onRemove func(*collection.Request)
 	onError  func(error)
+	// keys returns the keys the file is encrypted with, which are nil if
+	// it is not to be.
+	keys func() *crypt.Keys
 }
 
 func newRequestTree(store *collection.Store, path string) *requestTree {
@@ -969,7 +973,11 @@ func (t *requestTree) save() {
 	if t.path == "" {
 		return
 	}
-	if err := t.store.Save(t.path); err != nil && t.onError != nil {
+	var keys *crypt.Keys
+	if t.keys != nil {
+		keys = t.keys()
+	}
+	if err := t.store.SaveWith(t.path, keys); err != nil && t.onError != nil {
 		t.onError(err)
 	}
 }

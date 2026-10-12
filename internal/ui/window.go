@@ -17,7 +17,9 @@ import (
 
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/env"
+	"github.com/nomad-software/triggerapi/internal/jsonfile"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 	"github.com/nomad-software/triggerapi/internal/settings"
@@ -116,6 +118,9 @@ type Window struct {
 	// settings in effect, which can keep the workspaces elsewhere.
 	files  Files
 	config settings.Settings
+	// keys are the keys of the settings, which the environments and
+	// requests are encrypted with. They are nil if the settings have none.
+	keys *crypt.Keys
 
 	client *http.Client
 	// sidebar has a tab for the workspaces, and one each for the
@@ -228,6 +233,9 @@ func NewWindow(files Files) *Window {
 	// there is if this is the first run with workspaces.
 	w.workspaces = newWorkspaceList(w.workspacesDir)
 	w.migrate()
+	// A failure to open the keys is reported when the files are loaded.
+	w.keys, _ = openKeys(w.QWidget, w.config)
+	currentKeys := func() *crypt.Keys { return w.keys }
 	name, err := w.workspaces.load(w.config.Workspace)
 	if err != nil {
 		w.status("The workspaces could not be listed: " + err.Error())
@@ -246,6 +254,7 @@ func NewWindow(files Files) *Window {
 
 	w.environments = newEnvList(envs, envPath)
 	w.environments.onError = saveFailed
+	w.environments.keys = currentKeys
 	w.environments.onChange = w.environmentChanged
 	w.environments.onEdit = w.openEditor
 	w.environments.onSelect = func() {
@@ -263,6 +272,7 @@ func NewWindow(files Files) *Window {
 
 	w.requests = newRequestTree(requests, requestsPath)
 	w.requests.onError = saveFailed
+	w.requests.keys = currentKeys
 	w.requests.onOpen = w.openRequest
 	w.requests.onRemove = func(r *collection.Request) {
 		// Its tab is closed, which shows another if it was the one shown.
@@ -410,6 +420,11 @@ func NewWindow(files Files) *Window {
 		if !w.laidOut {
 			w.laidOut = true
 			w.later(w.restoreLayout)
+			// A run without keys, as the first is, cannot do anything
+			// until it is given them.
+			if w.keys == nil {
+				w.later(func() { adviseKeys(w.QWidget) })
+			}
 		}
 	})
 
@@ -513,16 +528,30 @@ func (w *Window) loadWorkspace(name string) (envs *env.Store, envPath string, re
 		return &env.Store{Active: -1}, "", &collection.Store{}, ""
 	}
 
+	// Nothing is read or saved without keys to encrypt it with.
+	if w.keys == nil {
+		w.status(needKeys)
+		return &env.Store{Active: -1}, "", &collection.Store{}, ""
+	}
+
 	var failed []error
 	envPath = workspace.Environments(w.workspacesDir(), name)
 	requestsPath = workspace.Requests(w.workspacesDir(), name)
 
-	envs, err := env.Load(envPath)
+	// A file from before there were keys is encrypted once it has been
+	// read, which leaves alone one that cannot be.
+	envs, err := env.LoadWith(envPath, w.keys)
+	if err == nil {
+		err = w.encrypt(envPath)
+	}
 	if err != nil {
 		envPath = ""
 		failed = append(failed, err)
 	}
-	requests, err = collection.Load(requestsPath)
+	requests, err = collection.LoadWith(requestsPath, w.keys)
+	if err == nil {
+		err = w.encrypt(requestsPath)
+	}
 	if err != nil {
 		requestsPath = ""
 		failed = append(failed, err)
@@ -534,6 +563,83 @@ func (w *Window) loadWorkspace(name string) (envs *env.Store, envPath string, re
 		w.status("")
 	}
 	return envs, envPath, requests, requestsPath
+}
+
+// encrypt has a file that is not encrypted, as one from before there were
+// keys, made so.
+func (w *Window) encrypt(path string) error {
+	return jsonfile.Convert(path, w.keys, w.keys)
+}
+
+// needKeys says what is wrong when the settings have no keys.
+const needKeys = "TriggerAPI needs a pair of SSH keys to encrypt its files with. " +
+	"Until they are added under Encryption in File > Settings, nothing is loaded or saved."
+
+// adviseKeys tells the user that the program cannot work until the settings
+// are given keys. Tests replace it rather than let the dialog open.
+var adviseKeys = func(parent *qt.QWidget) {
+	qt.QMessageBox_Warning(parent, "Keys Needed", needKeys)
+}
+
+// askPassphrase asks for the passphrase of the private key in the file at
+// path. Tests replace it rather than let the dialog open.
+var askPassphrase = func(parent *qt.QWidget, path string) ([]byte, error) {
+	ok := false
+	passphrase := qt.QInputDialog_GetText4(parent, "Private Key", "Passphrase of "+path, qt.QLineEdit__Password, "", &ok)
+	if !ok {
+		return nil, errors.New("no passphrase was given")
+	}
+	return []byte(passphrase), nil
+}
+
+// openKeys returns the keys the settings name, which are nil if they name
+// none. Keys that cannot be opened are returned, with the reason, as ones
+// that cannot be used, so that nothing is saved without them.
+func openKeys(parent *qt.QWidget, s settings.Settings) (*crypt.Keys, error) {
+	if s.PublicKey == "" && s.PrivateKey == "" {
+		return nil, nil
+	}
+	keys, err := crypt.Open(s.PublicKey, s.PrivateKey, func() ([]byte, error) {
+		return askPassphrase(parent, s.PrivateKey)
+	})
+	if err != nil {
+		err = fmt.Errorf("the keys of the settings cannot be used: %w", err)
+		return crypt.Unusable(err), err
+	}
+	return keys, nil
+}
+
+// changeKeys has the environments and requests of every workspace
+// encrypted with other keys from now on: each file is decrypted with the
+// keys there were and encrypted with those given. The workspace in use is
+// read again if it could not be before. Taking the keys away leaves the
+// files encrypted as they are, and nothing can be read or saved until there
+// are keys again, which the user is told.
+func (w *Window) changeKeys(keys *crypt.Keys) error {
+	if keys == nil {
+		w.keys = nil
+		w.workspaces.open(w.config.Workspace)
+		adviseKeys(w.QWidget)
+		return nil
+	}
+
+	dir := w.workspacesDir()
+	names, err := workspace.List(dir)
+
+	failed := []error{err}
+	for _, name := range names {
+		for _, path := range []string{workspace.Environments(dir, name), workspace.Requests(dir, name)} {
+			if err := jsonfile.Convert(path, w.keys, keys); err != nil {
+				failed = append(failed, fmt.Errorf("%s: %w", path, err))
+			}
+		}
+	}
+	w.keys = keys
+
+	if w.environments.path == "" || w.requests.path == "" {
+		w.workspaces.open(w.config.Workspace)
+	}
+	return errors.Join(failed...)
 }
 
 // openWorkspace makes a workspace the one in use, showing its environments
@@ -748,6 +854,21 @@ func (w *Window) applySettings(s settings.Settings) error {
 	if s.Colours != w.config.Colours {
 		w.config.Colours = s.Colours
 		w.applyColours()
+	}
+
+	// The files are given their new keys where they are, before they are
+	// moved.
+	// Keys that could not be opened are tried again, as the passphrase may
+	// not have been given.
+	if s.PublicKey != w.config.PublicKey || s.PrivateKey != w.config.PrivateKey || w.keys.Err() != nil {
+		if keys, err := openKeys(w.QWidget, s); err != nil {
+			failed = append(failed, err)
+		} else {
+			w.config.PublicKey, w.config.PrivateKey = s.PublicKey, s.PrivateKey
+			if err := w.changeKeys(keys); err != nil {
+				failed = append(failed, fmt.Errorf("not every file could be given the keys: %w", err))
+			}
+		}
 	}
 
 	setting, previous := w.config.WorkspacesDir, w.workspacesDir()

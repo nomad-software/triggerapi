@@ -51,6 +51,13 @@ type Settings struct {
 	// Workspace is the name of the workspace in use.
 	Workspace string `json:"workspace,omitempty"`
 
+	// PublicKey and PrivateKey are the paths of the files of a pair of SSH
+	// keys, which the environments and requests of every workspace are
+	// encrypted with. Nothing is encrypted if both are empty, and nothing
+	// that is encrypted can be read.
+	PublicKey  string `json:"publicKey,omitempty"`
+	PrivateKey string `json:"privateKey,omitempty"`
+
 	// Pinned are the requests that are kept open in tabs of their own.
 	Pinned []Pin `json:"pinned,omitempty"`
 

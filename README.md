@@ -299,7 +299,8 @@ The settings are kept where the system keeps the configuration of programs:
 | macOS | `~/Library/Application Support/triggerapi/settings.json` |
 
 They hold the window size and layout, the code font, colours, the
-workspaces folder, the workspace in use and the pinned requests.
+workspaces folder, the encryption keys, the workspace in use and the pinned
+requests.
 
 The workspaces are kept, by default, where the system keeps the data of
 programs:
@@ -325,8 +326,33 @@ TriggerAPI was run from. The first time this version is run from that
 directory, with no workspaces yet in the new place, they are copied there and
 left where they were.
 
-Changes are saved as they are made. Passwords and tokens entered in requests
-and environments are stored in these files as plain text.
+Changes are saved as they are made. The files of the workspaces are encrypted,
+and they and the settings file can be read and written only by the user who
+runs TriggerAPI.
+
+### Encryption
+
+The environments and requests of every workspace are encrypted with a pair
+of SSH keys, using [age](https://github.com/FiloSottile/age). Give the files of
+the public and the private key (Ed25519 or RSA, such as
+`~/.ssh/id_ed25519.pub` and `~/.ssh/id_ed25519`) under Encryption in the
+General tab of File > Settings. The settings hold the paths of the keys, not
+the keys.
+
+- TriggerAPI needs the keys to work. Without them, as on the first run, it
+  says so, shows every workspace empty and saves nothing.
+- Naming the keys encrypts the files of every workspace, including any from
+  before there was encryption, and everything saved from then on.
+- Naming another pair encrypts every file again with those.
+- Taking the keys away leaves the files encrypted as they are, and nothing is
+  loaded or saved until the keys are put back.
+- If the private key has a passphrase it is asked for when TriggerAPI starts.
+  The SSH agent is not used.
+- If the keys cannot be opened, or are not the ones a file was encrypted
+  with, the file is not read and is never written over.
+
+The settings file itself is not encrypted. Keep a copy of the private key:
+without it the files cannot be recovered.
 
 ## Testing
 

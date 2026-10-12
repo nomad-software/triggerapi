@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/jsonfile"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
@@ -361,8 +362,14 @@ func (f *Folder) normalise() {
 // Load reads a store from the JSON file at path. A missing file is not an
 // error and yields an empty store.
 func Load(path string) (*Store, error) {
+	return LoadWith(path, nil)
+}
+
+// LoadWith reads a store as Load does, decrypting the file with keys if it
+// is encrypted.
+func LoadWith(path string, keys *crypt.Keys) (*Store, error) {
 	store := &Store{}
-	if err := jsonfile.Load(path, store); err != nil {
+	if err := jsonfile.LoadWith(path, store, keys); err != nil {
 		return &Store{}, err
 	}
 
@@ -377,5 +384,11 @@ func Load(path string) (*Store, error) {
 
 // Save writes the store to the JSON file at path.
 func (s *Store) Save(path string) error {
-	return jsonfile.Save(path, s)
+	return s.SaveWith(path, nil)
+}
+
+// SaveWith writes the store to the JSON file at path, encrypted with keys
+// unless they are nil.
+func (s *Store) SaveWith(path string, keys *crypt.Keys) error {
+	return jsonfile.SaveWith(path, s, keys)
 }

@@ -235,3 +235,32 @@ func TestDefaultDir(t *testing.T) {
 		t.Errorf("default = %q, %v", got, err)
 	}
 }
+
+func TestPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permissions are not kept this way on Windows")
+	}
+	dir := filepath.Join(t.TempDir(), "workspaces")
+	if err := Create(dir, "Mine"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(Environments(dir, "Mine"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// A copy can be read and written by the user alone, whatever the
+	// original.
+	copied, err := Duplicate(dir, "Mine")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]os.FileMode{
+		filepath.Join(dir, "Mine"): 0o700,
+		filepath.Join(dir, copied): 0o700,
+		Environments(dir, copied):  0o600,
+	} {
+		if info, err := os.Stat(path); err != nil || info.Mode().Perm() != want {
+			t.Errorf("%s: mode = %v, want %v (%v)", path, info.Mode().Perm(), want, err)
+		}
+	}
+}

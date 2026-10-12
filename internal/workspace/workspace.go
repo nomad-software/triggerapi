@@ -24,6 +24,13 @@ const (
 	requestsFile     = "requests.json"
 )
 
+// The folders and files of the workspaces can be read and written by the
+// user alone.
+const (
+	folderMode = 0o700
+	fileMode   = 0o600
+)
+
 // appName is the name of the folder of the program, in the place the system
 // has for the data of programs.
 const appName = "triggerapi"
@@ -149,7 +156,7 @@ func Create(dir, name string) error {
 	} else if taken {
 		return fmt.Errorf("there is already a workspace named %s", name)
 	}
-	return os.MkdirAll(filepath.Join(dir, name), 0o755)
+	return os.MkdirAll(filepath.Join(dir, name), folderMode)
 }
 
 // Rename gives a workspace another name.
@@ -240,7 +247,7 @@ func CopyAll(from, to string) error {
 		return err
 	}
 	for _, name := range names {
-		if err := os.MkdirAll(filepath.Join(to, name), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(to, name), folderMode); err != nil {
 			return err
 		}
 		if err := Import(to, name, Environments(from, name), Requests(from, name)); err != nil {
@@ -260,7 +267,7 @@ func copyFile(from, to string) error {
 		return err
 	}
 
-	file, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	file, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, fileMode)
 	if errors.Is(err, fs.ErrExist) {
 		return nil
 	} else if err != nil {

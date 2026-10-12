@@ -8,6 +8,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
+	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/env"
 	"github.com/nomad-software/triggerapi/internal/postman"
 )
@@ -41,6 +42,9 @@ type envList struct {
 	// onChange is called after the environments or the selection change.
 	onChange func()
 	onError  func(error)
+	// keys returns the keys the file is encrypted with, which are nil if
+	// it is not to be.
+	keys func() *crypt.Keys
 }
 
 func newEnvList(store *env.Store, path string) *envList {
@@ -281,7 +285,11 @@ func (s *envList) save() {
 	if s.path == "" {
 		return
 	}
-	if err := s.store.Save(s.path); err != nil && s.onError != nil {
+	var keys *crypt.Keys
+	if s.keys != nil {
+		keys = s.keys()
+	}
+	if err := s.store.SaveWith(s.path, keys); err != nil && s.onError != nil {
 		s.onError(err)
 	}
 }

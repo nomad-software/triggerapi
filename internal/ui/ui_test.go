@@ -24,6 +24,8 @@ import (
 
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/crypt"
+	"github.com/nomad-software/triggerapi/internal/crypt/crypttest"
 	"github.com/nomad-software/triggerapi/internal/env"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
@@ -44,14 +46,62 @@ func TestMain(m *testing.M) {
 		return testRequestType, testRequestType != ""
 	}
 
+	// The dialog which says keys are needed is counted rather than shown.
+	adviseKeys = func(*qt.QWidget) { advised++ }
+
+	// Every window is given the keys it needs to read and save anything.
+	keyDir, err := os.MkdirTemp("", "triggerapi-keys-")
+	if err == nil {
+		testPublic, testPrivate, err = crypttest.Write(keyDir, "id", "")
+	}
+	if err == nil {
+		testKeys, err = crypt.Open(testPublic, testPrivate, nil)
+	}
+	if err != nil {
+		panic(err)
+	}
+
 	code := 0
 	go func() {
 		code = m.Run()
+		os.RemoveAll(keyDir)
 		mainthread.Start(qt.QCoreApplication_Quit)
 	}()
 
 	qt.QApplication_Exec()
 	os.Exit(code)
+}
+
+// testPublic and testPrivate are the paths of the files of the keys the
+// settings of a test window name, and testKeys the keys themselves.
+var (
+	testPublic, testPrivate string
+	testKeys                *crypt.Keys
+)
+
+// advised counts the times the user was told that keys are needed.
+var advised int
+
+// loadEnvs reads the environments a test window saved.
+func loadEnvs(path string) (*env.Store, error) {
+	return env.LoadWith(path, testKeys)
+}
+
+// loadRequests reads the requests a test window saved.
+func loadRequests(path string) (*collection.Store, error) {
+	return collection.LoadWith(path, testKeys)
+}
+
+// saveTestKeys makes a settings file which names the keys of the tests and
+// nothing else, as a window without keys reads and saves nothing.
+func saveTestKeys(t *testing.T, path string) {
+	t.Helper()
+	if err := settings.Prepare(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := (settings.Settings{PublicKey: testPublic, PrivateKey: testPrivate}).Save(path); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // testRequestType is the type given to requests added by a test. An empty
@@ -74,6 +124,8 @@ func testFiles(t *testing.T) testPaths {
 	if err := workspace.Create(workspaces, workspace.Default); err != nil {
 		t.Fatal(err)
 	}
+	settingsPath := filepath.Join(dir, "settings.json")
+	saveTestKeys(t, settingsPath)
 	return testPaths{
 		Files:        Files{Settings: filepath.Join(dir, "settings.json"), Workspaces: workspaces},
 		Environments: workspace.Environments(workspaces, workspace.Default),
@@ -268,7 +320,7 @@ func TestEnvironments(t *testing.T) {
 		}},
 		{Name: "Other", Variables: []env.Variable{{Key: "key", Value: "secret", Enabled: true}}},
 	}}
-	saved, err := env.Load(path)
+	saved, err := loadEnvs(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +472,7 @@ func TestRequests(t *testing.T) {
 		Form:     []rest.KeyValue{{Key: "f", Value: "1", Enabled: true}},
 	}
 
-	saved, err := collection.Load(files.Requests)
+	saved, err := loadRequests(files.Requests)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +541,7 @@ func TestRequests(t *testing.T) {
 		}
 	})
 
-	if saved, err := collection.Load(files.Requests); err != nil || len(saved.Folders) != 0 {
+	if saved, err := loadRequests(files.Requests); err != nil || len(saved.Folders) != 0 {
 		t.Errorf("removals not saved: %+v, %v", saved, err)
 	}
 }
@@ -528,7 +580,7 @@ func TestWindowSizeRemembered(t *testing.T) {
 		w.Close()
 	})
 
-	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default}); !reflect.DeepEqual(got, want) {
+	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default, PublicKey: testPublic, PrivateKey: testPrivate}); !reflect.DeepEqual(got, want) {
 		t.Errorf("saved %+v, want %+v", got, want)
 	}
 
@@ -540,7 +592,7 @@ func TestWindowSizeRemembered(t *testing.T) {
 	})
 
 	// A maximised window is restored maximised and keeps its normal size.
-	settings.Settings{Width: 900, Height: 650, Maximized: true}.Save(files.Settings)
+	settings.Settings{Width: 900, Height: 650, Maximized: true, PublicKey: testPublic, PrivateKey: testPrivate}.Save(files.Settings)
 	mainthread.Wait(func() {
 		w := NewWindow(files.Files)
 		w.Show()
@@ -549,7 +601,7 @@ func TestWindowSizeRemembered(t *testing.T) {
 		}
 		w.Close()
 	})
-	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, Maximized: true, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default}); !reflect.DeepEqual(got, want) {
+	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, Maximized: true, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default, PublicKey: testPublic, PrivateKey: testPrivate}); !reflect.DeepEqual(got, want) {
 		t.Errorf("saved %+v, want %+v", got, want)
 	}
 }
@@ -666,7 +718,7 @@ func TestMenuBar(t *testing.T) {
 
 func TestResponseFont(t *testing.T) {
 	files := testFiles(t)
-	settings.Settings{Width: 800, Height: 600, ResponseFont: "Some Font"}.Save(files.Settings)
+	settings.Settings{Width: 800, Height: 600, ResponseFont: "Some Font", PublicKey: testPublic, PrivateKey: testPrivate}.Save(files.Settings)
 
 	mainthread.Wait(func() {
 		w := NewWindow(files.Files)
@@ -942,7 +994,7 @@ func TestGRPCRequest(t *testing.T) {
 		Auth:     rest.Auth{Type: rest.AuthBearer, Token: "secret"},
 	}
 
-	saved, err := collection.Load(files.Requests)
+	saved, err := loadRequests(files.Requests)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1283,14 +1335,14 @@ func TestApplySettings(t *testing.T) {
 		w.editor.variables.add("token", "abc")
 	})
 
-	copied, err := env.Load(workspace.Environments(moved, workspace.Default))
+	copied, err := loadEnvs(workspace.Environments(moved, workspace.Default))
 	if err != nil || len(copied.Environments) != 1 || len(copied.Environments[0].Variables) != 2 {
 		t.Errorf("moved environments = %+v, %v", copied, err)
 	}
-	if old, _ := env.Load(files.Environments); len(old.Environments) != 1 || len(old.Environments[0].Variables) != 1 {
+	if old, _ := loadEnvs(files.Environments); len(old.Environments) != 1 || len(old.Environments[0].Variables) != 1 {
 		t.Errorf("old environments file changed: %+v", old.Environments)
 	}
-	if old, _ := collection.Load(files.Requests); len(old.Folders) != 1 || old.Folders[0].Requests[0].URL != "{{host}}/users" {
+	if old, _ := loadRequests(files.Requests); len(old.Folders) != 1 || old.Folders[0].Requests[0].URL != "{{host}}/users" {
 		t.Errorf("old requests file changed: %+v", old.Folders)
 	}
 	if saved := settings.Load(files.Settings); saved.ResponseFont != "Some Font" || saved.WorkspacesDir != moved || saved.Workspace != workspace.Default {
@@ -1627,7 +1679,7 @@ func TestHeader(t *testing.T) {
 	})
 
 	// The selection made in the header is saved.
-	if saved, err := env.Load(files.Environments); err != nil || saved.Active != 1 || saved.Environments[0].Name != "Dev" {
+	if saved, err := loadEnvs(files.Environments); err != nil || saved.Active != 1 || saved.Environments[0].Name != "Dev" {
 		t.Errorf("saved %+v, %v", saved, err)
 	}
 }
@@ -2354,7 +2406,7 @@ func TestCapture(t *testing.T) {
 		if !slices.Equal(request.Request.Captures, want) {
 			t.Errorf("captures = %+v", request.Request.Captures)
 		}
-		if saved, err := collection.Load(files.Requests); err != nil || !slices.Equal(saved.Folders[0].Requests[0].Request.Captures, want) {
+		if saved, err := loadRequests(files.Requests); err != nil || !slices.Equal(saved.Folders[0].Requests[0].Request.Captures, want) {
 			t.Errorf("saved %+v, %v", saved, err)
 		}
 
@@ -2369,7 +2421,7 @@ func TestCapture(t *testing.T) {
 		if got["token"] != "abc123" || got["last"] != "8" || got["tokenDigits"] != "123" || got["tokenLetters"] != "abc" || len(got) != 5 {
 			t.Errorf("variables = %v", got)
 		}
-		if saved, err := env.Load(files.Environments); err != nil || !slices.Equal(saved.Environments[0].Variables, w.environments.store.Environments[0].Variables) {
+		if saved, err := loadEnvs(files.Environments); err != nil || !slices.Equal(saved.Environments[0].Variables, w.environments.store.Environments[0].Variables) {
 			t.Errorf("saved %+v, %v", saved, err)
 		}
 
@@ -2565,7 +2617,7 @@ func TestVariableDescriptions(t *testing.T) {
 		}
 	})
 
-	saved, err := env.Load(files.Environments)
+	saved, err := loadEnvs(files.Environments)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2639,7 +2691,7 @@ func TestOneVariableOfAName(t *testing.T) {
 		}
 
 		// What is saved is what is shown.
-		saved, err := env.Load(files.Environments)
+		saved, err := loadEnvs(files.Environments)
 		if err != nil || len(saved.Environments[0].Variables) != 5 {
 			t.Errorf("saved %+v, %v", saved, err)
 			return
@@ -2772,7 +2824,7 @@ func TestNestedFolders(t *testing.T) {
 		}
 	})
 
-	saved, err := collection.Load(files.Requests)
+	saved, err := loadRequests(files.Requests)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2817,7 +2869,7 @@ func TestNestedFolders(t *testing.T) {
 		}
 	})
 
-	if saved, err := collection.Load(files.Requests); err != nil || len(saved.Folders) != 2 || len(saved.Folders[0].Folders) != 0 {
+	if saved, err := loadRequests(files.Requests); err != nil || len(saved.Folders) != 2 || len(saved.Folders[0].Folders) != 0 {
 		t.Errorf("removal not saved: %+v, %v", saved, err)
 	}
 }
@@ -2966,7 +3018,7 @@ func TestDragAndDrop(t *testing.T) {
 		check("rpc", treeItem(tree, "other", "rpc"), "rest/", "Get", "Health")
 	})
 
-	saved, err := collection.Load(files.Requests)
+	saved, err := loadRequests(files.Requests)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3082,7 +3134,7 @@ paths:
 		}
 	})
 
-	saved, err := collection.Load(files.Requests)
+	saved, err := loadRequests(files.Requests)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3164,11 +3216,11 @@ func TestSidebarOrder(t *testing.T) {
 	})
 
 	// Both files are saved in the order shown.
-	envs, _ := env.Load(files.Environments)
+	envs, _ := loadEnvs(files.Environments)
 	if len(envs.Environments) != 3 || envs.Environments[0].Name != "Local" || envs.Environments[2].Name != "zulu" || envs.Active != 2 {
 		t.Errorf("saved environments = %+v", envs)
 	}
-	requests, _ := collection.Load(files.Requests)
+	requests, _ := loadRequests(files.Requests)
 	if requests.Folders[0].Name != "Apple" || requests.Folders[0].Requests[2].Name != "wipe" {
 		t.Errorf("saved requests = %+v", requests.Folders[0])
 	}
@@ -3297,7 +3349,7 @@ func TestFoldersStayOpenOrClosed(t *testing.T) {
 		treeItem(tree, "b").SetExpanded(true)
 	})
 
-	saved, err := collection.Load(files.Requests)
+	saved, err := loadRequests(files.Requests)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3376,7 +3428,7 @@ func TestImportEnvironment(t *testing.T) {
 			t.Errorf("header shows %q", w.environment.environment.CurrentText())
 		}
 
-		saved, err := env.Load(files.Environments)
+		saved, err := loadEnvs(files.Environments)
 		want := []env.Variable{{Key: "host", Value: "api.test", Enabled: true}, {Key: "off", Value: "x"}}
 		if err != nil || saved.Active != 1 || len(saved.Environments) != 2 || !reflect.DeepEqual(saved.Environments[1].Variables, want) {
 			t.Errorf("saved %+v, %v", saved, err)
@@ -4047,15 +4099,15 @@ func TestWorkspaces(t *testing.T) {
 	})
 
 	// Each workspace has its own files.
-	alpha, err := collection.Load(workspace.Requests(dir, "Alpha"))
+	alpha, err := loadRequests(workspace.Requests(dir, "Alpha"))
 	if err != nil || len(alpha.Folders) != 1 || alpha.Folders[0].Requests[0].URL != "new.test" {
 		t.Errorf("requests of Alpha = %+v, %v", alpha, err)
 	}
-	original, err := collection.Load(files.Requests)
+	original, err := loadRequests(files.Requests)
 	if err != nil || len(original.Folders) != 1 || original.Folders[0].Requests[0].URL != "default.test" {
 		t.Errorf("requests of Default = %+v, %v", original, err)
 	}
-	if envs, _ := env.Load(workspace.Environments(dir, "Alpha")); len(envs.Environments) != 1 || len(envs.Environments[0].Variables) != 1 {
+	if envs, _ := loadEnvs(workspace.Environments(dir, "Alpha")); len(envs.Environments) != 1 || len(envs.Environments[0].Variables) != 1 {
 		t.Errorf("environments of Alpha = %+v", envs)
 	}
 	if saved := settings.Load(files.Settings); saved.Workspace != "Alpha" {
@@ -4118,6 +4170,7 @@ func TestWorkspaceMigration(t *testing.T) {
 		Environments: filepath.Join(dir, "environments.json"),
 		Requests:     filepath.Join(dir, "requests.json"),
 	}
+	saveTestKeys(t, files.Settings)
 
 	// There are environments and requests from before there were
 	// workspaces.
@@ -4158,10 +4211,10 @@ func TestWorkspaceMigration(t *testing.T) {
 	if after, _ := os.ReadFile(elsewhere); string(after) != string(before) {
 		t.Error("the old requests file was changed")
 	}
-	if old, _ := env.Load(files.Environments); len(old.Environments) != 1 {
+	if old, _ := loadEnvs(files.Environments); len(old.Environments) != 1 {
 		t.Error("the old environments file was changed")
 	}
-	moved, err := collection.Load(workspace.Requests(files.Workspaces, "Default"))
+	moved, err := loadRequests(workspace.Requests(files.Workspaces, "Default"))
 	if err != nil || len(moved.Folders) != 1 || moved.Folders[0].Requests[0].URL != "{{host}}/changed" {
 		t.Errorf("requests of the workspace = %+v, %v", moved, err)
 	}
@@ -4188,6 +4241,7 @@ func TestFirstRun(t *testing.T) {
 		Environments: filepath.Join(dir, "environments.json"),
 		Requests:     filepath.Join(dir, "requests.json"),
 	}
+	saveTestKeys(t, files.Settings)
 
 	// With nothing saved at all there is still a workspace to work in.
 	mainthread.Wait(func() {
@@ -4198,7 +4252,7 @@ func TestFirstRun(t *testing.T) {
 		w.request.url.SetText("first.test")
 		w.requests.addRequest()
 	})
-	if saved, err := collection.Load(workspace.Requests(files.Workspaces, "Default")); err != nil || len(saved.Folders) != 1 {
+	if saved, err := loadRequests(workspace.Requests(files.Workspaces, "Default")); err != nil || len(saved.Folders) != 1 {
 		t.Errorf("requests = %+v, %v", saved, err)
 	}
 }
@@ -4514,10 +4568,10 @@ func TestDuplicate(t *testing.T) {
 		w.requests.remove()
 	})
 
-	if original, err := collection.Load(files.Requests); err != nil || len(original.Folders) != 2 {
+	if original, err := loadRequests(files.Requests); err != nil || len(original.Folders) != 2 {
 		t.Errorf("requests of the first workspace = %+v, %v", original, err)
 	}
-	if copied, err := collection.Load(workspace.Requests(files.Workspaces, "Default copy")); err != nil || len(copied.Folders) != 1 {
+	if copied, err := loadRequests(workspace.Requests(files.Workspaces, "Default copy")); err != nil || len(copied.Folders) != 1 {
 		t.Errorf("requests of the copy = %+v, %v", copied, err)
 	}
 }
@@ -4529,6 +4583,7 @@ func TestWorkspacesMoved(t *testing.T) {
 		Workspaces:    filepath.Join(dir, "data", "workspaces"),
 		OldWorkspaces: filepath.Join(dir, "workspaces"),
 	}
+	saveTestKeys(t, files.Settings)
 	os.Mkdir(filepath.Dir(files.Settings), 0o755)
 
 	// There are workspaces where they used to be kept.
@@ -4542,7 +4597,7 @@ func TestWorkspacesMoved(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := (settings.Settings{Width: 900, Height: 650, Workspace: "Payments"}).Save(files.Settings); err != nil {
+	if err := (settings.Settings{Width: 900, Height: 650, Workspace: "Payments", PublicKey: testPublic, PrivateKey: testPrivate}).Save(files.Settings); err != nil {
 		t.Fatal(err)
 	}
 
@@ -4566,10 +4621,10 @@ func TestWorkspacesMoved(t *testing.T) {
 		w.Close()
 	})
 
-	if moved, err := collection.Load(workspace.Requests(files.Workspaces, "Payments")); err != nil || moved.Folders[0].Requests[0].URL != "changed.test" {
+	if moved, err := loadRequests(workspace.Requests(files.Workspaces, "Payments")); err != nil || moved.Folders[0].Requests[0].URL != "changed.test" {
 		t.Errorf("requests = %+v, %v", moved, err)
 	}
-	if old, err := collection.Load(workspace.Requests(files.OldWorkspaces, "Payments")); err != nil || old.Folders[0].Requests[0].URL != "pay.test" {
+	if old, err := loadRequests(workspace.Requests(files.OldWorkspaces, "Payments")); err != nil || old.Folders[0].Requests[0].URL != "pay.test" {
 		t.Errorf("the workspace copied from was changed: %+v, %v", old, err)
 	}
 
@@ -4869,7 +4924,7 @@ func TestFormatJSONButton(t *testing.T) {
 		if got := p.bodyRaw.ToPlainText(); got != formatted || w.open.Request.Body != formatted || len(warned) != 0 {
 			t.Errorf("body = %q, saved %q, warned %q", got, w.open.Request.Body, warned)
 		}
-		if saved, err := collection.Load(files.Requests); err != nil || saved.Folders[0].Requests[0].Request.Body != formatted {
+		if saved, err := loadRequests(files.Requests); err != nil || saved.Folders[0].Requests[0].Request.Body != formatted {
 			t.Errorf("saved %+v, %v", saved, err)
 		}
 		p.bodyRaw.Undo()
@@ -5117,7 +5172,7 @@ func TestNamesCannotBeEmpty(t *testing.T) {
 		if got := w.tabs.bar.TabText(0); got != "Book room" {
 			t.Errorf("the tab is named %q", got)
 		}
-		if saved, err := collection.Load(files.Requests); err != nil || saved.Folders[0].Name != "Hotel" || saved.Folders[0].Requests[0].Name != "Book room" {
+		if saved, err := loadRequests(files.Requests); err != nil || saved.Folders[0].Name != "Hotel" || saved.Folders[0].Requests[0].Name != "Book room" {
 			t.Errorf("saved %+v, %v", saved, err)
 		}
 
@@ -5144,7 +5199,7 @@ func TestNamesCannotBeEmpty(t *testing.T) {
 		if got := w.environments.store.Environments[0].Name; got != "L" {
 			t.Errorf("typed: the environment is named %q", got)
 		}
-		if saved, err := env.Load(files.Environments); err != nil || saved.Environments[0].Name != "L" {
+		if saved, err := loadEnvs(files.Environments); err != nil || saved.Environments[0].Name != "L" {
 			t.Errorf("saved %+v, %v", saved, err)
 		}
 	})
@@ -5275,6 +5330,214 @@ func TestQuickOpen(t *testing.T) {
 		tree.SetCurrentItem(tree.TopLevelItem(0).Child(0))
 		if opened() != "Ping" {
 			t.Errorf("selected with the pointer: %q open", opened())
+		}
+	})
+}
+
+func TestEncryption(t *testing.T) {
+	files := testFiles(t)
+	dir := files.Workspaces
+	keyDir := t.TempDir()
+	public, private := crypttest.Pair(t, keyDir, "id", "hunter2")
+	otherPublic, otherPrivate := crypttest.Pair(t, keyDir, "other", "")
+
+	// The passphrase is given rather than asked for in a dialog.
+	asked := 0
+	previous := askPassphrase
+	askPassphrase = func(*qt.QWidget, string) ([]byte, error) {
+		asked++
+		return []byte("hunter2"), nil
+	}
+	t.Cleanup(func() { askPassphrase = previous })
+
+	// Two workspaces saved before there were keys, and settings without
+	// any, as on the first run of a version with encryption.
+	if err := (settings.Settings{}).Save(files.Settings); err != nil {
+		t.Fatal(err)
+	}
+	if err := workspace.Create(dir, "Other"); err != nil {
+		t.Fatal(err)
+	}
+	envs := &env.Store{Environments: []env.Environment{{Name: "Secret"}}, Active: 0}
+	requests := &collection.Store{Folders: []*collection.Folder{{Name: "Hidden"}}}
+	paths := []string{
+		files.Environments, files.Requests,
+		workspace.Environments(dir, "Other"), workspace.Requests(dir, "Other"),
+	}
+	for _, path := range []string{paths[0], paths[2]} {
+		if err := envs.Save(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{paths[1], paths[3]} {
+		if err := requests.Save(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	contents := func() []string {
+		var all []string
+		for _, path := range paths {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Error(err)
+			}
+			all = append(all, string(data))
+		}
+		return all
+	}
+	allEncrypted := func() {
+		t.Helper()
+		for i, data := range contents() {
+			if !crypt.Encrypted([]byte(data)) {
+				t.Errorf("%s is not encrypted", paths[i])
+			}
+		}
+	}
+	// loaded reports if the window shows the workspace and saves to it.
+	loaded := func(w *Window, environments int) bool {
+		return w.environments.list.Count() == environments && w.requests.tree.TopLevelItemCount() == 1 &&
+			w.requests.tree.TopLevelItem(0).Text(colName) == "Hidden" &&
+			w.environments.path == files.Environments && w.requests.path == files.Requests
+	}
+	// empty reports if the window shows nothing and saves nowhere.
+	empty := func(w *Window) bool {
+		return w.environments.list.Count() == 0 && w.requests.tree.TopLevelItemCount() == 0 &&
+			w.environments.path == "" && w.requests.path == "" &&
+			strings.Contains(w.StatusBar().CurrentMessage(), "needs a pair of SSH keys")
+	}
+
+	// Without keys nothing is read or saved, and the user is told so once
+	// the window is shown.
+	before := contents()
+	advised = 0
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(files.Files)
+		w.Show()
+		if !empty(w) {
+			t.Errorf("without keys: status %q", w.StatusBar().CurrentMessage())
+		}
+		w.environments.add()
+	})
+	waitFor(t, "being told that keys are needed", func() bool { return advised == 1 })
+	if !reflect.DeepEqual(contents(), before) {
+		t.Error("files were written without keys")
+	}
+
+	mainthread.Wait(func() {
+		// Naming the keys in the settings encrypts the files of every
+		// workspace and shows the one in use.
+		s := w.config
+		s.PublicKey, s.PrivateKey = public, private
+		if err := w.applySettings(s); err != nil {
+			t.Error(err)
+		}
+		if asked != 1 {
+			t.Errorf("the passphrase was asked for %d times", asked)
+		}
+		allEncrypted()
+		if !loaded(w, 1) || w.StatusBar().CurrentMessage() != "" {
+			t.Errorf("the workspace was not loaded: status %q", w.StatusBar().CurrentMessage())
+		}
+
+		// What is saved afterwards is encrypted too.
+		w.environments.add()
+		allEncrypted()
+		if !loaded(w, 2) {
+			t.Error("an environment was not added")
+		}
+
+		// Keys that are not a pair are refused, and the ones there are kept.
+		s = w.config
+		s.PublicKey = otherPublic
+		if err := w.applySettings(s); err == nil || !strings.Contains(err.Error(), "cannot be used") {
+			t.Errorf("err = %v", err)
+		}
+		if w.config.PublicKey != public || w.keys.Err() != nil || !loaded(w, 2) {
+			t.Errorf("settings changed: %+v", w.config)
+		}
+		w.Close()
+	})
+	if saved := settings.Load(files.Settings); saved.PublicKey != public || saved.PrivateKey != private {
+		t.Errorf("saved settings = %+v", saved)
+	}
+
+	// The next run asks for the passphrase and reads the files.
+	asked, advised = 0, 0
+	mainthread.Wait(func() {
+		w = NewWindow(files.Files)
+		w.Show()
+		if asked != 1 {
+			t.Errorf("the passphrase was asked for %d times", asked)
+		}
+		if !loaded(w, 2) {
+			t.Error("the encrypted workspace was not loaded")
+		}
+
+		// Other keys encrypt every file again.
+		s := w.config
+		s.PublicKey, s.PrivateKey = otherPublic, otherPrivate
+		if err := w.applySettings(s); err != nil {
+			t.Error(err)
+		}
+		allEncrypted()
+		other, err := crypt.Open(otherPublic, otherPrivate, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		for _, path := range []string{paths[0], paths[2]} {
+			if got, err := env.LoadWith(path, other); err != nil || len(got.Environments) == 0 {
+				t.Errorf("%s: %+v, %v", path, got, err)
+			}
+		}
+		if advised != 0 {
+			t.Errorf("told that keys are needed %d times", advised)
+		}
+
+		// Taking the keys away leaves the files as they are, shows
+		// nothing, and tells the user.
+		before = contents()
+		s = w.config
+		s.PublicKey, s.PrivateKey = "", ""
+		if err := w.applySettings(s); err != nil {
+			t.Error(err)
+		}
+		if advised != 1 || !empty(w) {
+			t.Errorf("keys taken away: advised %d times, status %q", advised, w.StatusBar().CurrentMessage())
+		}
+		w.environments.add()
+		if !reflect.DeepEqual(contents(), before) {
+			t.Error("files were changed when the keys were taken away")
+		}
+
+		// Putting them back shows what is in the files.
+		s = w.config
+		s.PublicKey, s.PrivateKey = otherPublic, otherPrivate
+		if err := w.applySettings(s); err != nil {
+			t.Error(err)
+		}
+		if !loaded(w, 2) {
+			t.Error("the workspace was not loaded once the keys were given")
+		}
+		w.Close()
+	})
+}
+
+func TestEncryptionSettings(t *testing.T) {
+	mainthread.Wait(func() {
+		current := settings.Settings{PublicKey: "/keys/id.pub", PrivateKey: "/keys/id"}
+		d := newSettingsDialog(nil, current, Files{Workspaces: "workspaces"})
+		defer d.DeleteLater()
+
+		if d.publicKey.Text() != "/keys/id.pub" || d.privateKey.Text() != "/keys/id" {
+			t.Errorf("keys shown = %q, %q", d.publicKey.Text(), d.privateKey.Text())
+		}
+		d.publicKey.SetText("  /other/id.pub ")
+		d.privateKey.SetText("")
+		if got := d.settings(current); got.PublicKey != "/other/id.pub" || got.PrivateKey != "" {
+			t.Errorf("settings = %+v", got)
 		}
 	})
 }
