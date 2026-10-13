@@ -11,14 +11,26 @@ bindings.
 - **No account, no cloud.** There is nothing to sign in to and nothing is
   synchronised anywhere. TriggerAPI works the same with no network at all.
 - **No telemetry.** The only requests it makes are the ones you send.
-- **Your data is yours.** Requests, environments and settings are plain JSON
-  files in ordinary folders, which you can read, back up, copy to another
-  machine or keep in version control. See [Running](#running) for where they
-  are.
+- **Your data is yours.** Requests, environments and settings are files in
+  ordinary folders, which you can back up, copy to another machine or keep in
+  a folder that is synced. See [Running](#running) for where they are.
+- **Encrypted on disk.** Requests and environments hold tokens and passwords,
+  so they are encrypted with your own SSH keys, and a workspace is shared by
+  encrypting it for the other person's public key. There is no key of
+  TriggerAPI's and no service in the middle. See [Encryption](#encryption).
 - **Native.** It is a single compiled program with a Qt interface, not a web
   browser in a window.
 - **REST and gRPC together.** Both kinds of request live in the same folders,
   use the same environments and capture values for each other.
+- **A whole gRPC server as requests, in two clicks.** TriggerAPI asks the
+  server what it has, lists every endpoint, and makes a saved request of each
+  one you tick, in a folder for each service. There are no protobuf files to
+  find and nothing to type. When the server gains endpoints, open one of
+  those requests and add the new ones to the same folders. See
+  [Creating requests from a server](#creating-requests-from-a-server).
+- **Nothing left unfilled by accident.** A `{{placeholder}}` the environment
+  does not define, or defines as nothing, is red wherever it is used, before
+  the request is sent.
 - **Easy to move to.** Postman collections and environments, and OpenAPI and
   Swagger documents, are imported as folders of requests.
 - **Free software.** It is licensed under the GPL, so it can be used, studied,
@@ -52,6 +64,11 @@ bindings.
   protobuf files are needed, and an example message can be filled in for the
   method chosen.
 - A Format button sets out the JSON of the message, as it does a REST body.
+- The Service Definitions tab lists the endpoints of the server under their
+  services, each with a checkbox. Create Requests makes a folder of saved
+  requests from those that are ticked, and Update Requests adds more to a
+  folder made that way. See
+  [Creating requests from a server](#creating-requests-from-a-server).
 
 **Responses**
 
@@ -80,6 +97,9 @@ bindings.
 
 - Keep separate sets of environments and requests in workspaces, and switch
   between them.
+- The workspace and the environment in use are shown above the request, in
+  drop-downs which switch to another, with a button beside the environment
+  to edit it.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically, and
   can be searched by name.
@@ -100,8 +120,10 @@ bindings.
 - Give each variable a description. Several variables can share a name, to
   keep the values it is switched between: switching one on switches the
   other off.
-- Placeholders are coloured where they are used, differently if the selected
-  environment does not define them.
+- Placeholders are coloured wherever they are used, the password of basic
+  authorization included, which is shown as it is typed: green if the
+  selected environment gives them a value, and red if it does not define
+  them or defines them as nothing.
 - Give a variable a function as its value to have the value generated for
   each request. See [Functions](#functions).
 
@@ -111,9 +133,9 @@ bindings.
   workspaces are kept in.
 - Set how long a request can take before it is given up on, and whether a
   REST request follows redirects or shows the response that redirects.
-- Choose the colours of the interface: the icons of the sidebar and of each
-  type of request, the buttons, placeholders, errors, the capture marks, the
-  matches of a search and JSON highlighting.
+- Choose the colours of the interface, which are listed in sections: the
+  icons of the sidebar and of each type of request, the buttons, placeholders,
+  errors, the capture marks, the matches of a search and JSON highlighting.
 - The size and layout of the window are remembered.
 - Escape closes the environment editor, the search of a response, the curl
   command and the URL preview.
@@ -303,6 +325,10 @@ It runs under both X11 and Wayland, using Wayland where the session is one.
 To use the other, set `QT_QPA_PLATFORM` to `xcb` or `wayland` when starting
 it.
 
+On GNOME it takes its colours, light or dark, from the desktop, through Qt's
+GTK theme plugin, which is in the AppImage. GTK itself is not, and is the
+desktop's own.
+
 The C library of the system (glibc) is not put in the AppImage, as it cannot
 be reliably: it has to match the system's graphics drivers. It is built on an
 old distribution instead, and runs on any with glibc 2.35 or later (Ubuntu
@@ -323,6 +349,29 @@ uses TLS.
 Unary and server-streaming methods are supported. The responses of a streaming
 method are shown together once the call ends or is cancelled. Loading service
 definitions from `.proto` files is not supported yet.
+
+### Creating requests from a server
+
+The Service Definitions tab of a gRPC request lists every endpoint of the
+server, by name, under a heading for each service.
+
+1. Tick the endpoints you want, or use Select All.
+2. Click Create Requests.
+
+A folder named after the server address is added to the Requests tab, with a
+folder inside it for each service and a request in that for each endpoint
+ticked. Each request has the server address and its method, and no message:
+open it and use Use Example Message to fill one in.
+
+To add endpoints later, open any request in those folders. The endpoints
+there are requests for already are ticked and cannot be unticked. Tick
+others and click Update Requests, and they are added to the same folders.
+Only the folders the open request is in are changed, and requests are only
+removed in the sidebar.
+
+Which endpoints there are requests for is worked out from the names of the
+service folders and the method each request calls, so the outer folder and
+the requests can be renamed freely.
 
 ## Running
 
