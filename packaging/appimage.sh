@@ -108,13 +108,28 @@ export LINUXDEPLOY_OUTPUT_VERSION="$VERSION"
 	--custom-apprun packaging/AppRun \
 	--plugin qt
 
+# Qt asks the desktop what it looks like through a platform theme, and on
+# GNOME that is the GTK one: without it a dark desktop is not seen to be
+# dark, and the windows are light. The tool leaves it out, so it is copied in
+# here, by itself: GTK and what it uses are the desktop's own, and are not
+# put in the AppImage. Where there is no GTK it is not loaded and Qt carries
+# on without it. The libraries of Qt it uses are those the program has
+# loaded already.
+THEMES="$("$QMAKE" -query QT_INSTALL_PLUGINS)/platformthemes"
+if [ -e "$THEMES/libqgtk3.so" ]; then
+	mkdir -p "$APPDIR/usr/plugins/platformthemes"
+	cp "$THEMES/libqgtk3.so" "$APPDIR/usr/plugins/platformthemes/"
+fi
+
 # Without one of these the AppImage would be made, and then not start under
-# X11 or under Wayland, so it is not made at all.
+# X11 or under Wayland, or not look like a GNOME desktop it is run on, so it
+# is not made at all.
 missing=0
 for plugin in \
 	platforms/libqxcb.so \
 	'platforms/libqwayland*.so' \
-	wayland-shell-integration/libxdg-shell.so; do
+	wayland-shell-integration/libxdg-shell.so \
+	platformthemes/libqgtk3.so; do
 	# The pattern is left to match here, where it is not in quotes.
 	if ! ls "$APPDIR/usr/plugins/"$plugin >/dev/null 2>&1; then
 		echo "Missing from the AppImage: $plugin" >&2
