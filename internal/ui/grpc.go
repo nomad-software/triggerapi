@@ -32,8 +32,9 @@ type grpcPanel struct {
 	metadata *keyValueTable
 	// captures are the variables to set from the response. See
 	// requestPanel.captures.
-	captures   *keyValueTable
-	definition *qt.QPlainTextEdit
+	captures *keyValueTable
+	// endpoints lists the methods of the server, to make requests of.
+	endpoints *endpointTable
 
 	// highlight colours the placeholders in the fields of the request.
 	highlight *placeholderHighlighter
@@ -126,16 +127,13 @@ func newGRPCPanel() *grpcPanel {
 	p.metadata.onChange = p.changed
 	p.highlight.table(p.metadata.table)
 
-	p.definition = qt.NewQPlainTextEdit2()
-	p.definition.SetFont(fixed)
-	p.definition.SetReadOnly(true)
-	p.definition.SetPlaceholderText("The services of the server are shown here once they have been loaded using server reflection.")
+	p.endpoints = newEndpointTable()
 
 	tabs := qt.NewQTabWidget2()
 	tabs.AddTab(plainPage(messageTab), "Message")
 	tabs.AddTab(p.auth.root, "Authorization")
 	tabs.AddTab(p.metadata.widget(), "Metadata")
-	tabs.AddTab(p.definition.QWidget, "Service Definition")
+	tabs.AddTab(plainPage(p.endpoints.root), "Service Definitions")
 
 	layout := qt.NewQVBoxLayout(p.root)
 	layout.AddLayout(top.QLayout)
@@ -205,7 +203,7 @@ func (p *grpcPanel) load(r rpc.Request) {
 	setCaptureRules(p.captures, r.Captures)
 	p.auth.load(r.Auth)
 
-	p.definition.SetPlainText("")
+	p.endpoints.setMethods(nil)
 	p.setStatus("")
 }
 
@@ -235,7 +233,7 @@ func (p *grpcPanel) setSchema(schema *rpc.Schema) {
 
 	p.updating = true
 	p.method.setMethods(names, current)
-	p.definition.SetPlainText(schema.Describe())
+	p.endpoints.setMethods(names)
 	p.updating = false
 
 	// Only a failure to load the definition is reported.
@@ -248,7 +246,7 @@ func (p *grpcPanel) setSchema(schema *rpc.Schema) {
 
 // setSchemaError reports that the service definition could not be loaded.
 func (p *grpcPanel) setSchemaError(err error) {
-	p.definition.SetPlainText("")
+	p.endpoints.setMethods(nil)
 	p.setStatus("The service definition could not be loaded: " + err.Error())
 }
 

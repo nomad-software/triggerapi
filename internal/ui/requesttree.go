@@ -65,7 +65,9 @@ type requestTree struct {
 	onRename func(*collection.Request)
 	// onRemove is called after a request is removed.
 	onRemove func(*collection.Request)
-	onError  func(error)
+	// onSave is called after any change to the store, when it is saved.
+	onSave  func()
+	onError func(error)
 	// keys returns the keys the file is encrypted with, which are nil if
 	// it is not to be.
 	keys func() *crypt.Keys
@@ -886,12 +888,27 @@ func (t *requestTree) importFile(source importSource, path string) error {
 	}
 	folder.Collapse()
 
+	t.adopt(folder)
+	return nil
+}
+
+// extended shows and saves what has been added to the store from outside
+// the tree, keeping a request selected.
+func (t *requestTree) extended(selected *collection.Request) {
+	t.clearSearch()
+	t.store.Sort()
+	t.draw(selected)
+	t.save()
+}
+
+// adopt adds a folder, with everything in it, to the top level, and selects
+// it.
+func (t *requestTree) adopt(folder *collection.Folder) {
 	t.store.Folders = append(t.store.Folders, folder)
 	t.clearSearch()
 	t.store.Sort()
 	t.draw(folder)
 	t.save()
-	return nil
 }
 
 // rename starts editing the name of the selected folder or request.
@@ -973,6 +990,9 @@ func plural(n int, thing string) string {
 }
 
 func (t *requestTree) save() {
+	if t.onSave != nil {
+		defer t.onSave()
+	}
 	if t.path == "" {
 		return
 	}

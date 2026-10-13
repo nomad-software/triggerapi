@@ -293,6 +293,8 @@ func NewWindow(files Files) *Window {
 		}
 	}
 	w.requests.onRename = w.tabs.rename
+	// What is in the folders decides which endpoints have requests.
+	w.requests.onSave = w.syncEndpoints
 	w.tabs.onSelect = func(from, to *requestTab) {
 		w.stash(from)
 		w.showTab(to, true)
@@ -337,6 +339,7 @@ func NewWindow(files Files) *Window {
 	w.grpc.onTarget = func() { w.reflect(false) }
 	w.grpc.reload.OnClicked(func() { w.reflect(true) })
 	w.grpc.example.OnClicked(w.useExample)
+	w.grpc.endpoints.onCreate = w.createRequests
 	w.grpc.invoke.OnClicked(w.invoke)
 	w.grpc.url.OnReturnPressed(w.invoke)
 
@@ -1340,6 +1343,55 @@ func (w *Window) invoke() {
 	})
 }
 
+// endpointCollection returns the folder of requests made from endpoints that
+// the gRPC request on show is in, or nil if it is in none. That is the
+// folder which holds the folder the request is in, when that one is named
+// after a service of the server. What the outer folder is called makes no
+// difference.
+func (w *Window) endpointCollection() *collection.Folder {
+	if w.open == nil || w.open.Type != collection.TypeGRPC {
+		return nil
+	}
+	service := w.requests.store.FolderOf(w.open)
+	if service == nil || !w.grpc.endpoints.hasService(service.Name) {
+		return nil
+	}
+	outer, _ := w.requests.store.ParentOf(service)
+	return outer
+}
+
+// syncEndpoints has the endpoints which the collection of the request on
+// show has requests for ticked in the Service Definitions tab.
+func (w *Window) syncEndpoints() {
+	if outer := w.endpointCollection(); outer != nil {
+		w.grpc.endpoints.setExisting(endpointsOf(outer), true)
+		return
+	}
+	w.grpc.endpoints.setExisting(nil, false)
+}
+
+// createRequests makes a gRPC request for each of the methods, for the
+// server of the request on show, and shows them in the sidebar. They are
+// added to the collection that request is in, and to no other. If it is in
+// none they are a new folder at the top level, named after the server.
+func (w *Window) createRequests(methods []string) {
+	url := w.grpc.url.Text()
+	if outer := w.endpointCollection(); outer != nil {
+		addEndpoints(outer, url, methods)
+		w.requests.extended(w.open)
+		w.sidebar.SetCurrentIndex(tabRequests)
+		return
+	}
+
+	name := strings.TrimSpace(url)
+	if name == "" {
+		name = "New Folder"
+	}
+
+	w.requests.adopt(endpointFolder(name, url, methods))
+	w.sidebar.SetCurrentIndex(tabRequests)
+}
+
 // reflect loads the service definition of the server the gRPC request is
 // for, to offer its methods. One loaded before is used again unless force is
 // set.
@@ -1357,6 +1409,7 @@ func (w *Window) reflect(force bool) {
 
 	if schema, ok := w.schemas[target]; ok && !force {
 		w.grpc.setSchema(schema)
+		w.syncEndpoints()
 		return
 	}
 
@@ -1381,6 +1434,7 @@ func (w *Window) reflect(force bool) {
 				return
 			}
 			w.grpc.setSchema(schema)
+			w.syncEndpoints()
 		})
 	}()
 }
