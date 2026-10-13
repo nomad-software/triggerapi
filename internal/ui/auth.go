@@ -31,7 +31,8 @@ type authEditor struct {
 }
 
 // newAuthEditor creates the editor. The placeholders in its fields are
-// coloured by the highlighter.
+// coloured by the highlighter. The password is shown as it is typed, like the
+// token, so that a placeholder in it can be read.
 func newAuthEditor(highlight *placeholderHighlighter) *authEditor {
 	a := &authEditor{
 		typ:      qt.NewQComboBox2(),
@@ -43,14 +44,11 @@ func newAuthEditor(highlight *placeholderHighlighter) *authEditor {
 	for _, t := range authTypes {
 		a.typ.AddItem(t.label)
 	}
-	a.password.SetEchoMode(qt.QLineEdit__Password)
 
 	for _, edit := range []*qt.QLineEdit{a.username, a.password, a.token} {
 		edit.OnTextChanged(func(string) { a.changed() })
+		highlight.lineEdit(edit)
 	}
-	// The password is masked, so there is nothing to colour in it.
-	highlight.lineEdit(a.username)
-	highlight.lineEdit(a.token)
 
 	basic := qt.NewQWidget2()
 	basicForm := qt.NewQFormLayout(basic)

@@ -13,12 +13,15 @@ import (
 // text, in the UTF-16 code units Qt counts in.
 type placeholderRange struct {
 	start, length int
-	// known is false if the active environment does not define it.
+	// known is false if the active environment does not define it, or
+	// defines it as nothing.
 	known bool
 }
 
 // placeholderRanges finds the placeholders in text. expand substitutes the
 // variables of the active environment, and is used to tell which are defined.
+// One that is defined as nothing counts as not defined, as it leaves as much
+// of a gap in what is sent.
 func placeholderRanges(text string, expand func(string) string) []placeholderRange {
 	var ranges []placeholderRange
 
@@ -28,7 +31,8 @@ func placeholderRanges(text string, expand func(string) string) []placeholderRan
 		match := text[loc[0]:loc[1]]
 		length := utf16Len(match)
 
-		ranges = append(ranges, placeholderRange{start: units, length: length, known: expand(match) != match})
+		value := expand(match)
+		ranges = append(ranges, placeholderRange{start: units, length: length, known: value != match && value != ""})
 
 		units += length
 		last = loc[1]
@@ -47,7 +51,8 @@ func utf16Len(s string) int {
 
 // placeholderHighlighter colours the placeholders in line edits and text
 // documents: in one of the colours of the settings if the active environment
-// defines them (colourFound), and in another if not (colourNotFound).
+// defines them (colourFound), and in another if it does not, or defines them
+// as nothing (colourNotFound).
 type placeholderHighlighter struct {
 	// expand substitutes the variables of the active environment.
 	expand func(string) string

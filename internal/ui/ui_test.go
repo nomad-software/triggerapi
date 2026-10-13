@@ -704,14 +704,14 @@ func TestMenuBar(t *testing.T) {
 		}
 
 		// Quit closes the window, which saves the settings.
-		w.Resize(900, 500)
+		w.Resize(900, 600)
 		w.quit.Trigger()
 		if w.IsVisible() {
 			t.Error("window still open after quit")
 		}
 	})
 
-	if got := settings.Load(files.Settings); got.Width != 900 || got.Height != 500 {
+	if got := settings.Load(files.Settings); got.Width != 900 || got.Height != 600 {
 		t.Errorf("settings not saved on quit: %+v", got)
 	}
 }
@@ -1620,7 +1620,7 @@ func TestHeader(t *testing.T) {
 		if tabTitle(w) != untitled || selector.Count() != 1 || selector.CurrentText() != "None" {
 			t.Errorf("tab = %q, environment %q", tabTitle(w), selector.CurrentText())
 		}
-		// The selector is beside the tabs, and in neither request UI.
+		// The selector is above the tabs, and in neither request UI.
 		if w.request.root.IsAncestorOf(selector.QWidget) || w.grpc.root.IsAncestorOf(selector.QWidget) || w.stack.IsAncestorOf(selector.QWidget) || selector.IsHidden() {
 			t.Error("the environment selector is inside the request UI")
 		}
@@ -1682,6 +1682,83 @@ func TestHeader(t *testing.T) {
 	if saved, err := loadEnvs(files.Environments); err != nil || saved.Active != 1 || saved.Environments[0].Name != "Dev" {
 		t.Errorf("saved %+v, %v", saved, err)
 	}
+}
+
+func TestWorkspaceSelector(t *testing.T) {
+	files := testFiles(t)
+
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(files.Files)
+		w.Show()
+		w.workspaces.warn = func(message string) { t.Error(message) }
+		selector := w.environment
+
+		names := func(combo *qt.QComboBox) []string {
+			var names []string
+			for i := range combo.Count() {
+				names = append(names, combo.ItemText(i))
+			}
+			return names
+		}
+
+		// The workspace in use is the one selected, before the environment
+		// and on a line above the tabs.
+		if !reflect.DeepEqual(names(selector.workspace), []string{"Default"}) || selector.workspace.CurrentText() != "Default" {
+			t.Errorf("workspaces = %q, selected %q", names(selector.workspace), selector.workspace.CurrentText())
+		}
+		if selector.root.IsAncestorOf(w.tabs.bar.QWidget) || w.stack.IsAncestorOf(selector.workspace.QWidget) {
+			t.Error("the selector is not apart from the tabs and the request UI")
+		}
+
+		// There is nothing to edit until there is an environment.
+		if selector.edit.IsEnabled() {
+			t.Error("the edit button is enabled with no environment")
+		}
+		w.environments.add()
+		w.editor.name.SetText("Local")
+		w.closeEditor()
+		if !selector.edit.IsEnabled() {
+			t.Error("the edit button is disabled with an environment selected")
+		}
+
+		// The button opens the environment in the editor.
+		selector.edit.Click()
+		if w.stack.CurrentIndex() != pageEditor || w.editor.name.Text() != "Local" {
+			t.Errorf("page = %d, editing %q", w.stack.CurrentIndex(), w.editor.name.Text())
+		}
+		w.closeEditor()
+
+		// A workspace that is added is listed and selected.
+		w.workspaces.add()
+		if !reflect.DeepEqual(names(selector.workspace), []string{"Default", "New Workspace"}) || selector.workspace.CurrentText() != "New Workspace" {
+			t.Errorf("workspaces = %q, selected %q", names(selector.workspace), selector.workspace.CurrentText())
+		}
+		if selector.environment.Count() != 1 || selector.edit.IsEnabled() {
+			t.Errorf("the new workspace has %d environments listed", selector.environment.Count())
+		}
+
+		// Selecting another makes it the one in use, with its environments.
+		selector.workspace.SetCurrentIndex(0)
+		if w.workspaces.current() != "Default" || w.config.Workspace != "Default" || selector.workspace.CurrentText() != "Default" {
+			t.Errorf("workspace = %q, selected %q", w.workspaces.current(), selector.workspace.CurrentText())
+		}
+		if selector.environment.CurrentText() != "Local" || !selector.edit.IsEnabled() {
+			t.Errorf("environment = %q", selector.environment.CurrentText())
+		}
+
+		// A workspace that is renamed is listed by its new name.
+		w.workspaces.list.CurrentItem().SetText("Zeta")
+	})
+
+	waitFor(t, "the workspace to be renamed", func() bool {
+		var ok bool
+		mainthread.Wait(func() {
+			s := w.environment.workspace
+			ok = s.Count() == 2 && s.ItemText(0) == "New Workspace" && s.CurrentText() == "Zeta"
+		})
+		return ok
+	})
 }
 
 func TestGRPCRequestBarOrder(t *testing.T) {

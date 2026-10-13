@@ -7,19 +7,23 @@ import (
 // noEnvironment is the entry of the environment selector for using none.
 const noEnvironment = "None"
 
-// maxEnvironmentWidth is the most the environment selector widens to for a
-// long name.
-const maxEnvironmentWidth = 480
-
-// environmentSelector selects the environment in use. It is beside the tabs
-// of the requests and not in any of them, as the environment is the same for
+// environmentSelector selects the workspace and the environment in use, and
+// has a button to edit the environment with. It is on a line of its own above
+// the tabs of the requests and not in any of them, as both are the same for
 // them all.
 type environmentSelector struct {
 	root        *qt.QWidget
+	workspace   *qt.QComboBox
 	environment *qt.QComboBox
+	// edit opens the environment in use in the editor. The window says what
+	// it does when clicked.
+	edit *qt.QToolButton
 
 	updating bool
 
+	// onWorkspace is called when the user selects a workspace, with its
+	// index.
+	onWorkspace func(index int)
 	// onEnvironment is called when the user selects an environment, with
 	// its index, or -1 for none.
 	onEnvironment func(index int)
@@ -28,43 +32,78 @@ type environmentSelector struct {
 func newEnvironmentSelector() *environmentSelector {
 	s := &environmentSelector{
 		root:        qt.NewQWidget2(),
+		workspace:   qt.NewQComboBox2(),
 		environment: qt.NewQComboBox2(),
+		edit:        newIconButton(colourEnvironments, drawGlobe, "Edit the selected environment"),
 	}
 
-	label := qt.NewQLabel3("Environment:")
-	label.SetStyleSheet("font-weight: bold")
+	label := func(text string) *qt.QWidget {
+		label := qt.NewQLabel3(text)
+		label.SetStyleSheet("font-weight: bold")
+		return label.QWidget
+	}
 
-	// It is as wide as the longest name, which a combo box otherwise is
-	// only for the names it has when first shown, up to a width that leaves
-	// room for the tabs.
-	s.environment.SetMinimumContentsLength(16)
-	s.environment.SetSizeAdjustPolicy(qt.QComboBox__AdjustToContents)
-	s.environment.SetMaximumWidth(maxEnvironmentWidth)
+	// Each is as wide as its longest name, which a combo box otherwise is
+	// only for the names it has when first shown.
+	for _, combo := range []*qt.QComboBox{s.workspace, s.environment} {
+		combo.SetMinimumContentsLength(16)
+		combo.SetSizeAdjustPolicy(qt.QComboBox__AdjustToContents)
+	}
+	s.workspace.OnCurrentIndexChanged(func(index int) {
+		if !s.updating && index >= 0 && s.onWorkspace != nil {
+			s.onWorkspace(index)
+		}
+	})
 	s.environment.OnCurrentIndexChanged(func(index int) {
-		if !s.updating && s.onEnvironment != nil {
+		if !s.updating && index >= 0 && s.onEnvironment != nil {
 			// The first entry is for no environment.
 			s.onEnvironment(index - 1)
 		}
 	})
 
 	layout := qt.NewQHBoxLayout(s.root)
-	layout.SetContentsMargins(0, 0, 0, 0)
-	layout.AddWidget(label.QWidget)
+	layout.SetContentsMargins(9, 4, 9, 4)
+	layout.AddStretch()
+	layout.AddWidget(label("Workspace:"))
+	layout.AddWidget(s.workspace.QWidget)
+	layout.AddSpacing(12)
+	layout.AddWidget(label("Environment:"))
 	layout.AddWidget(s.environment.QWidget)
+	layout.AddWidget(s.edit.QWidget)
 
 	s.setEnvironments(nil, -1)
 
 	return s
 }
 
+// setWorkspaces lists the workspaces to choose from, with the one at the
+// active index selected. onWorkspace is not called.
+func (s *environmentSelector) setWorkspaces(names []string, active int) {
+	s.fill(s.workspace, names, active)
+}
+
 // setEnvironments lists the environments to choose from, with the one at the
 // active index selected, or none if it is -1. onEnvironment is not called.
+// There is nothing for the button to edit when none is selected.
 func (s *environmentSelector) setEnvironments(names []string, active int) {
-	s.updating = true
-	defer func() { s.updating = false }()
+	s.fill(s.environment, append([]string{noEnvironment}, names...), active+1)
+	s.edit.SetEnabled(active >= 0)
+}
 
-	s.environment.Clear()
-	s.environment.AddItem(noEnvironment)
-	s.environment.AddItems(names)
-	s.environment.SetCurrentIndex(active + 1)
+// fill gives a combo box its entries and selects one of them, without what
+// it is listening with being called. The entries are left alone if they are
+// already those wanted, as this is also called while one is being chosen.
+func (s *environmentSelector) fill(combo *qt.QComboBox, names []string, current int) {
+	defer func(prev bool) { s.updating = prev }(s.updating)
+	s.updating = true
+
+	same := combo.Count() == len(names)
+	for i := 0; same && i < len(names); i++ {
+		same = combo.ItemText(i) == names[i]
+	}
+	if !same {
+		combo.Clear()
+		combo.AddItems(names)
+	}
+	combo.SetCurrentIndex(current)
 }

@@ -142,7 +142,8 @@ type Window struct {
 	// tabs is the row of tabs above the request UI: one for each pinned
 	// request, and one for the request last selected in the sidebar.
 	tabs *requestTabs
-	// environment selects the environment in use, beside the tabs.
+	// environment selects the workspace and the environment in use, above
+	// the tabs.
 	environment *environmentSelector
 	// stack shows the REST request UI, the gRPC request UI or the
 	// environment editor.
@@ -277,6 +278,7 @@ func NewWindow(files Files) *Window {
 
 	w.workspaces.onOpen = w.openWorkspace
 	w.workspaces.onRename = w.renamedWorkspace
+	w.workspaces.onList = w.updateHeaders
 
 	w.requests = newRequestTree(requests, requestsPath)
 	w.requests.onError = saveFailed
@@ -406,14 +408,11 @@ func NewWindow(files Files) *Window {
 	pagesLayout := qt.NewQVBoxLayout(pages)
 	pagesLayout.SetContentsMargins(0, 0, 0, 0)
 	pagesLayout.SetSpacing(0)
-	// The environment is selected on the same line, at the right, and
-	// stays there when the tabs are put away.
-	top := qt.NewQHBoxLayout2()
-	top.SetContentsMargins(0, 0, 9, 0)
-	top.AddWidget3(w.tabs.bar.QWidget, 1, qt.AlignBottom)
-	top.AddStretch()
-	top.AddWidget(w.environment.root)
-	pagesLayout.AddLayout(top.QLayout)
+	// The workspace and the environment are selected on a line of their
+	// own above them, which leaves the tabs the whole width and stays
+	// there when the tabs are put away.
+	pagesLayout.AddWidget(w.environment.root)
+	pagesLayout.AddWidget(w.tabs.bar.QWidget)
 	pagesLayout.AddWidget2(w.stack.QWidget, 1)
 	w.split.AddWidget(pages)
 	w.split.SetStretchFactor(0, 0)
@@ -453,9 +452,12 @@ func NewWindow(files Files) *Window {
 		qt.NewQShortcut2(qt.NewQKeySequence2(fmt.Sprintf("Ctrl+%d", tab+1)), w.QObject).OnActivated(func() { w.focusSidebar(tab) })
 	}
 
-	// Selecting an environment beside the tabs selects it in the sidebar,
-	// which is what makes it the active one.
+	// Selecting a workspace or an environment above the tabs selects it in
+	// the sidebar, which is what makes it the one in use. The button beside
+	// the environment does what the edit button of the sidebar does.
+	w.environment.onWorkspace = w.workspaces.list.SetCurrentRow
 	w.environment.onEnvironment = w.environments.list.SetCurrentRow
+	w.environment.edit.OnClicked(w.environments.edit)
 
 	w.newMenuBar()
 	w.updateHeaders()
@@ -1168,9 +1170,11 @@ func (w *Window) status(message string) {
 	w.StatusBar().ShowMessage(strings.Join(strings.Fields(message), " "))
 }
 
-// updateHeaders lists the environments beside the tabs, with the active one
-// selected.
+// updateHeaders lists the workspaces and the environments above the tabs,
+// with those in use selected.
 func (w *Window) updateHeaders() {
+	w.environment.setWorkspaces(w.workspaces.names, w.workspaces.list.CurrentRow())
+
 	store := w.environments.store
 	names := make([]string, len(store.Environments))
 	for i, e := range store.Environments {

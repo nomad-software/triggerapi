@@ -34,6 +34,8 @@ type workspaceList struct {
 	onOpen func(name string)
 	// onRename is called after the workspace in use is given another name.
 	onRename func(name string)
+	// onList is called after the workspaces have been listed again.
+	onList func()
 }
 
 func newWorkspaceList(dir func() string) *workspaceList {
@@ -102,7 +104,12 @@ func newWorkspaceList(dir func() string) *workspaceList {
 // selected, which is the first if there is none of that name, or an empty
 // string if there are none at all.
 func (s *workspaceList) load(selected string) (string, error) {
-	defer func(prev bool) { s.updating = prev }(s.updating)
+	defer func(prev bool) {
+		s.updating = prev
+		if s.onList != nil {
+			s.onList()
+		}
+	}(s.updating)
 	s.updating = true
 
 	names, err := workspace.List(s.dir())
