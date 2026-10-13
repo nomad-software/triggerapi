@@ -5944,6 +5944,26 @@ func TestSettingsTabs(t *testing.T) {
 			t.Error("the font or the colours are not on the User interface tab")
 		}
 
+		// Every colour has a row of the table, under a heading for its
+		// section which is as wide as the table.
+		table := d.colourList
+		if want := len(colourSections) + 1 + len(colourKinds) + len(tokenKinds); table.RowCount() != want {
+			t.Errorf("the table of colours has %d rows, want %d", table.RowCount(), want)
+		}
+		if table.Item(0, colColourName).Text() != "Sidebar" || table.ColumnSpan(0, colColourName) != 2 || table.Item(1, colColourName).Text() != colourLabel(colourWorkspaces) {
+			t.Errorf("first rows = %q, %q", table.Item(0, colColourName).Text(), table.Item(1, colColourName).Text())
+		}
+		for kind, s := range d.swatches {
+			if !table.IsAncestorOf(s.button.QWidget) {
+				t.Errorf("the swatch of %v is not in the table", kind)
+			}
+		}
+		for kind, s := range d.json {
+			if !table.IsAncestorOf(s.button.QWidget) {
+				t.Errorf("the swatch of JSON %v is not in the table", kind)
+			}
+		}
+
 		// The buttons are given the dialog, to be the parent of what they
 		// show.
 		exported, imported := 0, 0

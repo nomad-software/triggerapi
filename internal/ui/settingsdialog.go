@@ -43,6 +43,8 @@ type settingsDialog struct {
 	jsonColours settings.JSONColours
 	swatches    map[colourKind]*swatch
 	json        map[tokenKind]*swatch
+	// colourList is the table the swatches are listed in.
+	colourList *qt.QTableWidget
 
 	// initialFont is the family the font selector started on. It can differ
 	// from the setting if that font is not installed.
@@ -60,6 +62,10 @@ const (
 // tabMargin is the space between the edge of a tab of the settings dialog
 // and what is on it.
 const tabMargin = 20
+
+// colourTableHeight is the least height of the table of colours, which
+// scrolls to show the rest.
+const colourTableHeight = 300
 
 // newSettingsDialog creates the dialog showing the current settings. The
 // defaults are the locations used when the settings do not name one.
@@ -182,9 +188,11 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	coloursLayout.AddWidget(sectionHeading("Font").QWidget)
 	coloursLayout.AddLayout(fontRow.QLayout)
 	coloursLayout.AddSpacing(14)
-	coloursLayout.AddLayout(d.colourGrid().QLayout)
-	coloursLayout.AddStretch()
-	coloursLayout.AddSpacing(tabMargin)
+	coloursLayout.AddWidget(sectionHeading("Colours").QWidget)
+	// The table has what height the tab has left, and scrolls.
+	d.colourList = d.colourTable()
+	d.colourList.SetMinimumHeight(colourTableHeight)
+	coloursLayout.AddWidget2(d.colourList.QWidget, 1)
 
 	reset := qt.NewQPushButton3("Use Default Colours")
 	reset.OnClicked(d.resetColours)
@@ -253,98 +261,98 @@ func sectionHeading(title string) *qt.QLabel {
 	return label
 }
 
-// colourSections are the colours as they are set out on the User interface tab: in
-// two columns of sections, each a heading above the colours of one sort.
-// Those of JSON are a section of their own, after the last of these.
-var colourSections = [2][]struct {
+// colourSections are the colours as they are listed on the User interface
+// tab: in sections, each a heading above the colours of one sort. Those of
+// JSON are a section of their own, after the last of these.
+var colourSections = []struct {
 	title string
 	kinds []colourKind
 }{
-	{
-		{"Sidebar", []colourKind{colourWorkspaces, colourEnvironments, colourRequests}},
-		{"Request types", []colourKind{colourREST, colourGRPC}},
-		{"Buttons", []colourKind{colourSend, colourAction, colourRemove}},
-	},
-	{
-		{"Text", []colourKind{colourFound, colourNotFound, colourError, colourMatch}},
-		{"Capture", []colourKind{colourCaptured, colourNotCaptured}},
-	},
+	{"Sidebar", []colourKind{colourWorkspaces, colourEnvironments, colourRequests}},
+	{"Request types", []colourKind{colourREST, colourGRPC}},
+	{"Buttons", []colourKind{colourSend, colourAction, colourRemove}},
+	{"Text", []colourKind{colourFound, colourNotFound, colourError, colourMatch}},
+	{"Capture", []colourKind{colourCaptured, colourNotCaptured}},
 }
 
 // swatchWidth is the width of every swatch, so that they line up.
 const swatchWidth = 140
 
-// colourGrid lays out the swatches of every colour, in two columns of
-// sections side by side. Each is a grid of its own, of names and swatches,
-// so that the rows of one do not have to line up with those of the other.
-func (d *settingsDialog) colourGrid() *qt.QHBoxLayout {
-	var grids [2]*qt.QGridLayout
-	// rows counts the rows used in each.
-	var rows [2]int
-	for side := range grids {
-		grid := qt.NewQGridLayout2()
-		grid.SetHorizontalSpacing(16)
-		grid.SetVerticalSpacing(8)
-		grids[side] = grid
+// The columns of the table of colours.
+const (
+	colColourName = iota
+	colColourSwatch
+)
+
+// colourTable lists every colour in a table, which scrolls: a row for each,
+// with its name and its swatch, under a heading row for each section, as
+// the endpoints of a gRPC server are listed under their services.
+func (d *settingsDialog) colourTable() *qt.QTableWidget {
+	table := qt.NewQTableWidget3(0, 2)
+	table.SetHorizontalHeaderLabels([]string{"Name", "Colour"})
+	table.VerticalHeader().SetVisible(false)
+	table.VerticalHeader().SetSectionResizeMode(qt.QHeaderView__ResizeToContents)
+	table.SetSelectionMode(qt.QAbstractItemView__NoSelection)
+	table.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
+	table.SetFocusPolicy(qt.NoFocus)
+	table.SetVerticalScrollBarPolicy(qt.ScrollBarAsNeeded)
+	table.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
+	header := table.HorizontalHeader()
+	header.SetSectionResizeMode2(colColourName, qt.QHeaderView__Stretch)
+	header.SetSectionResizeMode2(colColourSwatch, qt.QHeaderView__ResizeToContents)
+
+	heading := func(title string) {
+		// A heading is as wide as the table.
+		item := qt.NewQTableWidgetItem2(title)
+		item.SetFlags(qt.ItemIsEnabled)
+		font := item.Font()
+		font.SetBold(true)
+		item.SetFont(font)
+
+		row := table.RowCount()
+		table.InsertRow(row)
+		table.SetItem(row, colColourName, item)
+		table.SetSpan(row, colColourName, 1, 2)
+	}
+	add := func(name string, s *swatch) {
+		item := qt.NewQTableWidgetItem2(name)
+		item.SetFlags(qt.ItemIsEnabled)
+
+		// The swatch stands a little clear of the lines of its cell.
+		cell := qt.NewQWidget2()
+		layout := qt.NewQHBoxLayout(cell)
+		layout.SetContentsMargins(6, 3, 6, 3)
+		layout.AddWidget(s.button.QWidget)
+
+		row := table.RowCount()
+		table.InsertRow(row)
+		table.SetItem(row, colColourName, item)
+		table.SetCellWidget(row, colColourSwatch, cell)
 	}
 
-	heading := func(side int, title string) {
-		label := sectionHeading(title)
-		if rows[side] > 0 {
-			// A section stands apart from the one above it.
-			label.SetContentsMargins(0, 14, 0, 0)
-		}
-		grids[side].AddWidget3(label.QWidget, rows[side], 0, 1, 2)
-		rows[side]++
-	}
-	row := func(side int, name string, s *swatch) {
-		label := qt.NewQLabel3(name)
-		// The names are set in from the heading they are under.
-		label.SetContentsMargins(12, 0, 0, 0)
-		grids[side].AddWidget2(label.QWidget, rows[side], 0)
-		grids[side].AddWidget2(s.button.QWidget, rows[side], 1)
-		rows[side]++
-	}
-
-	for side, sections := range colourSections {
-		for _, section := range sections {
-			heading(side, section.title)
-			for _, k := range colourKinds {
-				if !slices.Contains(section.kinds, k.kind) {
-					continue
-				}
-				s := d.newSwatch(k.label, customIconColour(&d.colours, k.kind), func() string { return k.fallback })
-				d.swatches[k.kind] = s
+	for _, section := range colourSections {
+		heading(section.title)
+		for _, k := range colourKinds {
+			if !slices.Contains(section.kinds, k.kind) {
+				continue
 			}
-			// The colours are in the order the section gives them.
-			for _, kind := range section.kinds {
-				row(side, colourLabel(kind), d.swatches[kind])
-			}
+			s := d.newSwatch(k.label, customIconColour(&d.colours, k.kind), func() string { return k.fallback })
+			d.swatches[k.kind] = s
+		}
+		// The colours are in the order the section gives them.
+		for _, kind := range section.kinds {
+			add(colourLabel(kind), d.swatches[kind])
 		}
 	}
 
-	heading(1, "JSON")
+	heading("JSON")
 	for _, t := range tokenKinds {
 		s := d.newSwatch("JSON "+strings.ToLower(t.label[:1])+t.label[1:], customColour(&d.jsonColours, t.kind), func() string { return defaultJSONColours()[t.kind] })
 		d.json[t.kind] = s
-		row(1, t.label, s)
+		add(t.label, s)
 	}
 
-	// Each column is as wide as it needs to be, and what width is left
-	// over goes between the two.
-	columns := qt.NewQHBoxLayout2()
-	for side, grid := range grids {
-		if side > 0 {
-			columns.AddSpacing(40)
-			columns.AddStretch()
-		}
-		// A column shorter than the other keeps its rows at the top.
-		column := qt.NewQVBoxLayout2()
-		column.AddLayout(grid.QLayout)
-		column.AddStretch()
-		columns.AddLayout(column.QLayout)
-	}
-	return columns
+	return table
 }
 
 // swatch is a button which shows one of the colours and lets the user choose
