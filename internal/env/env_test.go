@@ -106,13 +106,6 @@ func TestLoadActiveOutOfRange(t *testing.T) {
 	}
 }
 
-func TestPlaceholders(t *testing.T) {
-	got := Placeholders("{{a}}/x/{{ b }}/{c}")
-	if want := []string{"{{a}}", "{{ b }}"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("got %v, want %v", got, want)
-	}
-}
-
 func TestSort(t *testing.T) {
 	names := func(s *Store) []string {
 		var out []string
@@ -250,4 +243,9 @@ func TestExpandFunctions(t *testing.T) {
 	if got := store.Expander()("{{tomorrow}}"); got != "{{tomorrow}}" {
 		t.Errorf("with no environment: %q", got)
 	}
+}
+
+// Load reads a store that is not encrypted.
+func Load(path string) (*Store, error) {
+	return LoadWith(path, nil)
 }

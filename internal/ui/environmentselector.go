@@ -7,6 +7,10 @@ import (
 // noEnvironment is the entry of the environment selector for using none.
 const noEnvironment = "None"
 
+// selectorMinWidth is the least width of a drop-down of the selector, which
+// it is squeezed to when the window has no room for its longest name.
+const selectorMinWidth = 120
+
 // environmentSelector selects the workspace and the environment in use, and
 // has a button to edit the environment with. It is on a line of its own above
 // the tabs of the requests and not in any of them, as both are the same for
@@ -44,10 +48,12 @@ func newEnvironmentSelector() *environmentSelector {
 	}
 
 	// Each is as wide as its longest name, which a combo box otherwise is
-	// only for the names it has when first shown.
+	// only for the names it has when first shown, where the window has the
+	// room. It can be narrower than that, down to selectorMinWidth, so that
+	// a long name never makes the window wider: the name is cut short.
 	for _, combo := range []*qt.QComboBox{s.workspace, s.environment} {
-		combo.SetMinimumContentsLength(16)
 		combo.SetSizeAdjustPolicy(qt.QComboBox__AdjustToContents)
+		combo.SetMinimumWidth(selectorMinWidth)
 	}
 	s.workspace.OnCurrentIndexChanged(func(index int) {
 		if !s.updating && index >= 0 && s.onWorkspace != nil {

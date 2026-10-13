@@ -359,14 +359,9 @@ func (f *Folder) normalise() {
 	}
 }
 
-// Load reads a store from the JSON file at path. A missing file is not an
-// error and yields an empty store.
-func Load(path string) (*Store, error) {
-	return LoadWith(path, nil)
-}
-
-// LoadWith reads a store as Load does, decrypting the file with keys if it
-// is encrypted.
+// LoadWith reads a store from the JSON file at path, decrypting the file
+// with keys if it is encrypted. A missing file is not an error and yields an
+// empty store.
 func LoadWith(path string, keys *crypt.Keys) (*Store, error) {
 	store := &Store{}
 	if err := jsonfile.LoadWith(path, store, keys); err != nil {

@@ -55,37 +55,6 @@ func (s *Schema) Method(name string) (Method, bool) {
 	return Method{}, false
 }
 
-// Describe returns a summary of the services and their methods in the style
-// of a protobuf service definition.
-func (s *Schema) Describe() string {
-	var b strings.Builder
-
-	service := protoreflect.FullName("")
-	for _, m := range s.Methods {
-		if parent := m.desc.Parent().FullName(); parent != service {
-			if service != "" {
-				b.WriteString("}\n\n")
-			}
-			service = parent
-			fmt.Fprintf(&b, "service %s {\n", service)
-		}
-
-		in, out := string(m.desc.Input().FullName()), string(m.desc.Output().FullName())
-		if m.ClientStreaming {
-			in = "stream " + in
-		}
-		if m.ServerStreaming {
-			out = "stream " + out
-		}
-		fmt.Fprintf(&b, "  rpc %s(%s) returns (%s);\n", m.desc.Name(), in, out)
-	}
-	if service != "" {
-		b.WriteString("}\n")
-	}
-
-	return b.String()
-}
-
 // Example returns a JSON message for the method with every field present, as
 // a starting point to edit.
 func (s *Schema) Example(method string) (string, error) {

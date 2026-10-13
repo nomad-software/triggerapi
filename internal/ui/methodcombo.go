@@ -91,21 +91,3 @@ func (c *methodCombo) current() string {
 	}
 	return ""
 }
-
-// selectMethod selects a method by its full name.
-func (c *methodCombo) selectMethod(name string) {
-	if index := slices.Index(c.names, name); index >= 0 && name != "" {
-		c.SetCurrentIndex(index)
-	}
-}
-
-// count returns the number of methods listed.
-func (c *methodCombo) count() int {
-	n := 0
-	for _, name := range c.names {
-		if name != "" {
-			n++
-		}
-	}
-	return n
-}

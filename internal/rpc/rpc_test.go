@@ -115,26 +115,6 @@ func TestReflectUnreachable(t *testing.T) {
 	}
 }
 
-func TestDescribe(t *testing.T) {
-	srv := server(t, rpctest.ReflectionAll)
-
-	schema, err := rpc.Reflect(context.Background(), rpc.Request{URL: srv.URL})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	want := `service test.v1.Echo {
-  rpc Fail(test.v1.EchoRequest) returns (test.v1.EchoResponse);
-  rpc Forever(test.v1.EchoRequest) returns (stream test.v1.EchoResponse);
-  rpc Repeat(test.v1.EchoRequest) returns (stream test.v1.EchoResponse);
-  rpc Say(test.v1.EchoRequest) returns (test.v1.EchoResponse);
-}
-`
-	if got := schema.Describe(); got != want {
-		t.Errorf("got:\n%s\nwant:\n%s", got, want)
-	}
-}
-
 func TestExample(t *testing.T) {
 	srv := server(t, rpctest.ReflectionAll)
 

@@ -95,11 +95,6 @@ func (e *Environment) Set(key, value string) {
 	e.Variables[found].Enabled = true
 }
 
-// Placeholders returns the {{key}} placeholders found in s.
-func Placeholders(s string) []string {
-	return placeholder.FindAllString(s, -1)
-}
-
 // FindPlaceholders returns the start and end byte offsets of each {{key}}
 // placeholder in s.
 func FindPlaceholders(s string) [][]int {
@@ -159,14 +154,9 @@ func compareNames(a, b string) int {
 	return strings.Compare(strings.ToLower(a), strings.ToLower(b))
 }
 
-// Load reads a store from the JSON file at path. A missing file is not an
-// error and yields an empty store.
-func Load(path string) (*Store, error) {
-	return LoadWith(path, nil)
-}
-
-// LoadWith reads a store as Load does, decrypting the file with keys if it
-// is encrypted.
+// LoadWith reads a store from the JSON file at path, decrypting the file
+// with keys if it is encrypted. A missing file is not an error and yields an
+// empty store.
 func LoadWith(path string, keys *crypt.Keys) (*Store, error) {
 	store := &Store{Active: -1}
 	if err := jsonfile.LoadWith(path, store, keys); err != nil {

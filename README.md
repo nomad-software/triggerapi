@@ -65,7 +65,8 @@ bindings.
   method chosen.
 - A Format button sets out the JSON of the message, as it does a REST body.
 - The Service Definitions tab lists the endpoints of the server under their
-  services, each with a checkbox. Create Requests makes a folder of saved
+  services, each with a checkbox, and can be searched by the name of an
+  endpoint or a service. Create Requests makes a folder of saved
   requests from those that are ticked, and Update Requests adds more to a
   folder made that way. See
   [Creating requests from a server](#creating-requests-from-a-server).
@@ -357,6 +358,11 @@ server, by name, under a heading for each service.
 
 1. Tick the endpoints you want, or use Select All.
 2. Click Create Requests.
+
+On a server with many endpoints, type in the search box above the list to
+narrow it. Something is found when every word typed is in the name of the
+endpoint or of its service. Select All and Select None then act on what is
+shown, and an endpoint that is ticked stays ticked when a search hides it.
 
 A folder named after the server address is added to the Requests tab, with a
 folder inside it for each service and a request in that for each endpoint

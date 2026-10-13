@@ -72,6 +72,23 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// selectMethod selects a method of the drop-down by its full name.
+func (c *methodCombo) selectMethod(name string) {
+	if index := slices.Index(c.names, name); index >= 0 && name != "" {
+		c.SetCurrentIndex(index)
+	}
+}
+
+// count returns the number of methods the drop-down lists.
+func (c *methodCombo) count() int {
+	return len(slices.DeleteFunc(slices.Clone(c.names), func(name string) bool { return name == "" }))
+}
+
+// count returns the number of methods the table lists.
+func (e *endpointTable) count() int {
+	return len(slices.DeleteFunc(slices.Clone(e.names), func(name string) bool { return name == "" }))
+}
+
 // testPublic and testPrivate are the paths of the files of the keys the
 // settings of a test window name, and testKeys the keys themselves.
 var (
@@ -118,8 +135,25 @@ type testPaths struct {
 
 // testFiles returns places in a temporary folder for a window to keep its
 // data in, with a workspace named Default that has nothing in it yet.
+// closeWindows has every window closed when the test ends. A window saves
+// its settings when it is closed, which the ones left open would otherwise
+// do when the tests are over and the folder of their settings is gone. It is
+// called after the folder is made, so that it is still there.
+func closeWindows(t *testing.T) {
+	t.Cleanup(func() {
+		mainthread.Wait(func() {
+			for _, widget := range qt.QApplication_TopLevelWidgets() {
+				if widget.IsVisible() {
+					widget.Close()
+				}
+			}
+		})
+	})
+}
+
 func testFiles(t *testing.T) testPaths {
 	dir := t.TempDir()
+	closeWindows(t)
 	workspaces := filepath.Join(dir, "workspaces")
 	if err := workspace.Create(workspaces, workspace.Default); err != nil {
 		t.Fatal(err)
@@ -1189,6 +1223,103 @@ func TestGRPCEndpoints(t *testing.T) {
 	}
 }
 
+func TestGRPCEndpointSearch(t *testing.T) {
+	srv := rpctest.NewServer(rpctest.ReflectionAll)
+	defer srv.Close()
+
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(testFiles(t).Files)
+		w.Show()
+
+		// There is nothing to search until the server has been asked.
+		addGRPCRequest(w)
+		if w.grpc.endpoints.search.IsEnabled() {
+			t.Error("the search can be used before there are endpoints")
+		}
+		w.grpc.url.SetText(srv.URL)
+		w.grpc.reload.Click()
+	})
+
+	waitFor(t, "the endpoints", func() bool { return w.grpc.endpoints.count() == 4 })
+
+	mainthread.Wait(func() {
+		e := w.grpc.endpoints
+
+		// shown lists the rows that are not hidden, by the name of the
+		// service or the method.
+		shown := func() []string {
+			var rows []string
+			for row := range e.table.RowCount() {
+				if e.table.IsRowHidden(row) {
+					continue
+				}
+				if e.names[row] == "" {
+					rows = append(rows, e.table.Item(row, colEndpointChosen).Text())
+				} else {
+					rows = append(rows, e.table.Item(row, colEndpointName).Text())
+				}
+			}
+			return rows
+		}
+		everything := []string{"test.v1.Echo", "Fail", "Forever", "Repeat", "Say"}
+		if !e.search.IsEnabled() || !reflect.DeepEqual(shown(), everything) {
+			t.Errorf("shown = %q", shown())
+		}
+
+		// The methods that match are left under their service, whatever
+		// the case of what is typed.
+		e.search.SetText("FOR")
+		if got := shown(); !reflect.DeepEqual(got, []string{"test.v1.Echo", "Forever"}) {
+			t.Errorf("shown = %q for FOR", got)
+		}
+		// Every word has to be found, in the method or its service.
+		e.search.SetText("echo re")
+		if got := shown(); !reflect.DeepEqual(got, []string{"test.v1.Echo", "Forever", "Repeat"}) {
+			t.Errorf("shown = %q for echo re", got)
+		}
+
+		// The toggle is for the methods on show.
+		if e.toggle.Text() != "Select All" {
+			t.Errorf("toggle = %q", e.toggle.Text())
+		}
+		e.toggle.Click()
+		if got := e.chosen(); !reflect.DeepEqual(got, []string{"test.v1.Echo/Forever", "test.v1.Echo/Repeat"}) || e.toggle.Text() != "Select None" {
+			t.Errorf("chosen = %q, toggle %q", got, e.toggle.Text())
+		}
+
+		// A service with nothing found loses its heading, and what is
+		// hidden stays ticked.
+		e.search.SetText("nothing like it")
+		if got := shown(); len(got) != 0 || e.toggle.IsEnabled() || len(e.chosen()) != 2 || !e.create.IsEnabled() {
+			t.Errorf("shown = %q, chosen %q", got, e.chosen())
+		}
+
+		// Clearing the search shows them all again, not all of them ticked.
+		e.search.Clear()
+		if !reflect.DeepEqual(shown(), everything) || e.toggle.Text() != "Select All" || len(e.chosen()) != 2 {
+			t.Errorf("shown = %q, toggle %q", shown(), e.toggle.Text())
+		}
+
+		// A search carries on into the endpoints listed next.
+		e.search.SetText("say")
+		w.grpc.reload.Click()
+	})
+
+	waitFor(t, "the endpoints again", func() bool {
+		return mainthread.Wait2(func() bool {
+			e := w.grpc.endpoints
+			return e.count() == 4 && len(e.chosen()) == 0 && !e.table.IsRowHidden(slices.Index(e.names, "test.v1.Echo/Say"))
+		})
+	})
+	mainthread.Wait(func() {
+		e := w.grpc.endpoints
+		if e.table.IsRowHidden(0) || !e.table.IsRowHidden(slices.Index(e.names, "test.v1.Echo/Fail")) {
+			t.Error("the search was not applied to the endpoints listed again")
+		}
+	})
+}
+
 func TestGRPCEndpointCollection(t *testing.T) {
 	srv := rpctest.NewServer(rpctest.ReflectionAll)
 	defer srv.Close()
@@ -1328,7 +1459,7 @@ func TestGRPCEndpointCollection(t *testing.T) {
 	waitFor(t, "the endpoints of the collection", func() bool { return len(w.grpc.endpoints.existing) == 2 })
 
 	mainthread.Wait(func() {
-		if e := w.grpc.endpoints; !reflect.DeepEqual(e.chosen(), []string{fail, say}) || e.free() != 2 {
+		if e := w.grpc.endpoints; !reflect.DeepEqual(e.chosen(), []string{fail, say}) || len(e.free()) != 2 {
 			t.Errorf("chosen = %q after removing, %d free", e.chosen(), e.free())
 		}
 	})
@@ -2014,6 +2145,45 @@ func TestWorkspaceSelector(t *testing.T) {
 			ok = s.Count() == 2 && s.ItemText(0) == "New Workspace" && s.CurrentText() == "Zeta"
 		})
 		return ok
+	})
+}
+
+func TestSelectorWidth(t *testing.T) {
+	var w *Window
+	var before int
+	mainthread.Wait(func() {
+		w = NewWindow(testFiles(t).Files)
+		w.Resize(1000, 700)
+		w.Show()
+		before = w.MinimumSizeHint().Width()
+
+		w.environments.add()
+		w.editor.name.SetText(strings.Repeat("A very long name ", 40))
+		w.closeEditor()
+	})
+
+	waitFor(t, "the layout", func() bool {
+		return mainthread.Wait2(func() bool { return w.environment.environment.Width() > selectorMinWidth })
+	})
+
+	mainthread.Wait(func() {
+		combo := w.environment.environment
+
+		// The drop-down would be as wide as the name, and is as wide as
+		// the window has room for. The window is not made any wider.
+		if combo.SizeHint().Width() <= w.Width() {
+			t.Errorf("the name is only %d wide", combo.SizeHint().Width())
+		}
+		if got := w.MinimumSizeHint().Width(); got != before {
+			t.Errorf("least width of the window = %d, was %d", got, before)
+		}
+		if w.Width() != 1000 || combo.Width() >= w.Width() || w.environment.root.Width() > w.Width() {
+			t.Errorf("window = %d wide, selector %d, drop-down %d", w.Width(), w.environment.root.Width(), combo.Width())
+		}
+		// The button after it is still on show.
+		if edit := w.environment.edit; edit.X()+edit.Width() > w.environment.root.Width() {
+			t.Errorf("the edit button ends at %d of %d", edit.X()+edit.Width(), w.environment.root.Width())
+		}
 	})
 }
 

@@ -395,3 +395,8 @@ func TestClone(t *testing.T) {
 		t.Error("the folder copied from was changed")
 	}
 }
+
+// Load reads a store that is not encrypted.
+func Load(path string) (*Store, error) {
+	return LoadWith(path, nil)
+}
