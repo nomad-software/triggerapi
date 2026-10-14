@@ -103,9 +103,9 @@ bindings.
   to edit it.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically, and
-  can be searched by name. The top level folders are listed under gRPC, REST
-  and Mixed headings by the requests they hold; this is worked out as they
-  are shown and is not saved.
+  requests can be searched by name. The top level folders are listed under
+  gRPC, REST and Mixed headings by the requests they hold; this is worked out
+  as they are shown and is not saved.
 - Mark top level folders as favourites with the star that appears at the
   right of one when the pointer is over it, and see them alone on the
   Favourites tab beneath the search. A folder moved inside another is no

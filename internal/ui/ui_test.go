@@ -4655,13 +4655,16 @@ func TestSearchRequests(t *testing.T) {
 			t.Error("the folders of what was found are not open")
 		}
 
-		// Every word must match, in the name or the folders above.
+		// Every word must be in the name of the request, in any order.
 		check("list room", "/Hotel", "/Hotel/Rooms", "/Hotel/Rooms/List rooms")
 		check("users list", "/Users", "/Users/List users")
+		check("rooms", "/Hotel", "/Hotel/Rooms", "/Hotel/Rooms/List rooms")
 
-		// A folder that matches is shown with everything in it.
-		check("rooms", "/Hotel", "/Hotel/Rooms", "/Hotel/Rooms/Book room", "/Hotel/Rooms/List rooms")
-		check("empty", "/Empty")
+		// The names of folders are not searched, so a folder is only shown
+		// to hold what was found.
+		check("hotel")
+		check("rooms ping")
+		check("empty")
 		check("nothing like this")
 
 		// What is found is still the request it was.

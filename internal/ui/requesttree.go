@@ -517,12 +517,12 @@ func (t *requestTree) query() []string {
 	return nil
 }
 
-// applySearch hides the folders and requests that do not match the search,
-// and opens the folders that are left so that what was found can be seen.
-// Something matches if every word of the search is in its name or the names
-// of the folders it is in, so a folder that matches is shown with all it
-// holds. Items are hidden and not removed, as they are matched to the store
-// by their position. Which folders are open is not kept: the tree is drawn
+// applySearch hides the requests that do not match the search, and the
+// folders and headings with none that do, and opens the folders that are
+// left so that what was found can be seen. A request matches if every word
+// of the search is in its own name; the names of folders are not searched.
+// Items are hidden and not removed, as they are matched to the store by
+// their position. Which folders are open is not kept: the tree is drawn
 // again from the store when the search is cleared.
 func (t *requestTree) applySearch() {
 	words := t.query()
@@ -533,21 +533,21 @@ func (t *requestTree) applySearch() {
 	defer func(prev bool) { t.updating = prev }(t.updating)
 	t.updating = true
 
-	// show reports if an item, or anything beneath it, matches.
-	var show func(item *qt.QTreeWidgetItem, path string) bool
-	show = func(item *qt.QTreeWidgetItem, path string) bool {
-		// The name of a heading is not searched, only what is under it.
-		if !t.isHeading(item) {
-			path += " " + strings.ToLower(item.Text(colName))
-		}
-
-		found := true
-		for _, word := range words {
-			found = found && strings.Contains(path, word)
-		}
-		for i := range item.ChildCount() {
-			if show(item.Child(i), path) {
-				found = true
+	// show reports if an item is a request that matches, or holds one.
+	var show func(item *qt.QTreeWidgetItem) bool
+	show = func(item *qt.QTreeWidgetItem) bool {
+		found := false
+		if _, request := t.locate(item); request != nil {
+			name := strings.ToLower(request.Name)
+			found = true
+			for _, word := range words {
+				found = found && strings.Contains(name, word)
+			}
+		} else {
+			for i := range item.ChildCount() {
+				if show(item.Child(i)) {
+					found = true
+				}
 			}
 		}
 
@@ -558,7 +558,7 @@ func (t *requestTree) applySearch() {
 		return found
 	}
 	for i := range t.tree.TopLevelItemCount() {
-		show(t.tree.TopLevelItem(i), "")
+		show(t.tree.TopLevelItem(i))
 	}
 }
 
