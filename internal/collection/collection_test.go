@@ -400,3 +400,39 @@ func TestClone(t *testing.T) {
 func Load(path string) (*Store, error) {
 	return LoadWith(path, nil)
 }
+
+func TestFavourite(t *testing.T) {
+	// A file from before there were favourites has none.
+	path := filepath.Join(t.TempDir(), "requests.json")
+	if err := os.WriteFile(path, []byte(`{"folders":[{"name":"a"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := LoadWith(path, nil)
+	if err != nil || s.Folders[0].Favourite {
+		t.Fatalf("loaded %+v, %v", s.Folders, err)
+	}
+
+	// Only a favourite is written as one, and is read back.
+	s.Folders[0].Favourite = true
+	s.AddFolder("b")
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if n := strings.Count(string(data), `"favourite"`); n != 1 {
+		t.Errorf("favourite written %d times: %s", n, data)
+	}
+	if s, err = LoadWith(path, nil); err != nil || !s.Folders[0].Favourite || s.Folders[1].Favourite {
+		t.Fatalf("read back %+v, %v", s.Folders, err)
+	}
+
+	// Moving a favourite about the top level keeps it one; moving it into
+	// another folder does not.
+	a, b := s.Folders[0], s.Folders[1]
+	if !s.MoveFolder(a, nil, 2) || !a.Favourite {
+		t.Error("reordering lost the favourite")
+	}
+	if !s.MoveFolder(a, b, 0) || a.Favourite {
+		t.Error("a folder inside another is a favourite")
+	}
+}

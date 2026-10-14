@@ -127,12 +127,15 @@ type Colours struct {
 	// Match is the colour that marks the places text looked for in a
 	// response was found.
 	Match string `json:"match,omitempty"`
+	// Favourite is the colour of the star which makes a folder of requests
+	// a favourite.
+	Favourite string `json:"favourite,omitempty"`
 }
 
 // valid returns the colours with any that are not of the form #rrggbb
 // emptied.
 func (c Colours) valid() Colours {
-	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Captured, &c.NotCaptured, &c.Match)
+	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Captured, &c.NotCaptured, &c.Match, &c.Favourite)
 	return c
 }
 

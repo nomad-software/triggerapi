@@ -268,7 +268,7 @@ var colourSections = []struct {
 	title string
 	kinds []colourKind
 }{
-	{"Sidebar", []colourKind{colourWorkspaces, colourEnvironments, colourRequests}},
+	{"Sidebar", []colourKind{colourWorkspaces, colourEnvironments, colourRequests, colourFavourite}},
 	{"Request types", []colourKind{colourREST, colourGRPC}},
 	{"Buttons", []colourKind{colourSend, colourAction, colourRemove}},
 	{"Text", []colourKind{colourFound, colourNotFound, colourError, colourMatch}},

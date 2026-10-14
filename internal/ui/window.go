@@ -465,6 +465,8 @@ func NewWindow(files Files) *Window {
 	w.newMenuBar()
 	w.updateHeaders()
 	w.applyJSONColours()
+	// The requests start on the Favourites tab if there are any.
+	w.requests.startView()
 	w.restoreTabs()
 
 	w.request.url.SetFocus()
@@ -1005,6 +1007,7 @@ func (w *Window) applyColours() {
 	w.workspaces.recolour()
 	w.environments.recolour()
 	w.requests.draw(w.requests.selection())
+	w.requests.drawViewIcons()
 	w.tabs.recolour()
 
 	for _, button := range []*qt.QPushButton{w.request.send, w.request.execute, w.grpc.invoke} {

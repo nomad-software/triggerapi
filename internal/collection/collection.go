@@ -76,7 +76,12 @@ func (r *Request) Clone() *Request {
 type Folder struct {
 	Name string `json:"name"`
 	// Collapsed records that the folder is shown closed.
-	Collapsed bool       `json:"collapsed,omitempty"`
+	Collapsed bool `json:"collapsed,omitempty"`
+	// Favourite records that a folder at the top level is one of the
+	// favourites. It is left out of the file when it is not, so files from
+	// before there were favourites are read and written as they were, and
+	// it is cleared when the folder is moved inside another.
+	Favourite bool       `json:"favourite,omitempty"`
 	Folders   []*Folder  `json:"folders,omitempty"`
 	Requests  []*Request `json:"requests,omitempty"`
 }
@@ -326,8 +331,10 @@ func (s *Store) MoveRequest(r *Request, to *Folder, index int) bool {
 }
 
 // MoveFolder moves a folder into another, or to the top level if that is
-// nil, before the folder at index there. It reports false, having done
-// nothing, if the folder is not in the store or would be moved inside itself.
+// nil, before the folder at index there. Only a folder at the top level can
+// be a favourite, so one moved into another is no longer. It reports false,
+// having done nothing, if the folder is not in the store or would be moved
+// inside itself.
 func (s *Store) MoveFolder(f *Folder, to *Folder, index int) bool {
 	parent, ok := s.ParentOf(f)
 	if !ok || (to != nil && f.contains(to)) {
@@ -340,6 +347,7 @@ func (s *Store) MoveFolder(f *Folder, to *Folder, index int) bool {
 	}
 	if to != nil {
 		into = &to.Folders
+		f.Favourite = false
 	}
 	move(from, into, f, index)
 	return true

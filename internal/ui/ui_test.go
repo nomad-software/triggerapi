@@ -1122,7 +1122,7 @@ func TestGRPCAndRESTRequests(t *testing.T) {
 		if got := itemType(topFolder(tree, 0).Child(0)); got != collection.TypeREST {
 			t.Errorf("type shown as %q", got)
 		}
-		if tree.ColumnCount() != 1 || itemType(topFolder(tree, 0)) != "" {
+		if tree.ColumnCount() != 2 || itemType(topFolder(tree, 0)) != "" {
 			t.Errorf("columns = %d, folder shown as %q", tree.ColumnCount(), itemType(topFolder(tree, 0)))
 		}
 
@@ -4395,6 +4395,205 @@ func TestRequestHeadings(t *testing.T) {
 	}
 	if want := []string{"Empty", "Hotel", "Service", "Users"}; !reflect.DeepEqual(names, want) {
 		t.Errorf("saved folders %q, want %q", names, want)
+	}
+}
+
+func TestAddRequestWithNothingSelected(t *testing.T) {
+	files := testFiles(t)
+
+	store := &collection.Store{}
+	store.AddFolder("Zoo").Add(collection.NewREST("Ping", rest.Request{Method: "GET"}))
+	if err := store.Save(files.Requests); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+		rt := w.requests
+
+		// A new folder is made to hold it, even though there is one already.
+		rt.deselect()
+		rt.addRequest()
+		if len(rt.store.Folders) != 2 || rt.store.Folders[0].Name != "New Folder" || len(rt.store.Folders[0].Requests) != 1 ||
+			len(rt.store.Folders[1].Requests) != 1 || w.open != rt.store.Folders[0].Requests[0] {
+			t.Errorf("folders %+v, open %+v", rt.store.Folders, w.open)
+		}
+	})
+}
+
+func TestFavourites(t *testing.T) {
+	files := testFiles(t)
+
+	store := &collection.Store{}
+	store.AddFolder("Hotel").Add(collection.NewREST("Ping", rest.Request{Method: "GET"}))
+	store.AddFolder("Service").Add(collection.NewGRPC("Get", rpc.Request{}))
+	users := store.AddFolder("Users")
+	users.Add(collection.NewREST("List", rest.Request{Method: "GET"}))
+	users.AddFolder("Admin").Add(collection.NewREST("Ban", rest.Request{Method: "POST"}))
+	store.AddFolder("Empty")
+	if err := store.Save(files.Requests); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+		rt := w.requests
+		tree := rt.tree
+
+		// mouse sends the tree an event of the pointer at the middle of a
+		// column of an item.
+		mouse := func(kind qt.QEvent__Type, item *qt.QTreeWidgetItem, column int) {
+			rect := tree.VisualItemRect(item)
+			x := tree.Header().SectionViewportPosition(column) + tree.Header().SectionSize(column)/2
+			pos := qt.NewQPointF3(float64(x), float64(rect.Y()+rect.Height()/2))
+			defer pos.Delete()
+			button := qt.NoButton
+			if kind == qt.QEvent__MouseButtonPress {
+				button = qt.LeftButton
+			}
+			event := qt.NewQMouseEvent(kind, pos, button, button, qt.NoModifier)
+			defer event.Delete()
+			qt.QCoreApplication_SendEvent(tree.Viewport().QObject, event.QEvent)
+		}
+		star := func(item *qt.QTreeWidgetItem) bool { return !item.Icon(colStar).IsNull() }
+		shown := func() []string {
+			var names []string
+			for _, item := range topFolders(tree) {
+				names = append(names, item.Text(colName))
+			}
+			return names
+		}
+
+		// The star is shown on a folder under a heading while the pointer is
+		// over it, and on nothing else.
+		mouse(qt.QEvent__MouseMove, treeItem(tree, "Hotel"), colName)
+		if !star(treeItem(tree, "Hotel")) {
+			t.Error("no star on the folder under the pointer")
+		}
+		for _, names := range [][]string{{"Users", "List"}, {"Users", "Admin"}, {"Empty"}} {
+			mouse(qt.QEvent__MouseMove, treeItem(tree, names...), colName)
+			if star(treeItem(tree, names...)) || star(treeItem(tree, "Hotel")) {
+				t.Errorf("star shown with the pointer over %q", names)
+			}
+		}
+		mouse(qt.QEvent__MouseMove, tree.TopLevelItem(0), colName)
+		if star(tree.TopLevelItem(0)) {
+			t.Error("star on a heading")
+		}
+
+		// Clicking the star makes the folder a favourite, without selecting
+		// it, and it is filled from then on.
+		hotel := treeItem(tree, "Hotel")
+		mouse(qt.QEvent__MouseMove, hotel, colStar)
+		if hotel.Icon(colStar).CacheKey() != starIcon(false).CacheKey() {
+			t.Error("the star of a folder that is not a favourite is not in outline")
+		}
+		mouse(qt.QEvent__MouseButtonPress, hotel, colStar)
+		if !rt.store.Folders[1].Favourite || rt.store.Folders[1].Name != "Hotel" || tree.CurrentItem() != nil {
+			t.Errorf("not made a favourite, or selected %v", tree.CurrentItem())
+		}
+		if hotel.Icon(colStar).CacheKey() != starIcon(true).CacheKey() {
+			t.Error("the star of a favourite is not filled")
+		}
+		rt.toggleFavourite(rt.store.Folders[2]) // Service
+		rt.toggleFavourite(rt.store.Folders[3]) // Users
+
+		// The Favourites tab shows those alone, under their headings, and
+		// the search is applied to them.
+		rt.views.SetCurrentIndex(viewFavourites)
+		if got, want := shown(), []string{"Service", "Hotel", "Users"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("favourites %q, want %q", got, want)
+		}
+		rt.search.SetText("ban")
+		if got := shown(); treeItem(tree, "Hotel").IsHidden() == false || treeItem(tree, "Users", "Admin", "Ban").IsHidden() || len(got) != 3 {
+			t.Error("the search is not applied to the favourites")
+		}
+		rt.search.SetText("")
+
+		// Clicking the star of a favourite there takes it away.
+		mouse(qt.QEvent__MouseMove, treeItem(tree, "Hotel"), colStar)
+		mouse(qt.QEvent__MouseButtonPress, treeItem(tree, "Hotel"), colStar)
+		if got, want := shown(), []string{"Service", "Users"}; !reflect.DeepEqual(got, want) || rt.store.Folders[1].Favourite {
+			t.Errorf("favourites %q after removing Hotel", got)
+		}
+
+		// A favourite moved into another folder is no longer one, and the
+		// tree goes back to showing everything so it can be seen.
+		users := rt.store.Folders[3]
+		if !rt.drop(users, nil, rt.store.Folders[1], nil, dropOn) {
+			t.Fatal("not moved")
+		}
+		if users.Favourite || rt.favourites || rt.views.CurrentIndex() != viewAll || tree.CurrentItem().Text(colName) != "Users" {
+			t.Errorf("after the move: favourite %t, favourites shown %t", users.Favourite, rt.favourites)
+		}
+	})
+
+	// At startup the favourites are shown, as there are some, and with
+	// none every folder is.
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		if !w.requests.favourites || w.requests.views.CurrentIndex() != viewFavourites || topCount(w.requests.tree) != 1 {
+			t.Errorf("favourites not shown at startup: tab %d, %d folders", w.requests.views.CurrentIndex(), topCount(w.requests.tree))
+		}
+		// The tabs have icons: that of the requests, and the star.
+		if w.requests.views.TabIcon(viewAll).IsNull() || w.requests.views.TabIcon(viewFavourites).CacheKey() != starIcon(true).CacheKey() {
+			t.Error("the tabs of the views have no icons")
+		}
+
+		// A first pinned request in a favourite is selected there.
+		current := func() string {
+			if item := w.requests.tree.CurrentItem(); item != nil {
+				return item.Text(colName)
+			}
+			return ""
+		}
+		w.config.Pinned = []settings.Pin{{Workspace: w.config.Workspace, Path: []string{"Service", "Get"}}}
+		w.restoreTabs()
+		if !w.requests.favourites || current() != "Get" {
+			t.Errorf("pinned favourite: favourites shown %t, at %q", w.requests.favourites, current())
+		}
+
+		// One that is not in a favourite is shown on the Requests tab.
+		w.config.Pinned = []settings.Pin{{Workspace: w.config.Workspace, Path: []string{"Hotel", "Ping"}}}
+		w.restoreTabs()
+		if w.requests.favourites || w.requests.views.CurrentIndex() != viewAll || current() != "Ping" {
+			t.Errorf("pinned request elsewhere: favourites shown %t, at %q", w.requests.favourites, current())
+		}
+		w.config.Pinned = nil
+
+		w.requests.toggleFavourite(w.requests.store.Folders[2]) // Service
+		w.Close()
+
+		w = NewWindow(files.Files)
+		if w.requests.favourites || w.requests.views.CurrentIndex() != viewAll || topCount(w.requests.tree) != 3 {
+			t.Errorf("every folder not shown at startup: tab %d, %d folders", w.requests.views.CurrentIndex(), topCount(w.requests.tree))
+		}
+		w.requests.toggleFavourite(w.requests.store.Folders[2]) // Service again
+		w.Close()
+	})
+
+	// Only the favourite is saved as one.
+	saved, err := loadRequests(files.Requests)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var favourites []string
+	var walk func(f *collection.Folder)
+	walk = func(f *collection.Folder) {
+		if f.Favourite {
+			favourites = append(favourites, f.Name)
+		}
+		for _, sub := range f.Folders {
+			walk(sub)
+		}
+	}
+	for _, f := range saved.Folders {
+		walk(f)
+	}
+	if !reflect.DeepEqual(favourites, []string{"Service"}) {
+		t.Errorf("saved favourites %q", favourites)
 	}
 }
 

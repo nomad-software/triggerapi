@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"math"
+
 	qt "github.com/mappu/miqt/qt6"
 )
 
@@ -520,4 +522,65 @@ func appIcon() *qt.QIcon {
 		appIconCache = drawIcon(256, appIconColour, drawRevolver)
 	}
 	return appIconCache
+}
+
+// starIcons are the star of a favourite, filled and not, once drawn.
+var starIcons [2]*qt.QIcon
+
+// starIcon returns a star in the colour of favourites, on nothing: filled for
+// a favourite, and drawn in outline for something that is not one but can be
+// made one.
+func starIcon(filled bool) *qt.QIcon {
+	index := 0
+	if filled {
+		index = 1
+	}
+	if starIcons[index] != nil {
+		return starIcons[index]
+	}
+
+	size := iconSize * 2
+	pixmap := qt.NewQPixmap2(size, size)
+	pixmap.FillWithFillColor(qt.NewQColor2(qt.Transparent))
+	painter := qt.NewQPainter2(pixmap.QPaintDevice)
+	painter.SetRenderHint(qt.QPainter__Antialiasing)
+	painter.Scale(float64(size)/glyphSize, float64(size)/glyphSize)
+
+	colour := qt.NewQColor6(themeColour(colourFavourite))
+	pen := qt.NewQPen3(colour)
+	pen.SetWidth(10)
+	pen.SetJoinStyle(qt.RoundJoin)
+	painter.SetPenWithPen(pen)
+	if filled {
+		painter.SetBrush(qt.NewQBrush3(colour))
+	} else {
+		painter.SetBrushWithStyle(qt.NoBrush)
+	}
+
+	// Five points, the first at the top, with the corners between them
+	// on a smaller circle.
+	path := qt.NewQPainterPath()
+	for i := range 10 {
+		radius := 56.0
+		if i%2 == 1 {
+			radius = 24
+		}
+		angle := math.Pi/5*float64(i) - math.Pi/2
+		x, y := 64+radius*math.Cos(angle), 68+radius*math.Sin(angle)
+		if i == 0 {
+			path.MoveTo2(x, y)
+		} else {
+			path.LineTo2(x, y)
+		}
+	}
+	path.CloseSubpath()
+	painter.DrawPath(path)
+	painter.End()
+	painter.Delete()
+
+	icon := qt.NewQIcon2(pixmap)
+	// Not tinted with the colour of the selection.
+	icon.AddPixmap2(pixmap, qt.QIcon__Selected)
+	starIcons[index] = icon
+	return icon
 }

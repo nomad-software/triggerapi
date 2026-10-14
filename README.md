@@ -106,6 +106,10 @@ bindings.
   can be searched by name. The top level folders are listed under gRPC, REST
   and Mixed headings by the requests they hold; this is worked out as they
   are shown and is not saved.
+- Mark top level folders as favourites with the star that appears at the
+  right of one when the pointer is over it, and see them alone on the
+  Favourites tab beneath the search. A folder moved inside another is no
+  longer a favourite.
 - Open a request without the mouse: Ctrl+P goes to the search, Return goes
   on to what was found, the arrow keys move through the folders and requests
   (left closes a folder and right opens one), and Return opens the request.
@@ -137,8 +141,9 @@ bindings.
 - Set how long a request can take before it is given up on, and whether a
   REST request follows redirects or shows the response that redirects.
 - Choose the colours of the interface, which are listed in sections: the
-  icons of the sidebar and of each type of request, the buttons, placeholders,
-  errors, the capture marks, the matches of a search and JSON highlighting.
+  icons of the sidebar and of each type of request, the star of favourites,
+  the buttons, placeholders, errors, the capture marks, the matches of a
+  search and JSON highlighting.
 - The size and layout of the window are remembered.
 - Escape closes the environment editor, the search of a response, the curl
   command and the URL preview.

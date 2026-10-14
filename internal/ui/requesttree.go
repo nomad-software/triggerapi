@@ -18,8 +18,18 @@ import (
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
-// colName is the column of the request tree, which holds the names.
-const colName = 0
+// The columns of the request tree: the names, and the star which makes a
+// folder at the top level a favourite.
+const (
+	colName = iota
+	colStar
+)
+
+// The views of the request tree, which are its tabs.
+const (
+	viewAll = iota
+	viewFavourites
+)
 
 // typeLabels are the names the request types are shown by.
 var typeLabels = map[collection.Type]string{
@@ -39,6 +49,14 @@ type requestTree struct {
 	// search narrows the tree to the folders and requests that match what
 	// is typed in it.
 	search *qt.QLineEdit
+	// views is the tabs beneath the search, which show every folder or only
+	// the favourites, in the one tree.
+	views *qt.QTabBar
+	// favourites is set while only the favourite folders are shown.
+	favourites bool
+	// hovered is the item the star is shown on, which is that of a folder
+	// under a heading with the pointer over it, or nil.
+	hovered *qt.QTreeWidgetItem
 
 	store *collection.Store
 	// path is the file the store is saved to. Nothing is saved if it is empty.
@@ -84,7 +102,18 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 		root:   qt.NewQWidget2(),
 		tree:   qt.NewQTreeWidget2(),
 		search: qt.NewQLineEdit2(),
+		views:  qt.NewQTabBar2(),
 	}
+
+	t.views.AddTab("Requests")
+	t.views.AddTab("Favourites")
+	t.drawViewIcons()
+	t.views.SetDrawBase(false)
+	t.views.SetExpanding(false)
+	t.views.OnCurrentChanged(func(index int) {
+		t.favourites = index == viewFavourites
+		t.draw(t.selection())
+	})
 
 	t.search.SetPlaceholderText("Search requests")
 	t.search.SetClearButtonEnabled(true)
@@ -122,6 +151,13 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	}
 
 	t.tree.SetHeaderHidden(true)
+	// The names take the width, but for the star at the right.
+	t.tree.SetColumnCount(2)
+	header := t.tree.Header()
+	header.SetStretchLastSection(false)
+	header.SetSectionResizeMode2(colName, qt.QHeaderView__Stretch)
+	header.SetSectionResizeMode2(colStar, qt.QHeaderView__Fixed)
+	header.ResizeSection(colStar, t.tree.Style().PixelMetric(qt.QStyle__PM_SmallIconSize, nil, t.tree.QWidget)+10)
 	// The headings are at the left edge, without the arrow of a folder,
 	// and the folders under them have theirs in its place.
 	t.tree.SetRootIsDecorated(false)
@@ -150,6 +186,7 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 
 	layout := qt.NewQVBoxLayout(t.root)
 	layout.AddWidget(t.search.QWidget)
+	layout.AddWidget(t.views.QWidget)
 	layout.AddWidget2(t.tree.QWidget, 1)
 	layout.AddLayout(buttons.QLayout)
 
@@ -205,13 +242,32 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	// folder is added at the top level once there are others.
 	t.tree.OnMousePressEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
 		item := t.tree.ItemAt(event.Pos())
-		if item == nil {
+		switch {
+		case item == nil:
 			t.deselect()
-		} else if t.isHeading(item) {
+		case t.isHeading(item):
 			// A heading cannot be selected.
+			return
+		case t.tree.ColumnAt(event.Pos().X()) == colStar && t.starred(item) != nil:
+			// The star is a button, which selects nothing.
+			t.toggleFavourite(t.starred(item))
 			return
 		}
 		super(event)
+	})
+
+	// The star of a folder under a heading is shown while the pointer is
+	// over it.
+	t.tree.SetMouseTracking(true)
+	t.tree.OnMouseMoveEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
+		t.hover(t.tree.ItemAt(event.Pos()))
+		super(event)
+	})
+	t.tree.OnViewportEvent(func(super func(*qt.QEvent) bool, event *qt.QEvent) bool {
+		if event.Type() == qt.QEvent__Leave {
+			t.hover(nil)
+		}
+		return super(event)
 	})
 
 	// Whether a folder is open or closed is kept with it.
@@ -310,12 +366,14 @@ func (t *requestTree) load(store *collection.Store, path string) {
 }
 
 // draw fills the tree from the store, with each folder open or closed as the
-// store records. The item of selected, a folder or a request, is made the
-// current one if it is given.
-func (t *requestTree) draw(selected any) {
+// store records, and only the favourites if they are what is shown. The item
+// of selected, a folder or a request, is made the current one if it is given.
+// It reports false if selected was given and is not shown.
+func (t *requestTree) draw(selected any) bool {
 	defer func(prev bool) { t.updating = prev }(t.updating)
 	t.updating = true
 
+	t.hovered = nil
 	t.tree.Clear()
 
 	var current *qt.QTreeWidgetItem
@@ -339,7 +397,11 @@ func (t *requestTree) draw(selected any) {
 		item.SetExpanded(!folder.Collapsed)
 	}
 
-	t.top = groupFolders(t.store.Folders)
+	folders := t.store.Folders
+	if t.favourites {
+		folders = slices.DeleteFunc(slices.Clone(folders), func(f *collection.Folder) bool { return !f.Favourite })
+	}
+	t.top = groupFolders(folders)
 	for _, entry := range t.top {
 		if entry.group == "" {
 			fill(t.newItem(nil, -1, entry.folders[0].Name, ""), entry.folders[0])
@@ -355,6 +417,95 @@ func (t *requestTree) draw(selected any) {
 		t.tree.SetCurrentItem(current)
 	}
 	t.applySearch()
+	return selected == nil || current != nil
+}
+
+// reveal draws the tree with a folder or request selected, showing every
+// folder if it is not among the favourites being shown.
+func (t *requestTree) reveal(selected any) {
+	if !t.draw(selected) && t.favourites {
+		t.showView(viewAll)
+		t.draw(selected)
+	}
+}
+
+// drawViewIcons gives the tabs of the views their icons, in the colours of
+// the settings: that of the Requests tab of the sidebar, and the star of a
+// favourite.
+func (t *requestTree) drawViewIcons() {
+	t.views.SetTabIcon(viewAll, drawIcon(iconSize*2, themeColour(colourRequests), drawFolder))
+	t.views.SetTabIcon(viewFavourites, starIcon(true))
+}
+
+// startView shows the favourites if there are any, and otherwise every
+// folder, which is what the tree starts with when the program does.
+func (t *requestTree) startView() {
+	view := viewAll
+	if slices.ContainsFunc(t.store.Folders, func(f *collection.Folder) bool { return f.Favourite }) {
+		view = viewFavourites
+	}
+	t.showView(view)
+	t.draw(t.selection())
+}
+
+// showView shows every folder or only the favourites, without drawing the
+// tree again.
+func (t *requestTree) showView(view int) {
+	defer func(prev bool) { t.updating = prev }(t.updating)
+	t.updating = true
+	t.views.SetCurrentIndex(view)
+	t.favourites = view == viewFavourites
+}
+
+// starred returns the folder an item is, if it is one that can be made a
+// favourite or not: a folder under a heading. It is nil for anything else.
+func (t *requestTree) starred(item *qt.QTreeWidgetItem) *collection.Folder {
+	if parent := item.Parent(); parent == nil || !t.isHeading(parent) {
+		return nil
+	}
+	folder, _ := t.locate(item)
+	return folder
+}
+
+// hover shows the star of an item that the pointer has moved onto, if it has
+// one, and takes it away from the one it has left: filled for a favourite,
+// in outline for a folder that is not.
+func (t *requestTree) hover(item *qt.QTreeWidgetItem) {
+	if item != nil && t.starred(item) == nil {
+		item = nil
+	}
+	if item == t.hovered {
+		return
+	}
+
+	defer func(prev bool) { t.updating = prev }(t.updating)
+	t.updating = true
+
+	if t.hovered != nil {
+		t.hovered.SetIcon(colStar, qt.NewQIcon())
+	}
+	t.hovered = item
+	if item != nil {
+		item.SetIcon(colStar, starIcon(t.starred(item).Favourite))
+	}
+}
+
+// toggleFavourite makes a folder a favourite, or one no longer, and saves
+// that. A folder that stops being one while only the favourites are shown is
+// taken out of the tree.
+func (t *requestTree) toggleFavourite(folder *collection.Folder) {
+	folder.Favourite = !folder.Favourite
+	t.save()
+
+	if t.favourites {
+		t.draw(t.selection())
+		return
+	}
+	if t.hovered != nil {
+		defer func(prev bool) { t.updating = prev }(t.updating)
+		t.updating = true
+		t.hovered.SetIcon(colStar, starIcon(folder.Favourite))
+	}
 }
 
 // query returns the words being searched for, in lower case. It is nil when
@@ -491,9 +642,9 @@ const (
 //
 // Dropping on a folder puts it inside, at the end. Dropping above or below
 // something puts it beside that, in the same folder, with the one limit that
-// folders always come before requests. Dropping in the empty space puts a
-// folder at the end of the top level; a request cannot go there, as requests
-// are always in a folder.
+// folders always come before requests. Dropping in the empty space, or by a
+// heading, puts a folder at the end of the top level; a request cannot go
+// there, as requests are always in a folder.
 func (t *requestTree) drop(folder *collection.Folder, request *collection.Request, targetFolder *collection.Folder, targetRequest *collection.Request, where dropPosition) bool {
 	after := 0
 	if where == dropBelow {
@@ -563,7 +714,7 @@ func (t *requestTree) drop(folder *collection.Folder, request *collection.Reques
 	// Everything is kept in alphabetical order, so where exactly in a
 	// folder something was dropped makes no difference.
 	t.store.Sort()
-	t.draw(moved)
+	t.reveal(moved)
 	t.save()
 	return true
 }
@@ -722,7 +873,9 @@ func (t *requestTree) deselect() {
 }
 
 // selectRequest selects the item of a request, if it has one, without
-// calling onOpen. Nothing is left selected if there is no request.
+// calling onOpen. Nothing is left selected if there is no request. A request
+// that is not among the favourites being shown is shown and selected on the
+// Requests tab, so that it is clear where it is.
 func (t *requestTree) selectRequest(r *collection.Request) {
 	defer func(prev bool) { t.updating = prev }(t.updating)
 	t.updating = true
@@ -750,6 +903,10 @@ func (t *requestTree) selectRequest(r *collection.Request) {
 			t.tree.SetCurrentItem(item)
 			return
 		}
+	}
+	if t.favourites {
+		t.showView(viewAll)
+		t.draw(r)
 	}
 }
 
@@ -846,24 +1003,19 @@ func (t *requestTree) addFolder() {
 
 // addRequest creates a request in the selected folder, or the folder of the
 // selected request, then opens it and starts editing its name. Without a
-// selection the last top level folder is used, which is created if there are
-// none.
+// selection a new folder is made at the top level to hold it, as requests
+// are always in a folder.
 func (t *requestTree) addRequest() {
 	request, ok := t.create()
 	if !ok {
 		return
 	}
 
-	parent := t.folderItem()
-
 	var folder *collection.Folder
-	switch {
-	case parent != nil:
+	if parent := t.folderItem(); parent != nil {
 		folder, _ = t.locate(parent)
-	case len(t.store.Folders) == 0:
+	} else {
 		folder = t.store.AddFolder("New Folder")
-	default:
-		folder = t.store.Folders[len(t.store.Folders)-1]
 	}
 	folder.Add(request)
 	folder.Collapsed = false
@@ -923,7 +1075,7 @@ func (t *requestTree) added(what any) {
 	// It may not match a search, and must be seen.
 	t.clearSearch()
 	t.store.Sort()
-	t.draw(what)
+	t.reveal(what)
 	t.save()
 
 	if item := t.tree.CurrentItem(); item != nil {
@@ -1001,7 +1153,7 @@ func (t *requestTree) importFile(source importSource, path string) error {
 func (t *requestTree) extended(selected *collection.Request) {
 	t.clearSearch()
 	t.store.Sort()
-	t.draw(selected)
+	t.reveal(selected)
 	t.save()
 }
 
@@ -1011,7 +1163,7 @@ func (t *requestTree) adopt(folder *collection.Folder) {
 	t.store.Folders = append(t.store.Folders, folder)
 	t.clearSearch()
 	t.store.Sort()
-	t.draw(folder)
+	t.reveal(folder)
 	t.save()
 }
 
