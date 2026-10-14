@@ -103,7 +103,9 @@ bindings.
   to edit it.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically, and
-  can be searched by name.
+  can be searched by name. The top level folders are listed under gRPC, REST
+  and Mixed headings by the requests they hold; this is worked out as they
+  are shown and is not saved.
 - Open a request without the mouse: Ctrl+P goes to the search, Return goes
   on to what was found, the arrow keys move through the folders and requests
   (left closes a folder and right opens one), and Return opens the request.

@@ -28,8 +28,11 @@ var typeLabels = map[collection.Type]string{
 }
 
 // requestTree lists the saved requests in their folders. Clicking a request
-// or pressing Edit opens it, and every change is saved. Tree items are in the same order as the
-// store, so an item is mapped to its folder or request by position.
+// or pressing Edit opens it, and every change is saved. The top level folders
+// are listed under headings by the type of their requests (groupFolders), as
+// recorded in top when the tree is drawn; beneath them, tree items are in the
+// same order as the store, so an item is mapped to its folder or request by
+// position.
 type requestTree struct {
 	root *qt.QWidget
 	tree *qt.QTreeWidget
@@ -42,6 +45,9 @@ type requestTree struct {
 	path     string
 	updating bool
 
+	// top holds what each item at the top level stands for, from when the
+	// tree was last drawn.
+	top []topEntry
 	// confirm asks the user a yes/no question.
 	confirm func(question string) bool
 	// create returns the request to add, or false if the user decided
@@ -116,6 +122,9 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	}
 
 	t.tree.SetHeaderHidden(true)
+	// The headings are at the left edge, without the arrow of a folder,
+	// and the folders under them have theirs in its place.
+	t.tree.SetRootIsDecorated(false)
 	// Names are only edited through the Rename button.
 	t.tree.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
 
@@ -176,6 +185,10 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 			return
 		}
 		draggedFolder, draggedRequest := t.locate(dragged)
+		if draggedFolder == nil {
+			// A heading.
+			return
+		}
 		var targetFolder *collection.Folder
 		var targetRequest *collection.Request
 		if target != nil && where != dropNowhere {
@@ -191,8 +204,12 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	// Clicking where there is no item clears the selection, which is how a
 	// folder is added at the top level once there are others.
 	t.tree.OnMousePressEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
-		if t.tree.ItemAt(event.Pos()) == nil {
+		item := t.tree.ItemAt(event.Pos())
+		if item == nil {
 			t.deselect()
+		} else if t.isHeading(item) {
+			// A heading cannot be selected.
+			return
 		}
 		super(event)
 	})
@@ -221,7 +238,16 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 		default:
 			defer func(prev bool) { t.browsing = prev }(t.browsing)
 			t.browsing = true
+			prev := t.tree.CurrentItem()
 			super(event)
+			// A heading is passed over, or if there is nothing beyond it
+			// the selection stays where it was.
+			if item := t.tree.CurrentItem(); item != nil && t.isHeading(item) {
+				super(event)
+				if item := t.tree.CurrentItem(); item != nil && t.isHeading(item) && prev != nil {
+					t.tree.SetCurrentItem(prev)
+				}
+			}
 		}
 	})
 
@@ -234,6 +260,10 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 			return
 		}
 		folder, request := t.locate(item)
+		if folder == nil {
+			// A heading.
+			return
+		}
 
 		// Nothing can be left without a name, so one that is emptied is
 		// given back the name it had.
@@ -309,8 +339,17 @@ func (t *requestTree) draw(selected any) {
 		item.SetExpanded(!folder.Collapsed)
 	}
 
-	for _, f := range t.store.Folders {
-		fill(t.newItem(nil, -1, f.Name, ""), f)
+	t.top = groupFolders(t.store.Folders)
+	for _, entry := range t.top {
+		if entry.group == "" {
+			fill(t.newItem(nil, -1, entry.folders[0].Name, ""), entry.folders[0])
+			continue
+		}
+		heading := t.newHeading(entry.group)
+		for _, f := range entry.folders {
+			fill(t.newItem(heading, -1, f.Name, ""), f)
+		}
+		heading.SetExpanded(true)
 	}
 	if current != nil {
 		t.tree.SetCurrentItem(current)
@@ -346,7 +385,10 @@ func (t *requestTree) applySearch() {
 	// show reports if an item, or anything beneath it, matches.
 	var show func(item *qt.QTreeWidgetItem, path string) bool
 	show = func(item *qt.QTreeWidgetItem, path string) bool {
-		path += " " + strings.ToLower(item.Text(colName))
+		// The name of a heading is not searched, only what is under it.
+		if !t.isHeading(item) {
+			path += " " + strings.ToLower(item.Text(colName))
+		}
 
 		found := true
 		for _, word := range words {
@@ -379,15 +421,21 @@ func (t *requestTree) clearSearch() {
 
 // selection returns the folder or request that is selected, or nil.
 func (t *requestTree) selection() any {
-	item := t.tree.CurrentItem()
-	if item == nil {
-		return nil
+	if item := t.tree.CurrentItem(); item != nil {
+		return t.subject(item)
 	}
-	if folder, request := t.locate(item); request != nil {
+	return nil
+}
+
+// subject returns the folder or request of an item, or nil for a heading.
+func (t *requestTree) subject(item *qt.QTreeWidgetItem) any {
+	switch folder, request := t.locate(item); {
+	case request != nil:
 		return request
-	} else {
+	case folder != nil:
 		return folder
 	}
+	return nil
 }
 
 // sort puts the folders and requests in alphabetical order and draws the tree
@@ -459,6 +507,7 @@ func (t *requestTree) drop(folder *collection.Folder, request *collection.Reques
 
 	switch {
 	case where == dropNowhere || targetFolder == nil:
+		// Nowhere, or by a heading.
 		index = len(t.store.Folders)
 
 	case targetRequest != nil:
@@ -522,6 +571,14 @@ func (t *requestTree) drop(folder *collection.Folder, request *collection.Reques
 // folderIcon is the icon of a folder, once it has been drawn.
 var folderIcon *qt.QIcon
 
+// folderIcon returns the icon of a folder, drawing it if need be.
+func (t *requestTree) folderIcon() *qt.QIcon {
+	if folderIcon == nil {
+		folderIcon = drawIcon(iconSize*2, themeColour(colourRequests), drawFolder)
+	}
+	return folderIcon
+}
+
 // newItem adds an item beneath a parent item, at an index among its
 // children, or at their end if the index is -1. With no parent it is added
 // at the end of the top level. A request has the icon of its type before its
@@ -544,12 +601,8 @@ func (t *requestTree) newItem(parent *qt.QTreeWidgetItem, index int, name string
 	item.SetText(colName, name)
 	if icon := requestTypeIcon(typ); icon != nil {
 		item.SetIcon(colName, icon)
-		item.SetToolTip(colName, typeLabels[typ])
 	} else {
-		if folderIcon == nil {
-			folderIcon = drawIcon(iconSize*2, themeColour(colourRequests), drawFolder)
-		}
-		item.SetIcon(colName, folderIcon)
+		item.SetIcon(colName, t.folderIcon())
 	}
 	flags := item.Flags() | qt.ItemIsEditable
 	if typ != "" {
@@ -561,9 +614,41 @@ func (t *requestTree) newItem(parent *qt.QTreeWidgetItem, index int, name string
 	return item
 }
 
+// newHeading adds the item of a heading at the end of the top level, with the
+// icon of the type of request it lists, or for mixed ones that of a folder.
+// It is not a folder: it is always open, has no arrow, and cannot be
+// selected, renamed, dragged or dropped onto.
+func (t *requestTree) newHeading(group collection.Type) *qt.QTreeWidgetItem {
+	defer func(prev bool) { t.updating = prev }(t.updating)
+	t.updating = true
+
+	item := qt.NewQTreeWidgetItem3(t.tree)
+	item.SetText(colName, groupLabels[group])
+	icon := requestTypeIcon(group)
+	if icon == nil {
+		icon = t.folderIcon()
+	}
+	item.SetIcon(colName, icon)
+	font := item.Font(colName)
+	font.SetBold(true)
+	item.SetFont(colName, font)
+	item.SetFlags(qt.ItemIsEnabled)
+	return item
+}
+
+// isHeading reports if an item is that of a heading.
+func (t *requestTree) isHeading(item *qt.QTreeWidgetItem) bool {
+	if item.Parent() != nil {
+		return false
+	}
+	index := t.tree.IndexOfTopLevelItem(item)
+	return index >= 0 && index < len(t.top) && t.top[index].group != ""
+}
+
 // locate maps an item to the folder it is, or to the request it is and the
-// folder that holds it. The children of a folder's item are its folders
-// followed by its requests, as they are in the store.
+// folder that holds it. The item of a heading is neither, and gives nil for
+// both. The children of a folder's item are its folders followed by its
+// requests, as they are in the store.
 func (t *requestTree) locate(item *qt.QTreeWidgetItem) (*collection.Folder, *collection.Request) {
 	// The position of the item at each level, from the top down.
 	var path []int
@@ -578,7 +663,15 @@ func (t *requestTree) locate(item *qt.QTreeWidgetItem) (*collection.Folder, *col
 	}
 	slices.Reverse(path)
 
-	folder := t.store.Folders[path[0]]
+	entry := t.top[path[0]]
+	if entry.group != "" {
+		if len(path) == 1 {
+			return nil, nil
+		}
+		entry.folders = entry.folders[path[1]:]
+		path = path[1:]
+	}
+	folder := entry.folders[0]
 	for _, index := range path[1:] {
 		if index >= len(folder.Folders) {
 			return folder, folder.Requests[index-len(folder.Folders)]
@@ -595,6 +688,13 @@ func (t *requestTree) setCollapsed(item *qt.QTreeWidgetItem, collapsed bool) {
 	if t.updating || t.query() != nil {
 		return
 	}
+	if t.isHeading(item) {
+		// A heading is not a folder, and is always open.
+		if collapsed {
+			item.SetExpanded(true)
+		}
+		return
+	}
 	if folder, request := t.locate(item); request == nil && folder.Collapsed != collapsed {
 		folder.Collapsed = collapsed
 		t.save()
@@ -603,10 +703,10 @@ func (t *requestTree) setCollapsed(item *qt.QTreeWidgetItem, collapsed bool) {
 
 // folderItem returns the item of the folder that something is to be added
 // to: the selected folder, or the folder of the selected request. It is nil
-// if nothing is selected.
+// if nothing is selected, or a heading is.
 func (t *requestTree) folderItem() *qt.QTreeWidgetItem {
 	item := t.tree.CurrentItem()
-	if item == nil {
+	if item == nil || t.isHeading(item) {
 		return nil
 	}
 	if _, request := t.locate(item); request != nil {
@@ -662,11 +762,11 @@ func (t *requestTree) focusSearch() {
 
 // browse puts the keyboard in the tree, to move through it with. A search
 // starts it at the first request that was found. Otherwise it starts where
-// the selection is, or at the first item if nothing is selected. Nothing is
+// the selection is, or at the first folder if nothing is selected. Nothing is
 // opened by it.
 func (t *requestTree) browse() {
-	// first returns the first item on show beneath those given, which is
-	// a request if only is set.
+	// first returns the first folder or request on show beneath those
+	// given, which is a request if only is set.
 	var first func(count int, child func(int) *qt.QTreeWidgetItem, only bool) *qt.QTreeWidgetItem
 	first = func(count int, child func(int) *qt.QTreeWidgetItem, only bool) *qt.QTreeWidgetItem {
 		for i := range count {
@@ -674,7 +774,8 @@ func (t *requestTree) browse() {
 			if item.IsHidden() {
 				continue
 			}
-			if _, request := t.locate(item); request != nil || !only {
+			// A heading is passed over for what is under it.
+			if folder, request := t.locate(item); request != nil || (folder != nil && !only) {
 				return item
 			}
 			if found := first(item.ChildCount(), item.Child, only); found != nil {
@@ -783,6 +884,9 @@ func (t *requestTree) duplicate() {
 	}
 
 	folder, request := t.locate(item)
+	if folder == nil {
+		return
+	}
 	if request != nil {
 		holder := t.store.FolderOf(request)
 		if holder == nil {
@@ -913,14 +1017,15 @@ func (t *requestTree) adopt(folder *collection.Folder) {
 
 // rename starts editing the name of the selected folder or request.
 func (t *requestTree) rename() {
-	if item := t.tree.CurrentItem(); item != nil {
+	if item := t.tree.CurrentItem(); item != nil && !t.isHeading(item) {
 		t.tree.EditItem(item)
 	}
 }
 
 // remove deletes the selected request, or the selected folder and everything
 // in it, once the user has agreed to it. An empty folder is removed without
-// asking.
+// asking. What was beside it is selected in its place, and opened if it is a
+// request.
 func (t *requestTree) remove() {
 	item := t.tree.CurrentItem()
 	if item == nil {
@@ -928,16 +1033,11 @@ func (t *requestTree) remove() {
 	}
 
 	folder, request := t.locate(item)
-	parent := item.Parent()
-
-	// The folder that holds the item, if it is not at the top level, and
-	// the position of the item in it.
-	var holder *collection.Folder
-	index := t.tree.IndexOfTopLevelItem(item)
-	if parent != nil {
-		holder, _ = t.locate(parent)
-		index = parent.IndexOfChild(item)
+	if folder == nil {
+		// A heading.
+		return
 	}
+	next := t.neighbour(item)
 
 	var removed []*collection.Request
 	switch {
@@ -946,7 +1046,8 @@ func (t *requestTree) remove() {
 			return
 		}
 		removed = []*collection.Request{request}
-		holder.Remove(index - len(holder.Folders))
+		holder := t.store.FolderOf(request)
+		holder.Remove(slices.Index(holder.Requests, request))
 	default:
 		removed = folder.All()
 		if folders := folder.Descendants(); (len(removed) > 0 || folders > 0) &&
@@ -954,21 +1055,20 @@ func (t *requestTree) remove() {
 				folder.Name, plural(folders, "folder"), plural(len(removed), "request"))) {
 			return
 		}
-		if holder != nil {
-			holder.RemoveFolder(index)
+		parent, ok := t.store.ParentOf(folder)
+		if !ok {
+			return
+		}
+		if parent != nil {
+			parent.RemoveFolder(slices.Index(parent.Folders, folder))
 		} else {
-			t.store.RemoveFolder(index)
+			t.store.RemoveFolder(slices.Index(t.store.Folders, folder))
 		}
 	}
 
-	// Deleting an item deletes the items beneath it.
-	t.updating = true
-	if parent != nil {
-		parent.TakeChild(index).Delete()
-	} else {
-		t.tree.TakeTopLevelItem(index).Delete()
-	}
-	t.updating = false
+	// What is left may belong under another heading, so the tree is drawn
+	// again rather than the item taken out of it.
+	t.draw(next)
 
 	t.save()
 	if t.onRemove != nil {
@@ -976,9 +1076,38 @@ func (t *requestTree) remove() {
 			t.onRemove(r)
 		}
 	}
-
-	// The tree has moved the selection to a neighbouring item.
 	t.open()
+}
+
+// neighbour returns the folder or request to select once that of an item is
+// removed: the one after it beside it, or else the one before it, or else
+// the folder that holds it. It is nil if there is none of these.
+func (t *requestTree) neighbour(item *qt.QTreeWidgetItem) any {
+	parent := item.Parent()
+	count := t.tree.TopLevelItemCount()
+	child := t.tree.TopLevelItem
+	if parent != nil {
+		count = parent.ChildCount()
+		child = parent.Child
+	}
+
+	index := t.tree.IndexOfTopLevelItem(item)
+	if parent != nil {
+		index = parent.IndexOfChild(item)
+	}
+
+	for _, i := range []int{index + 1, index - 1} {
+		if i < 0 || i >= count {
+			continue
+		}
+		if sibling := child(i); !sibling.IsHidden() && !t.isHeading(sibling) {
+			return t.subject(sibling)
+		}
+	}
+	if parent != nil {
+		return t.subject(parent)
+	}
+	return nil
 }
 
 // plural returns a count of things, such as "1 folder" or "3 folders".
