@@ -58,7 +58,7 @@ var colourKinds = []struct {
 	{colourCaptured, "Captured", "#2e9e5b"},
 	{colourNotCaptured, "Not captured", failureColour},
 	{colourMatch, "Search matches", "#ffd43b"},
-	{colourFavourite, "Favourites", "#fab005"},
+	{colourFavourite, "Favourites", "#ffd43b"},
 }
 
 // customColours are the colours the user has chosen. See setColours.

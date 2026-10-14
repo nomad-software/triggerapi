@@ -84,6 +84,10 @@ Releases for Linux are an AppImage, built by `.github/workflows/appimage.yml` (o
 
 Always build the binary without debug symbols (`-ldflags "-s -w"`), either with `make build` or by passing the flags to `go build`.
 
+After every code change, run `make build` before reporting the work done, so `./triggerapi` is current; `go build ./...` and `go test` do not update it.
+
+Always give `go test` a short `-timeout` (`-timeout 120s` for `./...`, `-timeout 90s` for `./internal/ui/`), as a failing UI test hangs rather than exits.
+
 Smoke-test the GUI without a display:
 
 ```sh
