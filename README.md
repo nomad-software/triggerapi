@@ -4,7 +4,7 @@ A desktop client for making REST API and gRPC calls. It is written
 in Go with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
 bindings.
 
-![TriggerAPI showing a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
+![TriggerAPI showing saved requests under gRPC, REST and Mixed headings with a favourite folder, a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
 
 ## Why TriggerAPI
 
@@ -103,9 +103,10 @@ bindings.
   to edit it.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically, and
-  requests can be searched by name. The top level folders are listed under
-  gRPC, REST and Mixed headings by the requests they hold; this is worked out
-  as they are shown and is not saved.
+  requests can be searched by name, showing only the folders that hold a
+  request found. The top level folders are listed under gRPC, REST and Mixed
+  headings by the requests they hold; this is worked out as they are shown
+  and is not saved.
 - Mark top level folders as favourites with the star that appears at the
   right of one when the pointer is over it, and see them alone on the
   Favourites tab beneath the search. A folder moved inside another is no
@@ -114,7 +115,9 @@ bindings.
   on to what was found, the arrow keys move through the folders and requests
   (left closes a folder and right opens one), and Return opens the request.
 - Pin requests to keep them open in tabs, which are reopened the next time
-  TriggerAPI is run.
+  TriggerAPI is run. The tab that is not pinned has a pin button to pin it;
+  a pinned tab shows the icon of its request's type, which turns into a bin
+  to unpin it while the pointer is over the tab.
 - Duplicate a workspace, an environment, a request, or a folder with
   everything in it.
 - Import an OpenAPI 3 or Swagger 2 document, as JSON or YAML, or a Postman
