@@ -1,0 +1,20 @@
+[package]
+name = "triggerapi"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+triggerapi-core = { path = "../core" }
+eframe = "0.31"
+egui = "0.31"
+egui_extras = "0.31"
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "net", "io-util"] }
+chrono = "0.4"
+dirs = "6"
+fontdb = "0.23"
+
+[dev-dependencies]
+egui_kittest = { version = "0.31", features = ["wgpu", "snapshot", "eframe"] }
+tempfile = "3"
+image = { version = "0.25", default-features = false, features = ["png"] }
