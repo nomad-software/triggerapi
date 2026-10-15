@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	qt "github.com/mappu/miqt/qt6"
 
@@ -39,6 +40,16 @@ func main() {
 	// matches to the desktop file of that name for its icon and its place
 	// in the task bar. It is the name of packaging/triggerapi.desktop.
 	qt.QGuiApplication_SetDesktopFileName("triggerapi")
+
+	// On Linux the desktop is given an entry for the program, which starts
+	// the copy that is running now, wherever it is and whatever it is
+	// called, so that it can be started from the desktop's own menus and
+	// kept in a dock or sidebar.
+	if runtime.GOOS == "linux" {
+		if err := ui.InstallDesktopEntry(); err != nil {
+			fmt.Fprintln(os.Stderr, "triggerapi: the desktop entry could not be written:", err)
+		}
+	}
 
 	window := ui.NewWindow(files)
 	window.Show()

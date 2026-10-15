@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=TriggerAPI
-Comment=Make REST API and gRPC calls
+Comment=Make REST API, gRPC and WebSocket requests
 Exec=triggerapi
 Icon=triggerapi
 Categories=Development;Network;

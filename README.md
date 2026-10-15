@@ -436,6 +436,16 @@ the requests can be renamed freely.
 ./triggerapi
 ```
 
+On Linux, every time it starts TriggerAPI writes a desktop entry for itself,
+`~/.local/share/applications/triggerapi.desktop` (or under `$XDG_DATA_HOME`),
+with its icon in `~/.local/share/icons/hicolor/256x256/apps/triggerapi.png`.
+That puts it among the desktop's applications, to be started from the menu
+and kept in a dock or sidebar. The entry starts the copy that was run last,
+from wherever it was and whatever it is called: the AppImage, if it was run
+as one, and otherwise the program itself. It is only rewritten when that
+changes. Delete the two files to take it out of the menu again; they come
+back the next time TriggerAPI is run.
+
 TriggerAPI keeps its data as JSON files.
 
 The settings are kept where the system keeps the configuration of programs:

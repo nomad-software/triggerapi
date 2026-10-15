@@ -81,7 +81,9 @@ func TestWebSocketRequest(t *testing.T) {
 
 	// The connection opens with the environment applied to the handshake.
 	waitFor(t, "the connection", func() bool {
-		return mainthread.Wait2(func() bool { return w.ws.send.IsEnabled() && strings.Contains(w.wsResponse.body.ToPlainText(), "hello world") })
+		return mainthread.Wait2(func() bool {
+			return w.ws.send.IsEnabled() && strings.Contains(w.wsResponse.body.ToPlainText(), "hello world")
+		})
 	})
 	mainthread.Wait(func() {
 		if w.ws.send.StyleSheet() != primaryStyle() {
