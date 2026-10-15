@@ -42,11 +42,14 @@ var (
 var tokenKinds = []struct {
 	kind  tokenKind
 	label string
+	// setting returns the place in the settings that holds the colour the
+	// user has chosen.
+	setting func(*settings.JSONColours) *string
 }{
-	{tokenKey, "Keys"},
-	{tokenString, "Strings"},
-	{tokenNumber, "Numbers"},
-	{tokenLiteral, "true, false and null"},
+	{tokenKey, "Keys", func(c *settings.JSONColours) *string { return &c.Key }},
+	{tokenString, "Strings", func(c *settings.JSONColours) *string { return &c.String }},
+	{tokenNumber, "Numbers", func(c *settings.JSONColours) *string { return &c.Number }},
+	{tokenLiteral, "true, false and null", func(c *settings.JSONColours) *string { return &c.Literal }},
 }
 
 // defaultJSONColours returns the colours of the tokens for the background
@@ -61,16 +64,12 @@ func defaultJSONColours() map[tokenKind]string {
 // customColour returns the place in the settings that holds the colour the
 // user has chosen for a kind of token.
 func customColour(custom *settings.JSONColours, kind tokenKind) *string {
-	switch kind {
-	case tokenKey:
-		return &custom.Key
-	case tokenString:
-		return &custom.String
-	case tokenNumber:
-		return &custom.Number
-	default:
-		return &custom.Literal
+	for _, k := range tokenKinds {
+		if k.kind == kind {
+			return k.setting(custom)
+		}
 	}
+	return &custom.Literal
 }
 
 // jsonColours returns the colours of the tokens: those the user has chosen,

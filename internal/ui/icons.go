@@ -18,6 +18,8 @@ const glyphSize = 128
 // needs nothing beside its binary.
 func drawIcon(size int, colour string, glyph func(*qt.QPainter)) *qt.QIcon {
 	pixmap := drawPixmap(size, colour, glyph)
+	// The icon keeps a copy of the picture.
+	defer pixmap.Delete()
 	icon := qt.NewQIcon2(pixmap)
 	// The icon of a selected item is otherwise tinted with the colour of
 	// the selection.
@@ -28,13 +30,21 @@ func drawIcon(size int, colour string, glyph func(*qt.QPainter)) *qt.QIcon {
 // drawPixmap draws the picture of an icon. See drawIcon.
 func drawPixmap(size int, colour string, glyph func(*qt.QPainter)) *qt.QPixmap {
 	pixmap := qt.NewQPixmap2(size, size)
-	pixmap.FillWithFillColor(qt.NewQColor2(qt.Transparent))
+	transparent := qt.NewQColor2(qt.Transparent)
+	defer transparent.Delete()
+	pixmap.FillWithFillColor(transparent)
+
+	// The painter keeps a copy of the brush.
+	background := qt.NewQColor6(colour)
+	defer background.Delete()
+	brush := qt.NewQBrush3(background)
+	defer brush.Delete()
 
 	painter := qt.NewQPainter2(pixmap.QPaintDevice)
 	painter.SetRenderHint(qt.QPainter__Antialiasing)
 	painter.Scale(float64(size)/glyphSize, float64(size)/glyphSize)
 	painter.SetPenWithStyle(qt.NoPen)
-	painter.SetBrush(qt.NewQBrush3(qt.NewQColor6(colour)))
+	painter.SetBrush(brush)
 	painter.DrawRoundedRect2(4, 4, glyphSize-8, glyphSize-8, 24, 24)
 	glyph(painter)
 	// Painting must be finished before the pixmap is used.
@@ -49,7 +59,13 @@ func drawPixmap(size int, colour string, glyph func(*qt.QPainter)) *qt.QPixmap {
 // picture is turned the other way beforehand to end up upright.
 func drawTabIcon(colour string, glyph func(*qt.QPainter)) *qt.QIcon {
 	pixmap := drawPixmap(iconSize*2, colour, glyph)
-	return qt.NewQIcon2(pixmap.Transformed2(qt.NewQTransform2().Rotate(90), qt.SmoothTransformation))
+	defer pixmap.Delete()
+	turn := qt.NewQTransform2()
+	defer turn.Delete()
+	turn.Rotate(90)
+	// The turned picture is freed by the garbage collector, and the icon
+	// keeps a copy of it.
+	return qt.NewQIcon2(pixmap.Transformed2(turn, qt.SmoothTransformation))
 }
 
 // drawGlobe draws a globe, for the environments requests are sent to.
@@ -266,15 +282,9 @@ func drawSets(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
-// setIconCache is the icon of a set, once it has been drawn.
-var setIconCache *qt.QIcon
-
 // setIcon returns the icon of a set, in the colour of the sets.
 func setIcon() *qt.QIcon {
-	if setIconCache == nil {
-		setIconCache = drawIcon(iconSize*2, themeColour(colourSets), drawSets)
-	}
-	return setIconCache
+	return cachedIcon("set", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourSets), drawSets) })
 }
 
 // drawFolderPlus draws a folder with a plus sign on it, for adding a folder.

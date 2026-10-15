@@ -260,13 +260,7 @@ func (s *workspaceList) remove() {
 	s.open(next)
 }
 
-// workspaceIconCache is the icon of a workspace, once it has been drawn.
-var workspaceIconCache *qt.QIcon
-
 // workspaceIcon returns the icon shown before the name of a workspace.
 func workspaceIcon() *qt.QIcon {
-	if workspaceIconCache == nil {
-		workspaceIconCache = drawIcon(iconSize*2, themeColour(colourWorkspaces), drawMonitor)
-	}
-	return workspaceIconCache
+	return cachedIcon("workspace", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourWorkspaces), drawMonitor) })
 }

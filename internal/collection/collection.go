@@ -4,6 +4,7 @@ package collection
 
 import (
 	"encoding/json"
+	"net/http"
 	"slices"
 	"strings"
 
@@ -49,6 +50,24 @@ func NewWebSocket(name string, request ws.Request) *Request {
 	return &Request{Name: name, Type: TypeWebSocket, WebSocket: &request}
 }
 
+// New returns an empty request of a type, with a name. A REST request is a
+// GET, and a type that is not known is taken for REST, as it is on loading.
+func New(typ Type, name string) *Request {
+	switch typ {
+	case TypeGRPC:
+		return NewGRPC(name, rpc.Request{})
+	case TypeWebSocket:
+		return NewWebSocket(name, ws.Request{})
+	}
+	return NewREST(name, rest.Request{Method: http.MethodGet})
+}
+
+// SetContent makes the request the same as another, but for its name: of the
+// type of the other, with what the other holds. The two then share it.
+func (r *Request) SetContent(from *Request) {
+	r.Type, r.Request, r.GRPC, r.WebSocket = from.Type, from.Request, from.GRPC, from.WebSocket
+}
+
 // normalise makes the request hold exactly the field for its type. Requests
 // saved before there were types are REST requests.
 func (r *Request) normalise() {
@@ -77,12 +96,17 @@ func (r *Request) normalise() {
 // Clone returns a copy of the request which shares nothing with it.
 func (r *Request) Clone() *Request {
 	clone := &Request{}
-	// A request can always be written as JSON and read back.
-	if data, err := json.Marshal(r); err == nil {
-		_ = json.Unmarshal(data, clone)
-	}
+	deepCopy(r, clone)
 	clone.normalise()
 	return clone
+}
+
+// deepCopy copies from into to by way of JSON, which every request and
+// folder can always be written as and read back from.
+func deepCopy(from, to any) {
+	if data, err := json.Marshal(from); err == nil {
+		_ = json.Unmarshal(data, to)
+	}
 }
 
 // Folder is a named group of requests. It can hold other folders, to any
@@ -102,9 +126,7 @@ type Folder struct {
 // nothing with it.
 func (f *Folder) Clone() *Folder {
 	clone := &Folder{}
-	if data, err := json.Marshal(f); err == nil {
-		_ = json.Unmarshal(data, clone)
-	}
+	deepCopy(f, clone)
 	clone.normalise()
 	return clone
 }
@@ -231,6 +253,40 @@ func (s *Store) RemoveFolder(index int) {
 	s.Folders = slices.Delete(s.Folders, index, index+1)
 }
 
+// FoldersIn returns the folders inside parent, or those at the top level if
+// parent is nil.
+func (s *Store) FoldersIn(parent *Folder) []*Folder {
+	return *s.foldersOf(parent)
+}
+
+// foldersOf returns the list that holds the folders inside parent, or those
+// at the top level if parent is nil.
+func (s *Store) foldersOf(parent *Folder) *[]*Folder {
+	if parent == nil {
+		return &s.Folders
+	}
+	return &parent.Folders
+}
+
+// Insert appends a folder, with everything in it, inside parent, or at the
+// top level if parent is nil.
+func (s *Store) Insert(parent, f *Folder) {
+	folders := s.foldersOf(parent)
+	*folders = append(*folders, f)
+}
+
+// Delete removes a folder, with everything in it, from wherever it is in the
+// store. It reports false if the folder is not in the store.
+func (s *Store) Delete(f *Folder) bool {
+	parent, ok := s.ParentOf(f)
+	if !ok {
+		return false
+	}
+	folders := s.foldersOf(parent)
+	*folders = slices.DeleteFunc(*folders, func(other *Folder) bool { return other == f })
+	return true
+}
+
 // AddFolder appends a new folder inside the folder.
 func (f *Folder) AddFolder(name string) *Folder {
 	sub := &Folder{Name: name}
@@ -303,81 +359,70 @@ func (f *Folder) contains(other *Folder) bool {
 	return slices.ContainsFunc(f.Folders, func(sub *Folder) bool { return sub.contains(other) })
 }
 
+// walk visits every folder of the store, depth first with a folder before
+// those inside it, giving each with the folder that holds it (nil at the top
+// level) and the names of the folders it is in, outermost first, followed by
+// its own. It stops at the first folder for which visit returns true.
+func (s *Store) walk(visit func(f, parent *Folder, path []string) bool) {
+	var walk func(f, parent *Folder, path []string) bool
+	walk = func(f, parent *Folder, path []string) bool {
+		path = append(slices.Clip(path), f.Name)
+		if visit(f, parent, path) {
+			return true
+		}
+		for _, sub := range f.Folders {
+			if walk(sub, f, path) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, top := range s.Folders {
+		if walk(top, nil, nil) {
+			return
+		}
+	}
+}
+
 // ParentOf returns the folder that holds a folder, or nil if it is at the top
 // level. It reports false if the folder is not in the store.
 func (s *Store) ParentOf(f *Folder) (*Folder, bool) {
-	if slices.Contains(s.Folders, f) {
-		return nil, true
+	var parent *Folder
+	found := false
+	s.walk(func(in, holder *Folder, _ []string) bool {
+		parent, found = holder, in == f
+		return found
+	})
+	if !found {
+		return nil, false
 	}
-
-	var find func(in *Folder) *Folder
-	find = func(in *Folder) *Folder {
-		if slices.Contains(in.Folders, f) {
-			return in
-		}
-		for _, sub := range in.Folders {
-			if parent := find(sub); parent != nil {
-				return parent
-			}
-		}
-		return nil
-	}
-
-	for _, top := range s.Folders {
-		if parent := find(top); parent != nil {
-			return parent, true
-		}
-	}
-	return nil, false
+	return parent, true
 }
 
 // FolderOf returns the folder that holds a request, or nil if the request is
 // not in the store.
 func (s *Store) FolderOf(r *Request) *Folder {
-	var find func(in *Folder) *Folder
-	find = func(in *Folder) *Folder {
+	var holder *Folder
+	s.walk(func(in, _ *Folder, _ []string) bool {
 		if slices.Contains(in.Requests, r) {
-			return in
+			holder = in
 		}
-		for _, sub := range in.Folders {
-			if holder := find(sub); holder != nil {
-				return holder
-			}
-		}
-		return nil
-	}
-
-	for _, top := range s.Folders {
-		if holder := find(top); holder != nil {
-			return holder
-		}
-	}
-	return nil
+		return holder != nil
+	})
+	return holder
 }
 
 // Path returns the names of the folders a request is in, outermost first,
 // followed by its own name. It is nil if the request is not in the store.
 func (s *Store) Path(r *Request) []string {
-	var find func(in *Folder, path []string) []string
-	find = func(in *Folder, path []string) []string {
-		path = append(path, in.Name)
+	var found []string
+	s.walk(func(in, _ *Folder, path []string) bool {
 		if slices.Contains(in.Requests, r) {
-			return append(path, r.Name)
+			found = append(slices.Clone(path), r.Name)
 		}
-		for _, sub := range in.Folders {
-			if found := find(sub, slices.Clone(path)); found != nil {
-				return found
-			}
-		}
-		return nil
-	}
-
-	for _, top := range s.Folders {
-		if found := find(top, nil); found != nil {
-			return found
-		}
-	}
-	return nil
+		return found != nil
+	})
+	return found
 }
 
 // Find returns the request at a path, as Path gives it, or nil if there is

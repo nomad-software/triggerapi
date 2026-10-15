@@ -308,15 +308,9 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 	}
 }
 
-// removeIcon is the icon of the buttons which remove a row, once drawn.
-var removeIcon *qt.QIcon
-
 // removeRowIcon returns the icon of the buttons which remove a row.
 func removeRowIcon() *qt.QIcon {
-	if removeIcon == nil {
-		removeIcon = drawIcon(removeIconSize*2, themeColour(colourRemove), drawBin)
-	}
-	return removeIcon
+	return cachedIcon("remove row", func() *qt.QIcon { return drawIcon(removeIconSize*2, themeColour(colourRemove), drawBin) })
 }
 
 // newRemoveButton returns a button which removes the row it is in.

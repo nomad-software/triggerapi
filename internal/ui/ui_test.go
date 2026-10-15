@@ -858,12 +858,12 @@ func isFailure(p *responsePanel) bool {
 // an empty type if it has the icon of a folder.
 func itemType(item *qt.QTreeWidgetItem) collection.Type {
 	icon := item.Icon(colName)
-	if icon.IsNull() || (folderIcon != nil && icon.CacheKey() == folderIcon.CacheKey()) {
+	if icon.IsNull() || icon.CacheKey() == folderIcon().CacheKey() {
 		return ""
 	}
-	for typ, known := range requestTypeIcons {
-		if known.CacheKey() == icon.CacheKey() {
-			return typ
+	for _, known := range requestTypes {
+		if requestTypeIcon(known.typ).CacheKey() == icon.CacheKey() {
+			return known.typ
 		}
 	}
 	return "unknown"
@@ -4367,7 +4367,7 @@ func TestRequestHeadings(t *testing.T) {
 
 		// The headings have the icons of their types, and Mixed that of a
 		// folder.
-		for i, icon := range []*qt.QIcon{requestTypeIcon(collection.TypeGRPC), requestTypeIcon(collection.TypeREST), folderIcon} {
+		for i, icon := range []*qt.QIcon{requestTypeIcon(collection.TypeGRPC), requestTypeIcon(collection.TypeREST), folderIcon()} {
 			if got := tree.TopLevelItem(i).Icon(colName); got.CacheKey() != icon.CacheKey() {
 				t.Errorf("heading %d has the wrong icon", i)
 			}

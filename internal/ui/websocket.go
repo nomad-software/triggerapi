@@ -5,6 +5,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
+	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/ws"
 )
 
@@ -31,16 +32,11 @@ type wsPanel struct {
 	headers *keyValueTable
 	auth    *authEditor
 
-	// highlight colours the placeholders in the fields of the request.
-	highlight *placeholderHighlighter
-
-	updating bool
-	// onChange is called after the user edits any part of the request.
-	onChange func()
+	panelState
 }
 
 func newWSPanel() *wsPanel {
-	p := &wsPanel{root: qt.NewQWidget2(), highlight: newPlaceholderHighlighter()}
+	p := &wsPanel{root: qt.NewQWidget2(), panelState: newPanelState()}
 
 	p.url = qt.NewQLineEdit2()
 	p.url.SetPlaceholderText("Server address, e.g. ws://localhost:8080/socket or {{host}}/socket")
@@ -106,10 +102,17 @@ func newWSPanel() *wsPanel {
 	return p
 }
 
-func (p *wsPanel) changed() {
-	if !p.updating && p.onChange != nil {
-		p.onChange()
-	}
+func (p *wsPanel) widget() *qt.QWidget { return p.root }
+
+func (p *wsPanel) saveButton() *qt.QPushButton { return p.save }
+
+// show shows a WebSocket request. See load.
+func (p *wsPanel) show(r *collection.Request) { p.load(*r.WebSocket) }
+
+// compose returns the request in the widgets as a WebSocket request with a
+// name.
+func (p *wsPanel) compose(name string) *collection.Request {
+	return collection.NewWebSocket(name, p.request())
 }
 
 // request reads the widgets into a ws.Request.
@@ -162,12 +165,11 @@ func (p *wsPanel) setCodeFont(family string) {
 	p.message.SetFont(fixedFont(family))
 }
 
-// refreshPlaceholders recolours the placeholders after the environment has
-// changed. Recolouring a document reports its text as changed, which must not
-// be taken for an edit.
-func (p *wsPanel) refreshPlaceholders() {
-	defer func(prev bool) { p.updating = prev }(p.updating)
-	p.updating = true
-
-	p.highlight.refresh()
+// recolour shows Connect, Send and the placeholders in the colours of the
+// settings.
+func (p *wsPanel) recolour() {
+	makePrimary(p.connect)
+	p.highlight.setColours()
+	p.refreshPlaceholders()
+	p.styleSend()
 }

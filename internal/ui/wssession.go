@@ -65,7 +65,7 @@ func (w *Window) toggleWS() {
 				cancel()
 				w.ws.setConnected(false)
 				if errors.Is(err, context.DeadlineExceeded) {
-					err = fmt.Errorf("timed out after %s, which is the limit in the settings", plural(w.config.Timeout, "second"))
+					err = timeoutError(w.config.Timeout)
 				}
 				w.wsResponse.setFields(
 					field{fieldCode, "Not connected", true},
@@ -81,6 +81,16 @@ func (w *Window) toggleWS() {
 			go w.readWS(s)
 		})
 	}()
+}
+
+// connectAndSendWS sends the message of the WebSocket request on show over
+// its connection, which is opened first if it is not, as Ctrl+Return does.
+func (w *Window) connectAndSendWS() {
+	if w.socket == nil {
+		w.toggleWS()
+	} else {
+		w.sendWS()
+	}
 }
 
 // readWS receives the messages of a connection until it closes, showing each

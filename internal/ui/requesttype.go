@@ -9,32 +9,36 @@ import (
 // requestTypes are the types of request that can be created, in the order
 // they are offered.
 var requestTypes = []struct {
-	typ    collection.Type
+	typ collection.Type
+	// label is the name the type is shown by.
+	label  string
 	colour colourKind
 	// glyph draws the symbol of the type. See drawIcon.
 	glyph func(*qt.QPainter)
 }{
-	{collection.TypeREST, colourREST, drawBraces},
-	{collection.TypeGRPC, colourGRPC, drawArrows},
-	{collection.TypeWebSocket, colourWebSocket, drawPulse},
+	{collection.TypeREST, "REST", colourREST, drawBraces},
+	{collection.TypeGRPC, "gRPC", colourGRPC, drawArrows},
+	{collection.TypeWebSocket, "WebSocket", colourWebSocket, drawPulse},
 }
 
-// requestTypeIcons holds the icons once they have been drawn. They are drawn
-// again after the colours change.
-var requestTypeIcons = map[collection.Type]*qt.QIcon{}
+// typeLabels are the names the request types are shown by.
+var typeLabels = func() map[collection.Type]string {
+	labels := map[collection.Type]string{}
+	for _, t := range requestTypes {
+		labels[t.typ] = t.label
+	}
+	return labels
+}()
 
 // requestTypeIcon returns the icon for a type of request, or nil if the type
-// is not one that can be created.
+// is not one that can be created. It is drawn again after the colours
+// change.
 func requestTypeIcon(typ collection.Type) *qt.QIcon {
-	if icon, ok := requestTypeIcons[typ]; ok {
-		return icon
-	}
-
 	for _, t := range requestTypes {
 		if t.typ == typ {
-			icon := drawIcon(iconSize*2, themeColour(t.colour), t.glyph)
-			requestTypeIcons[typ] = icon
-			return icon
+			return cachedIcon("type "+string(typ), func() *qt.QIcon {
+				return drawIcon(iconSize*2, themeColour(t.colour), t.glyph)
+			})
 		}
 	}
 	return nil
@@ -45,7 +49,7 @@ func requestTypeIcon(typ collection.Type) *qt.QIcon {
 func newRequestTypeDialog(parent *qt.QWidget) *choiceDialog[collection.Type] {
 	choices := make([]choice[collection.Type], len(requestTypes))
 	for i, t := range requestTypes {
-		choices[i] = choice[collection.Type]{t.typ, typeLabels[t.typ], requestTypeIcon(t.typ)}
+		choices[i] = choice[collection.Type]{t.typ, t.label, requestTypeIcon(t.typ)}
 	}
 	return newChoiceDialog(parent, "New Request", "Choose the type of request to create.", choices)
 }

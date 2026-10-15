@@ -249,3 +249,15 @@ func TestExpandFunctions(t *testing.T) {
 func Load(path string) (*Store, error) {
 	return LoadWith(path, nil)
 }
+
+func TestEnvironmentClone(t *testing.T) {
+	e := Environment{Name: "Dev", Variables: []Variable{{Key: "a", Value: "1", Enabled: true, Description: "d"}}}
+	clone := e.Clone()
+	if !reflect.DeepEqual(clone, e) {
+		t.Fatalf("Clone() = %+v, want %+v", clone, e)
+	}
+	clone.Variables[0].Value = "2"
+	if e.Variables[0].Value != "1" {
+		t.Error("the clone shares its variables with the original")
+	}
+}

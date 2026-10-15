@@ -493,7 +493,7 @@ func (p *responsePanel) show(res *rest.Response) {
 	// it was received, which keeps a file that is not text intact.
 	content := res.Body
 	if res.IsJSON() {
-		content = []byte(res.Text())
+		content = []byte(text)
 	}
 	p.setContent(content, responseFileName(res.Headers.Get("Content-Type")))
 	p.setHeaders(headerRows(res.Headers, ""))

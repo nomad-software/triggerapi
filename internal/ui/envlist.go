@@ -2,8 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -65,9 +63,7 @@ func newEnvList(store *env.Store, path string) *envList {
 		return newEnvImportDialog(s.root).ask()
 	}
 	s.chooseFile = func(source envImportSource) (string, bool) {
-		kind := envImportSources[source]
-		path := qt.QFileDialog_GetOpenFileName4(s.root, "Import "+kind.label, "", kind.filter+";;All files (*)")
-		return path, path != ""
+		return chooseImportFile(s.root, envImportSources[source])
 	}
 	s.warn = func(message string) {
 		qt.QMessageBox_Warning(s.root, "TriggerAPI", message)
@@ -160,12 +156,17 @@ func (s *envList) selected() {
 	s.save()
 }
 
-// add creates an environment, selects it and opens it for editing.
-func (s *envList) add() {
-	s.store.Environments = append(s.store.Environments, env.Environment{Name: "New Environment"})
+// insert adds an environment and selects it, in its place in the order.
+func (s *envList) insert(e env.Environment) {
+	s.store.Environments = append(s.store.Environments, e)
 	s.store.Active = len(s.store.Environments) - 1
 	s.sort()
 	s.selected()
+}
+
+// add creates an environment, selects it and opens it for editing.
+func (s *envList) add() {
+	s.insert(env.Environment{Name: "New Environment"})
 	s.edit()
 }
 
@@ -176,20 +177,16 @@ func (s *envList) duplicate() {
 	if !ok {
 		return
 	}
-	s.store.Environments = append(s.store.Environments, env.Environment{
-		Name:      e.Name + " copy",
-		Variables: slices.Clone(e.Variables),
-	})
-	s.store.Active = len(s.store.Environments) - 1
-	s.sort()
-	s.selected()
+	copied := e.Clone()
+	copied.Name += " copy"
+	s.insert(copied)
 	s.edit()
 }
 
 // copy keeps a copy of the selected environment, to be pasted.
 func (s *envList) copy() {
 	if e, ok := s.store.Current(); ok {
-		copied := env.Environment{Name: e.Name, Variables: slices.Clone(e.Variables)}
+		copied := e.Clone()
 		s.copied = &copied
 	}
 }
@@ -200,14 +197,11 @@ func (s *envList) paste() {
 	if s.copied == nil {
 		return
 	}
-	pasted := env.Environment{Name: s.copied.Name, Variables: slices.Clone(s.copied.Variables)}
-	for slices.ContainsFunc(s.store.Environments, func(e env.Environment) bool { return e.Name == pasted.Name }) {
-		pasted.Name += " copy"
-	}
-	s.store.Environments = append(s.store.Environments, pasted)
-	s.store.Active = len(s.store.Environments) - 1
-	s.sort()
-	s.selected()
+	pasted := s.copied.Clone()
+	pasted.Name = copyName(pasted.Name, func(name string) bool {
+		return slices.ContainsFunc(s.store.Environments, func(e env.Environment) bool { return e.Name == name })
+	})
+	s.insert(pasted)
 }
 
 // envImportSource is a kind of file that an environment can be imported
@@ -216,61 +210,35 @@ type envImportSource string
 
 const envImportPostman envImportSource = "postman"
 
+// envImportOrder is the order the kinds of file are offered in.
+var envImportOrder = []envImportSource{envImportPostman}
+
 // envImportSources describes the kinds of file that an environment can be
 // imported from.
-var envImportSources = map[envImportSource]struct {
-	label  string
-	filter string
-	colour string
-	glyph  func(*qt.QPainter)
-	read   func([]byte) (env.Environment, error)
-}{
+var envImportSources = map[envImportSource]importKind[env.Environment]{
 	envImportPostman: {"Postman", "Postman environments (*.json)", "#ef5b25", drawPlane, postman.ImportEnvironment},
 }
 
 // newEnvImportDialog returns a dialog which asks what kind of file to import
 // an environment from.
 func newEnvImportDialog(parent *qt.QWidget) *choiceDialog[envImportSource] {
-	var choices []choice[envImportSource]
-	for _, source := range []envImportSource{envImportPostman} {
-		kind := envImportSources[source]
-		choices = append(choices, choice[envImportSource]{source, kind.label, drawIcon(iconSize*2, kind.colour, kind.glyph)})
-	}
-	return newChoiceDialog(parent, "Import", "Choose what to import an environment from.", choices)
+	return newSourceDialog(parent, "Choose what to import an environment from.", envImportOrder, envImportSources)
 }
 
 // importDocument asks what kind of file to import, and for the file, and
 // imports it.
 func (s *envList) importDocument() {
-	source, ok := s.chooseSource()
-	if !ok {
-		return
-	}
-	path, ok := s.chooseFile(source)
-	if !ok {
-		return
-	}
-	if err := s.importFile(source, path); err != nil {
-		s.warn(fmt.Sprintf("%s could not be imported: %v.", filepath.Base(path), err))
-	}
+	importDocument(s.chooseSource, s.chooseFile, s.importFile, s.warn)
 }
 
 // importFile adds the environment in the file at path, which is of the kind
 // given, and selects it.
 func (s *envList) importFile(source envImportSource, path string) error {
-	data, err := os.ReadFile(path)
+	environment, err := readImport(envImportSources[source], path)
 	if err != nil {
 		return err
 	}
-	environment, err := envImportSources[source].read(data)
-	if err != nil {
-		return err
-	}
-
-	s.store.Environments = append(s.store.Environments, environment)
-	s.store.Active = len(s.store.Environments) - 1
-	s.sort()
-	s.selected()
+	s.insert(environment)
 	return nil
 }
 
@@ -321,30 +289,15 @@ func (s *envList) update(name string, variables []env.Variable) {
 	s.save()
 }
 
+// save reports the change, and writes the store to its file.
 func (s *envList) save() {
 	if s.onChange != nil {
 		s.onChange()
 	}
-	if s.path == "" {
-		return
-	}
-	var keys *crypt.Keys
-	if s.keys != nil {
-		keys = s.keys()
-	}
-	if err := s.store.SaveWith(s.path, keys); err != nil && s.onError != nil {
-		s.onError(err)
-	}
+	saveStore(s.path, s.keys, s.store.SaveWith, s.onError)
 }
-
-// environmentIconCache is the icon of an environment, once it has been
-// drawn.
-var environmentIconCache *qt.QIcon
 
 // environmentIcon returns the icon shown before the name of an environment.
 func environmentIcon() *qt.QIcon {
-	if environmentIconCache == nil {
-		environmentIconCache = drawIcon(iconSize*2, themeColour(colourEnvironments), drawGlobe)
-	}
-	return environmentIconCache
+	return cachedIcon("environment", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourEnvironments), drawGlobe) })
 }

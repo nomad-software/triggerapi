@@ -5,6 +5,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
+	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 )
 
@@ -38,22 +39,17 @@ type grpcPanel struct {
 	// endpoints lists the methods of the server, to make requests of.
 	endpoints *endpointTable
 
-	// highlight colours the placeholders in the fields of the request.
-	highlight *placeholderHighlighter
-
-	updating bool
+	panelState
 	// target is the server the service definition was last asked of.
 	target string
 
-	// onChange is called after the user edits any part of the request.
-	onChange func()
 	// onTarget is called after the user has finished changing which server
 	// the request is for.
 	onTarget func()
 }
 
 func newGRPCPanel() *grpcPanel {
-	p := &grpcPanel{root: qt.NewQWidget2(), highlight: newPlaceholderHighlighter()}
+	p := &grpcPanel{root: qt.NewQWidget2(), panelState: newPanelState()}
 
 	p.url = qt.NewQLineEdit2()
 	p.url.SetPlaceholderText("Server address, e.g. localhost:50051")
@@ -93,7 +89,7 @@ func newGRPCPanel() *grpcPanel {
 	p.status.SetWordWrap(true)
 	p.status.SetTextInteractionFlags(qt.TextSelectableByMouse)
 	p.status.SetVisible(false)
-	p.recolour()
+	p.styleStatus()
 
 	fixed := qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont)
 
@@ -145,12 +141,6 @@ func newGRPCPanel() *grpcPanel {
 	return p
 }
 
-func (p *grpcPanel) changed() {
-	if !p.updating && p.onChange != nil {
-		p.onChange()
-	}
-}
-
 // targetChanged reports that the request is for a different server, unless it
 // is the one last reported.
 func (p *grpcPanel) targetChanged() {
@@ -166,6 +156,18 @@ func (p *grpcPanel) targetChanged() {
 
 func (p *grpcPanel) targetKey() string {
 	return fmt.Sprintf("%s %t", p.url.Text(), p.tls.IsChecked())
+}
+
+func (p *grpcPanel) widget() *qt.QWidget { return p.root }
+
+func (p *grpcPanel) saveButton() *qt.QPushButton { return p.save }
+
+// show shows a gRPC request. See load.
+func (p *grpcPanel) show(r *collection.Request) { p.load(*r.GRPC) }
+
+// compose returns the request in the widgets as a gRPC request with a name.
+func (p *grpcPanel) compose(name string) *collection.Request {
+	return collection.NewGRPC(name, p.request())
 }
 
 // request reads the widgets into an rpc.Request.
@@ -216,8 +218,17 @@ func (p *grpcPanel) setStatus(text string) {
 	p.status.SetVisible(text != "")
 }
 
-// recolour gives the status line the colour of errors in the settings.
+// recolour shows Invoke, the placeholders and the status line in the colours
+// of the settings.
 func (p *grpcPanel) recolour() {
+	makePrimary(p.invoke)
+	p.highlight.setColours()
+	p.refreshPlaceholders()
+	p.styleStatus()
+}
+
+// styleStatus gives the status line the colour of errors in the settings.
+func (p *grpcPanel) styleStatus() {
 	p.status.SetStyleSheet("color: " + themeColour(colourError))
 }
 
@@ -250,14 +261,4 @@ func (p *grpcPanel) setSchema(schema *rpc.Schema) {
 func (p *grpcPanel) setSchemaError(err error) {
 	p.endpoints.setMethods(nil)
 	p.setStatus("The service definition could not be loaded: " + err.Error())
-}
-
-// refreshPlaceholders recolours the placeholders after the environment has
-// changed. Recolouring a document reports its text as changed, which must not
-// be taken for an edit.
-func (p *grpcPanel) refreshPlaceholders() {
-	defer func(prev bool) { p.updating = prev }(p.updating)
-	p.updating = true
-
-	p.highlight.refresh()
 }

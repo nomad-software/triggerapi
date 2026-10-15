@@ -6,6 +6,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
+	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/env"
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
@@ -109,20 +110,14 @@ type requestPanel struct {
 	// which is the one that Execute is to run.
 	commanded rest.Request
 
-	// highlight colours the placeholders in the fields of the request.
-	highlight *placeholderHighlighter
-
-	updating bool
+	panelState
 	// syncing is set while the URL and the params table are brought into
 	// step, to stop one updating the other in a loop.
 	syncing bool
-
-	// onChange is called after the user edits any part of the request.
-	onChange func()
 }
 
 func newRequestPanel() *requestPanel {
-	p := &requestPanel{root: qt.NewQWidget2(), highlight: newPlaceholderHighlighter()}
+	p := &requestPanel{root: qt.NewQWidget2(), panelState: newPanelState()}
 
 	p.method = qt.NewQComboBox2()
 	p.method.AddItems(rest.Methods)
@@ -441,21 +436,40 @@ func (p *requestPanel) showLikelyTab() {
 
 func (p *requestPanel) changed() {
 	p.updatePreview()
-	if !p.updating && p.onChange != nil {
-		p.onChange()
-	}
+	p.panelState.changed()
 }
 
 // refreshPlaceholders recolours the placeholders after the environment has
-// changed. Recolouring a document reports its text as changed, which must not
+// changed, and shows the curl command and the preview of the URL with its
+// values. Recolouring a document reports its text as changed, which must not
 // be taken for an edit.
 func (p *requestPanel) refreshPlaceholders() {
-	defer func(prev bool) { p.updating = prev }(p.updating)
-	p.updating = true
+	p.quietly(func() {
+		p.highlight.refresh()
+		p.updateCurl()
+		p.updatePreview()
+	})
+}
 
-	p.highlight.refresh()
-	p.updateCurl()
-	p.updatePreview()
+// recolour shows Send, Execute and the placeholders in the colours of the
+// settings.
+func (p *requestPanel) recolour() {
+	makePrimary(p.send)
+	makePrimary(p.execute)
+	p.highlight.setColours()
+	p.refreshPlaceholders()
+}
+
+func (p *requestPanel) widget() *qt.QWidget { return p.root }
+
+func (p *requestPanel) saveButton() *qt.QPushButton { return p.save }
+
+// show shows a REST request. See load.
+func (p *requestPanel) show(r *collection.Request) { p.load(*r.Request) }
+
+// compose returns the request in the widgets as a REST request with a name.
+func (p *requestPanel) compose(name string) *collection.Request {
+	return collection.NewREST(name, p.request())
 }
 
 // urlChanged copies the query string typed into the URL to the params table.

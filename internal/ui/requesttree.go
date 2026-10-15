@@ -2,9 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"net/http"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -15,7 +12,6 @@ import (
 	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/openapi"
 	"github.com/nomad-software/triggerapi/internal/postman"
-	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
 // colName is the column of the request tree, which has the names.
@@ -27,13 +23,6 @@ const (
 	viewRequests = iota
 	viewSets
 )
-
-// typeLabels are the names the request types are shown by.
-var typeLabels = map[collection.Type]string{
-	collection.TypeREST:      "REST",
-	collection.TypeGRPC:      "gRPC",
-	collection.TypeWebSocket: "WebSocket",
-}
 
 // requestTree lists the saved requests in their folders. Clicking a request
 // or pressing Edit opens it, and every change is saved. The top level folders
@@ -136,16 +125,14 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 		return qt.QMessageBox_Question(t.root, "TriggerAPI", question) == qt.QMessageBox__Yes
 	}
 	t.create = func() (*collection.Request, bool) {
-		return collection.NewREST("New Request", rest.Request{Method: http.MethodGet}), true
+		return collection.New(collection.TypeREST, "New Request"), true
 	}
 
 	t.chooseSource = func() (importSource, bool) {
 		return newImportDialog(t.root).ask()
 	}
 	t.chooseFile = func(source importSource) (string, bool) {
-		kind := importSources[source]
-		path := qt.QFileDialog_GetOpenFileName4(t.root, "Import "+kind.label, "", kind.filter+";;All files (*)")
-		return path, path != ""
+		return chooseImportFile(t.root, importSources[source])
 	}
 	t.warn = func(message string) {
 		qt.QMessageBox_Warning(t.root, "TriggerAPI", message)
@@ -407,10 +394,10 @@ func (t *requestTree) draw(selected any) {
 	fill = func(item *qt.QTreeWidgetItem, folder *collection.Folder) {
 		note(item, folder)
 		for _, sub := range folder.Folders {
-			fill(t.newItem(item, -1, sub.Name, ""), sub)
+			fill(t.newItem(item, sub.Name, ""), sub)
 		}
 		for _, r := range folder.Requests {
-			note(t.newItem(item, -1, r.Name, r.Type), r)
+			note(t.newItem(item, r.Name, r.Type), r)
 		}
 		item.SetExpanded(folder.Open)
 	}
@@ -418,12 +405,12 @@ func (t *requestTree) draw(selected any) {
 	t.top = groupFolders(t.store.Folders)
 	for _, entry := range t.top {
 		if entry.group == "" {
-			fill(t.newItem(nil, -1, entry.folders[0].Name, ""), entry.folders[0])
+			fill(t.newItem(nil, entry.folders[0].Name, ""), entry.folders[0])
 			continue
 		}
 		heading := t.newHeading(entry.group)
 		for _, f := range entry.folders {
-			fill(t.newItem(heading, -1, f.Name, ""), f)
+			fill(t.newItem(heading, f.Name, ""), f)
 		}
 		heading.SetExpanded(true)
 	}
@@ -644,41 +631,30 @@ func (t *requestTree) drop(folder *collection.Folder, request *collection.Reques
 	return true
 }
 
-// folderIcon is the icon of a folder, once it has been drawn.
-var folderIcon *qt.QIcon
-
-// folderIcon returns the icon of a folder, drawing it if need be.
-func (t *requestTree) folderIcon() *qt.QIcon {
-	if folderIcon == nil {
-		folderIcon = drawIcon(iconSize*2, themeColour(colourRequests), drawFolder)
-	}
-	return folderIcon
+// folderIcon returns the icon of a folder.
+func folderIcon() *qt.QIcon {
+	return cachedIcon("folder", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourRequests), drawFolder) })
 }
 
-// newItem adds an item beneath a parent item, at an index among its
-// children, or at their end if the index is -1. With no parent it is added
-// at the end of the top level. A request has the icon of its type before its
-// name, and an item with no type is a folder.
-func (t *requestTree) newItem(parent *qt.QTreeWidgetItem, index int, name string, typ collection.Type) *qt.QTreeWidgetItem {
+// newItem adds an item at the end of the children of a parent item, or with
+// no parent at the end of the top level. A request has the icon of its type
+// before its name, and an item with no type is a folder.
+func (t *requestTree) newItem(parent *qt.QTreeWidgetItem, name string, typ collection.Type) *qt.QTreeWidgetItem {
 	defer func(prev bool) { t.updating = prev }(t.updating)
 	t.updating = true
 
 	var item *qt.QTreeWidgetItem
-	switch {
-	case parent == nil:
+	if parent == nil {
 		item = qt.NewQTreeWidgetItem3(t.tree)
-	case index < 0:
+	} else {
 		item = qt.NewQTreeWidgetItem6(parent)
-	default:
-		item = qt.NewQTreeWidgetItem()
-		parent.InsertChild(index, item)
 	}
 
 	item.SetText(colName, name)
 	if icon := requestTypeIcon(typ); icon != nil {
 		item.SetIcon(colName, icon)
 	} else {
-		item.SetIcon(colName, t.folderIcon())
+		item.SetIcon(colName, folderIcon())
 	}
 	flags := item.Flags() | qt.ItemIsEditable
 	if typ != "" {
@@ -702,7 +678,7 @@ func (t *requestTree) newHeading(group collection.Type) *qt.QTreeWidgetItem {
 	item.SetText(colName, groupLabels[group])
 	icon := requestTypeIcon(group)
 	if icon == nil {
-		icon = t.folderIcon()
+		icon = folderIcon()
 	}
 	item.SetIcon(colName, icon)
 	font := item.Font(colName)
@@ -985,38 +961,27 @@ func (t *requestTree) paste() {
 		if into == nil {
 			into = t.store.AddFolder("New Folder")
 		}
-		for slices.ContainsFunc(into.Requests, func(r *collection.Request) bool { return r.Name == request.Name }) {
-			request.Name += " copy"
-		}
+		request.Name = copyName(request.Name, func(name string) bool {
+			return slices.ContainsFunc(into.Requests, func(r *collection.Request) bool { return r.Name == name })
+		})
 		into.Add(request)
 		into.Open = true
-		t.pasted(request)
+		t.extended(request)
 		if t.onOpen != nil {
 			t.onOpen(request)
 		}
 	case *collection.Folder:
 		folder := copied.Clone()
-		siblings := &t.store.Folders
+		siblings := t.store.FoldersIn(into)
+		folder.Name = copyName(folder.Name, func(name string) bool {
+			return slices.ContainsFunc(siblings, func(f *collection.Folder) bool { return f.Name == name })
+		})
 		if into != nil {
-			siblings = &into.Folders
 			into.Open = true
 		}
-		for slices.ContainsFunc(*siblings, func(f *collection.Folder) bool { return f.Name == folder.Name }) {
-			folder.Name += " copy"
-		}
-		*siblings = append(*siblings, folder)
-		t.pasted(folder)
+		t.store.Insert(into, folder)
+		t.extended(folder)
 	}
-}
-
-// pasted shows and saves a folder or request that has just been pasted,
-// selected, in its place in the order.
-func (t *requestTree) pasted(what any) {
-	t.showView(viewRequests)
-	t.clearSearch()
-	t.store.Sort()
-	t.draw(what)
-	t.save()
 }
 
 // duplicate makes a copy of the selected request, or of the selected folder
@@ -1054,23 +1019,14 @@ func (t *requestTree) duplicate() {
 	}
 	clone := folder.Clone()
 	clone.Name += " copy"
-	if parent != nil {
-		parent.Folders = append(parent.Folders, clone)
-	} else {
-		t.store.Folders = append(t.store.Folders, clone)
-	}
+	t.store.Insert(parent, clone)
 	t.added(clone)
 }
 
 // added shows a folder or request that has just been put in the store, in
 // its place in the order, and starts editing its name.
 func (t *requestTree) added(what any) {
-	// It may not match a search, and must be seen.
-	t.clearSearch()
-	t.store.Sort()
-	t.draw(what)
-	t.save()
-
+	t.redraw(what)
 	if item := t.tree.CurrentItem(); item != nil {
 		t.tree.EditItem(item)
 	}
@@ -1084,54 +1040,31 @@ const (
 	importPostman importSource = "postman"
 )
 
-// importSources describes the kinds of file that can be imported, in the
-// order they are offered.
-var importSources = map[importSource]struct {
-	label  string
-	filter string
-	colour string
-	glyph  func(*qt.QPainter)
-	read   func([]byte) (*collection.Folder, error)
-}{
+// importOrder is the order the kinds of file are offered in.
+var importOrder = []importSource{importOpenAPI, importPostman}
+
+// importSources describes the kinds of file that can be imported.
+var importSources = map[importSource]importKind[*collection.Folder]{
 	importOpenAPI: {"OpenAPI", "OpenAPI documents (*.json *.yaml *.yml)", "#6ba539", drawDocument, openapi.Import},
 	importPostman: {"Postman", "Postman collections (*.json)", "#ef5b25", drawPlane, postman.Import},
 }
 
 // newImportDialog returns a dialog which asks what kind of file to import.
 func newImportDialog(parent *qt.QWidget) *choiceDialog[importSource] {
-	var choices []choice[importSource]
-	for _, source := range []importSource{importOpenAPI, importPostman} {
-		kind := importSources[source]
-		choices = append(choices, choice[importSource]{source, kind.label, drawIcon(iconSize*2, kind.colour, kind.glyph)})
-	}
-	return newChoiceDialog(parent, "Import", "Choose what to import requests from.", choices)
+	return newSourceDialog(parent, "Choose what to import requests from.", importOrder, importSources)
 }
 
 // importDocument asks what kind of file to import, and for the file, and
 // imports it.
 func (t *requestTree) importDocument() {
-	source, ok := t.chooseSource()
-	if !ok {
-		return
-	}
-	path, ok := t.chooseFile(source)
-	if !ok {
-		return
-	}
-	if err := t.importFile(source, path); err != nil {
-		t.warn(fmt.Sprintf("%s could not be imported: %v.", filepath.Base(path), err))
-	}
+	importDocument(t.chooseSource, t.chooseFile, t.importFile, t.warn)
 }
 
 // importFile adds a folder of requests made from the file at path, which is
 // of the kind given, to the top level, and selects it. The folders inside it
 // start off closed, as there can be a great many.
 func (t *requestTree) importFile(source importSource, path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	folder, err := importSources[source].read(data)
+	folder, err := readImport(importSources[source], path)
 	if err != nil {
 		return err
 	}
@@ -1139,14 +1072,22 @@ func (t *requestTree) importFile(source importSource, path string) error {
 	return nil
 }
 
-// extended shows and saves what has been added to the store from outside
-// the tree, keeping a request selected.
-func (t *requestTree) extended(selected *collection.Request) {
-	t.showView(viewRequests)
+// redraw shows what has been changed in the store, sorted into its place,
+// with what is given selected, and saves it. The search is cleared, as what
+// is selected may not match it and must be seen.
+func (t *requestTree) redraw(selected any) {
 	t.clearSearch()
 	t.store.Sort()
 	t.draw(selected)
 	t.save()
+}
+
+// extended shows and saves what has been added to the store, by the tree or
+// from outside it, with what is given, a folder or a request, selected. The
+// requests are shown if the sets were.
+func (t *requestTree) extended(selected any) {
+	t.showView(viewRequests)
+	t.redraw(selected)
 }
 
 // adopt adds a folder, with everything in it, to the top level, and selects
@@ -1154,12 +1095,8 @@ func (t *requestTree) extended(selected *collection.Request) {
 func (t *requestTree) adopt(folder *collection.Folder) {
 	// It is shown open, with the folders inside it closed.
 	folder.Open = true
-	t.showView(viewRequests)
-	t.store.Folders = append(t.store.Folders, folder)
-	t.clearSearch()
-	t.store.Sort()
-	t.draw(folder)
-	t.save()
+	t.store.Insert(nil, folder)
+	t.extended(folder)
 }
 
 // rename starts editing the name of the selected folder or request.
@@ -1202,14 +1139,8 @@ func (t *requestTree) remove() {
 				folder.Name, plural(folders, "folder"), plural(len(removed), "request"))) {
 			return
 		}
-		parent, ok := t.store.ParentOf(folder)
-		if !ok {
+		if !t.store.Delete(folder) {
 			return
-		}
-		if parent != nil {
-			parent.RemoveFolder(slices.Index(parent.Folders, folder))
-		} else {
-			t.store.RemoveFolder(slices.Index(t.store.Folders, folder))
 		}
 	}
 
@@ -1260,26 +1191,10 @@ func (t *requestTree) neighbour(item *qt.QTreeWidgetItem) any {
 	return nil
 }
 
-// plural returns a count of things, such as "1 folder" or "3 folders".
-func plural(n int, thing string) string {
-	if n == 1 {
-		return "1 " + thing
-	}
-	return fmt.Sprintf("%d %ss", n, thing)
-}
-
+// save writes the store to its file, and reports the change.
 func (t *requestTree) save() {
 	if t.onSave != nil {
 		defer t.onSave()
 	}
-	if t.path == "" {
-		return
-	}
-	var keys *crypt.Keys
-	if t.keys != nil {
-		keys = t.keys()
-	}
-	if err := t.store.SaveWith(t.path, keys); err != nil && t.onError != nil {
-		t.onError(err)
-	}
+	saveStore(t.path, t.keys, t.store.SaveWith, t.onError)
 }

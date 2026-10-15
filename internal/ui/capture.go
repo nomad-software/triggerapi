@@ -17,22 +17,13 @@ type captureResult struct {
 	err      error
 }
 
-// The icons which say how capturing went, once they have been drawn.
-var capturedIcon, notCapturedIcon *qt.QIcon
-
 // captureIcon returns a tick for a value that was captured, and a cross for
 // one that was not.
 func captureIcon(captured bool) *qt.QIcon {
 	if captured {
-		if capturedIcon == nil {
-			capturedIcon = drawIcon(iconSize*2, themeColour(colourCaptured), drawTick)
-		}
-		return capturedIcon
+		return cachedIcon("captured", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourCaptured), drawTick) })
 	}
-	if notCapturedIcon == nil {
-		notCapturedIcon = drawIcon(iconSize*2, themeColour(colourNotCaptured), drawCross)
-	}
-	return notCapturedIcon
+	return cachedIcon("not captured", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourNotCaptured), drawCross) })
 }
 
 // newCaptureTable returns the table of the Capture tab of a response panel:

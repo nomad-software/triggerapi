@@ -28,6 +28,11 @@ type Environment struct {
 	Variables []Variable `json:"variables"`
 }
 
+// Clone returns a copy of the environment which shares nothing with it.
+func (e Environment) Clone() Environment {
+	return Environment{Name: e.Name, Variables: slices.Clone(e.Variables)}
+}
+
 // Store is the collection of environments that is saved to disk.
 type Store struct {
 	// Active is the index of the environment in use, or -1 for none.

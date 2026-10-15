@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -213,30 +212,30 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 
 // folderRow lays out a path field beside a button to browse for the folder.
 func (d *settingsDialog) folderRow(edit *qt.QLineEdit, caption string) *qt.QLayout {
-	browse := qt.NewQPushButton3("Browse…")
-	browse.OnClicked(func() {
-		if dir := qt.QFileDialog_GetExistingDirectory3(d.QWidget, caption, edit.Text()); dir != "" {
-			edit.SetText(dir)
-		}
+	return browseRow(edit, func() string {
+		return qt.QFileDialog_GetExistingDirectory3(d.QWidget, caption, edit.Text())
 	})
-
-	row := qt.NewQHBoxLayout2()
-	row.AddWidget2(edit.QWidget, 1)
-	row.AddWidget(browse.QWidget)
-	return row.QLayout
 }
 
 // fileRow lays out a path field beside a button to browse for the file,
 // which starts in the folder of the path there is, or where SSH keys are
 // kept.
 func (d *settingsDialog) fileRow(edit *qt.QLineEdit, caption string) *qt.QLayout {
-	browse := qt.NewQPushButton3("Browse…")
-	browse.OnClicked(func() {
+	return browseRow(edit, func() string {
 		start := strings.TrimSpace(edit.Text())
 		if start == "" {
 			start = filepath.Join(qt.QDir_HomePath(), ".ssh")
 		}
-		if path := qt.QFileDialog_GetOpenFileName3(d.QWidget, caption, start); path != "" {
+		return qt.QFileDialog_GetOpenFileName3(d.QWidget, caption, start)
+	})
+}
+
+// browseRow lays out a path field beside a button to browse for the path
+// with, which puts what choose returns in the field unless it is empty.
+func browseRow(edit *qt.QLineEdit, choose func() string) *qt.QLayout {
+	browse := qt.NewQPushButton3("Browse…")
+	browse.OnClicked(func() {
+		if path := choose(); path != "" {
 			edit.SetText(path)
 		}
 	})
@@ -327,16 +326,11 @@ func (d *settingsDialog) colourTable() *qt.QTableWidget {
 
 	for _, section := range colourSections {
 		heading(section.title)
-		for _, k := range colourKinds {
-			if !slices.Contains(section.kinds, k.kind) {
-				continue
-			}
-			s := d.newSwatch(k.label, customIconColour(&d.colours, k.kind), func() string { return k.fallback })
-			d.swatches[k.kind] = s
-		}
-		// The colours are in the order the section gives them.
 		for _, kind := range section.kinds {
-			add(colourLabel(kind), d.swatches[kind])
+			label := colourLabel(kind)
+			s := d.newSwatch(label, customIconColour(&d.colours, kind), func() string { return defaultColour(kind) })
+			d.swatches[kind] = s
+			add(label, s)
 		}
 	}
 
@@ -367,7 +361,9 @@ func (d *settingsDialog) newSwatch(label string, chosen *string, fallback func()
 	s := &swatch{button: qt.NewQPushButton2(), chosen: chosen, fallback: fallback}
 	s.button.SetFixedWidth(swatchWidth)
 	s.button.OnClicked(func() {
-		picked := qt.QColorDialog_GetColor3(qt.NewQColor6(s.colour()), d.QWidget, "Colour of "+label)
+		current := qt.NewQColor6(s.colour())
+		defer current.Delete()
+		picked := qt.QColorDialog_GetColor3(current, d.QWidget, "Colour of "+label)
 		if picked.IsValid() {
 			s.set(picked.Name())
 		}
@@ -388,7 +384,9 @@ func (s *swatch) show() {
 	colour := s.colour()
 
 	text := "#ffffff"
-	if qt.NewQColor6(colour).Lightness() > 140 {
+	shown := qt.NewQColor6(colour)
+	defer shown.Delete()
+	if shown.Lightness() > 140 {
 		text = "#000000"
 	}
 

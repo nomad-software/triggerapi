@@ -87,14 +87,8 @@ type requestTabs struct {
 }
 
 func newRequestTabs() *requestTabs {
-	s := &requestTabs{
-		bar: qt.NewQTabBar2(),
-		// A pinned tab is unpinned with the icon of the buttons which
-		// remove.
-		pinnedIcon: drawIcon(pinIconSize*2, themeColour(colourRemove), drawBin),
-		// The pin is one of the action buttons.
-		unpinnedIcon: drawIcon(pinIconSize*2, themeColour(colourAction), drawPin),
-	}
+	s := &requestTabs{bar: qt.NewQTabBar2()}
+	s.drawPinIcons()
 
 	s.bar.SetExpanding(false)
 	s.bar.SetDrawBase(false)
@@ -392,11 +386,18 @@ func (s *requestTabs) refresh(tab *requestTab) {
 	}
 }
 
+// drawPinIcons draws the icons of the buttons of the tabs in the colours of
+// the settings. A pinned tab is unpinned with the icon of the buttons which
+// remove, and the pin which pins a tab is one of the action buttons.
+func (s *requestTabs) drawPinIcons() {
+	s.pinnedIcon = drawIcon(pinIconSize*2, themeColour(colourRemove), drawBin)
+	s.unpinnedIcon = drawIcon(pinIconSize*2, themeColour(colourAction), drawPin)
+}
+
 // recolour gives the buttons of the tabs their icons again, after the colours
 // have changed.
 func (s *requestTabs) recolour() {
-	s.pinnedIcon = drawIcon(pinIconSize*2, themeColour(colourRemove), drawBin)
-	s.unpinnedIcon = drawIcon(pinIconSize*2, themeColour(colourAction), drawPin)
+	s.drawPinIcons()
 	for _, tab := range s.tabs {
 		s.refresh(tab)
 	}

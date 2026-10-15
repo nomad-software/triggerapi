@@ -521,3 +521,67 @@ func TestWebSocketRequest(t *testing.T) {
 		t.Errorf("empty websocket request: %+v, %v", loaded.Folders[0].Requests[0], err)
 	}
 }
+
+func TestNew(t *testing.T) {
+	for _, tc := range []struct {
+		typ  Type
+		want *Request
+	}{
+		{TypeREST, NewREST("A", rest.Request{Method: "GET"})},
+		{TypeGRPC, NewGRPC("A", rpc.Request{})},
+		{TypeWebSocket, NewWebSocket("A", ws.Request{})},
+		// A type that is not known is a REST request, as one loaded is.
+		{"other", NewREST("A", rest.Request{Method: "GET"})},
+	} {
+		if got := New(tc.typ, "A"); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("New(%q) = %+v, want %+v", tc.typ, got, tc.want)
+		}
+	}
+}
+
+func TestFolderPlacement(t *testing.T) {
+	s := &Store{}
+	top := s.AddFolder("Top")
+	inner := top.AddFolder("Inner")
+
+	if got := s.FoldersIn(nil); !slices.Equal(got, []*Folder{top}) {
+		t.Errorf("FoldersIn(nil) = %v", got)
+	}
+	if got := s.FoldersIn(top); !slices.Equal(got, []*Folder{inner}) {
+		t.Errorf("FoldersIn(top) = %v", got)
+	}
+
+	other := &Folder{Name: "Other"}
+	s.Insert(nil, other)
+	deeper := &Folder{Name: "Deeper"}
+	s.Insert(inner, deeper)
+	if !slices.Equal(s.Folders, []*Folder{top, other}) || !slices.Equal(inner.Folders, []*Folder{deeper}) {
+		t.Fatalf("Insert put the folders in the wrong places")
+	}
+
+	if !s.Delete(deeper) || len(inner.Folders) != 0 {
+		t.Error("an inner folder was not deleted")
+	}
+	if !s.Delete(top) || !slices.Equal(s.Folders, []*Folder{other}) {
+		t.Error("a top level folder was not deleted")
+	}
+	if s.Delete(top) {
+		t.Error("a folder not in the store was reported deleted")
+	}
+}
+
+func TestSetContent(t *testing.T) {
+	r := NewREST("Kept", rest.Request{Method: "GET", URL: "a"})
+	r.SetContent(NewREST("Other", rest.Request{Method: "POST", URL: "b"}))
+	if r.Name != "Kept" || r.Type != TypeREST || r.Method != "POST" || r.URL != "b" {
+		t.Errorf("after a REST request: %+v", r)
+	}
+	r.SetContent(NewGRPC("Other", rpc.Request{URL: "c"}))
+	if r.Name != "Kept" || r.Type != TypeGRPC || r.Request != nil || r.GRPC.URL != "c" {
+		t.Errorf("after a gRPC request: %+v", r)
+	}
+	r.SetContent(NewWebSocket("Other", ws.Request{URL: "d"}))
+	if r.Name != "Kept" || r.Type != TypeWebSocket || r.GRPC != nil || r.WebSocket.URL != "d" {
+		t.Errorf("after a WebSocket request: %+v", r)
+	}
+}

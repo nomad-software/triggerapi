@@ -151,9 +151,7 @@ func (a Auth) Header() (string, bool) {
 // case, with those that have no key last. Pairs with the same key keep their
 // order, as which comes last can matter.
 func SortPairs(pairs []KeyValue) {
-	slices.SortStableFunc(pairs, func(a, b KeyValue) int {
-		return ComparePairs(a, b)
-	})
+	slices.SortStableFunc(pairs, ComparePairs)
 }
 
 // ComparePairs gives the order SortPairs puts two pairs in.
