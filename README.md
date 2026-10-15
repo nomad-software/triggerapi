@@ -5,7 +5,7 @@ WebSocket servers. It is written
 in Go with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
 bindings.
 
-![TriggerAPI showing saved requests under gRPC, REST and Mixed headings, a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
+![TriggerAPI showing saved requests under gRPC, REST, WebSocket and Mixed headings, the pinned tabs of a request set, a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
 
 ## Why TriggerAPI
 
@@ -42,8 +42,9 @@ bindings.
 
 **REST**
 
-- Send requests with any common HTTP method, query params, headers, basic or
-  bearer authorization, and a JSON, text, XML or form body.
+- Send GET, POST, PUT, PATCH, DELETE, HEAD and OPTIONS requests with query
+  params, headers, basic or bearer authorization, and a JSON, text, XML or
+  form body.
 - Params are shown in the URL and kept in step with it both ways. Params,
   headers and form fields can each be switched off without being removed.
 - A long URL is wrapped, with the field growing to show all of it.
@@ -159,7 +160,8 @@ bindings.
   itself and never put on the system clipboard, so the tokens and passwords
   in requests and environments do not leave it.
 - Import an OpenAPI 3 or Swagger 2 document, as JSON or YAML, or a Postman
-  collection, to create a folder of requests.
+  collection, to create a folder of requests. Only requests with one of the
+  methods above are imported; others, such as TRACE or PURGE, are left out.
 
 **Environments**
 
@@ -530,6 +532,13 @@ make test
 ```
 
 The interface tests run Qt offscreen, so they do not need a display.
+
+The screenshot at the top of this file is drawn by a test, from sample
+requests, and is made again with:
+
+```sh
+make screenshot
+```
 
 ## License
 

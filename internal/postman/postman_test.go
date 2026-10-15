@@ -232,3 +232,32 @@ func TestImportErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestImportUnsupportedMethods checks that requests with a method TriggerAPI
+// does not offer are left out, and that a collection with nothing else has
+// nothing to import.
+func TestImportUnsupportedMethods(t *testing.T) {
+	const schema = `"info": {"name": "Cache", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"}`
+	root, err := Import([]byte(`{` + schema + `, "item": [
+		{"name": "Purge", "request": {"method": "PURGE", "url": "a.test"}},
+		{"name": "Folder", "item": [
+			{"name": "Find", "request": {"method": "propfind", "url": "a.test"}},
+			{"name": "Read", "request": {"method": "get", "url": "a.test"}}
+		]},
+		{"name": "Default", "request": {"url": "a.test"}}
+	]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(root.Requests) != 1 || root.Requests[0].Name != "Default" || root.Requests[0].Method != "GET" {
+		t.Errorf("top level requests = %+v", root.Requests)
+	}
+	if inner := root.Folders[0].Requests; len(inner) != 1 || inner[0].Name != "Read" || inner[0].Method != "GET" {
+		t.Errorf("folder requests = %+v", inner)
+	}
+
+	_, err = Import([]byte(`{` + schema + `, "item": [{"name": "Purge", "request": {"method": "PURGE", "url": "a.test"}}]}`))
+	if err == nil {
+		t.Error("a collection of only unsupported methods was imported")
+	}
+}

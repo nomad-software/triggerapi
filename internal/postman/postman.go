@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
@@ -155,7 +156,7 @@ func (a *auth) UnmarshalJSON(data []byte) error {
 // and authorization, which is that of the nearest folder above it if it has
 // none of its own. Postman's {{variables}} are kept as they are, to be
 // defined in an environment. Scripts, saved responses and descriptions are
-// left out.
+// left out, as are requests with a method that is not one of rest.Methods.
 func Import(data []byte) (*collection.Folder, error) {
 	doc := &exported{}
 	if err := json.Unmarshal(data, doc); err != nil {
@@ -192,6 +193,11 @@ func fill(folder *collection.Folder, items []item, inherited *auth) int {
 		switch {
 		case it.Request != nil:
 			request := convert(it.Request, authorization)
+			// A request with a method that is not offered cannot be
+			// shown or sent as it is, so it is left out.
+			if !slices.Contains(rest.Methods, request.Method) {
+				continue
+			}
 
 			name := strings.TrimSpace(it.Name)
 			if name == "" {
