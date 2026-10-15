@@ -139,7 +139,6 @@ func newRequestPanel() *requestPanel {
 
 	p.send = qt.NewQPushButton3("Send")
 	makePrimary(p.send)
-	p.send.SetToolTip("Ctrl+Return")
 
 	// Save is only for a request that is not saved, as one that is saved is
 	// saved with every change.
@@ -242,18 +241,15 @@ func (p *requestPanel) newCurlPage() *qt.QWidget {
 	p.command.SetReadOnly(true)
 
 	p.copy = qt.NewQPushButton3("Copy")
-	p.copy.SetToolTip("Copy the command, to paste into a terminal")
 	p.copy.OnClicked(func() {
 		qt.QGuiApplication_Clipboard().SetText(p.command.ToPlainText())
 	})
 
 	p.closeCurl = qt.NewQPushButton3("Close")
-	p.closeCurl.SetToolTip("Go back to the request")
 	p.closeCurl.OnClicked(func() { p.curl.SetChecked(false) })
 
 	p.execute = qt.NewQPushButton3("Execute")
 	makePrimary(p.execute)
-	p.execute.SetToolTip("Run the command with curl and show the response")
 
 	buttons := qt.NewQHBoxLayout2()
 	buttons.AddStretch()

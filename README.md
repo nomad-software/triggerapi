@@ -99,8 +99,10 @@ bindings.
 - Keep separate sets of environments and requests in workspaces, and switch
   between them.
 - The workspace and the environment in use are shown above the request, in
-  drop-downs which switch to another, with a button beside the environment
-  to edit it.
+  drop-downs which switch to another, and after them a Request Set drop-down
+  which chooses a set of tabs, or None for no set. The title of each is a
+  button: Workspace shows the workspaces, Environment edits the environment in
+  use, and Request Set shows the sets.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically, and
   requests can be searched by name, showing only the folders that hold a

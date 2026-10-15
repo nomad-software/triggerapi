@@ -305,10 +305,8 @@ func (e *endpointTable) refresh() {
 	e.toggle.SetEnabled(len(e.free()) > 0)
 
 	e.create.SetText("Create Requests")
-	e.create.SetToolTip("Add a folder of requests to the sidebar, with a request for each endpoint that is ticked")
 	if e.editing {
 		e.create.SetText("Update Requests")
-		e.create.SetToolTip("Add a request for each endpoint that has been ticked to the folder this request is in")
 	}
 	e.create.SetEnabled(len(e.added()) > 0)
 }

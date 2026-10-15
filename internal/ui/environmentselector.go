@@ -4,24 +4,33 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 )
 
-// noEnvironment is the entry of the environment selector for using none.
-const noEnvironment = "None"
+// noEnvironment is the entry of the environment selector for using none, and
+// noSet that of the set selector for choosing none.
+const (
+	noEnvironment = "None"
+	noSet         = "None"
+)
 
 // selectorMinWidth is the least width of a drop-down of the selector, which
 // it is squeezed to when the window has no room for its longest name.
-const selectorMinWidth = 120
+const selectorMinWidth = 80
 
 // environmentSelector selects the workspace and the environment in use, and
-// has a button to edit the environment with. It is on a line of its own above
-// the tabs of the requests and not in any of them, as both are the same for
-// them all.
+// the set of requests whose tabs are open. It is on a line of its own above
+// the tabs of the requests and not in any of them, as all are the same for
+// them all. The title of each drop-down is a flat button, which goes to where
+// what it selects is kept; the window says where.
 type environmentSelector struct {
 	root        *qt.QWidget
 	workspace   *qt.QComboBox
 	environment *qt.QComboBox
-	// edit opens the environment in use in the editor. The window says what
-	// it does when clicked.
-	edit *qt.QToolButton
+	// set chooses the set of requests whose tabs are open, or none.
+	set *qt.QComboBox
+
+	// The titles of the drop-downs.
+	workspaceTitle   *qt.QToolButton
+	environmentTitle *qt.QToolButton
+	setTitle         *qt.QToolButton
 
 	updating bool
 
@@ -31,6 +40,9 @@ type environmentSelector struct {
 	// onEnvironment is called when the user selects an environment, with
 	// its index, or -1 for none.
 	onEnvironment func(index int)
+	// onSet is called when the user selects a set, with its index, or -1
+	// for none.
+	onSet func(index int)
 }
 
 func newEnvironmentSelector() *environmentSelector {
@@ -38,20 +50,31 @@ func newEnvironmentSelector() *environmentSelector {
 		root:        qt.NewQWidget2(),
 		workspace:   qt.NewQComboBox2(),
 		environment: qt.NewQComboBox2(),
-		edit:        newIconButton(colourEnvironments, drawGlobe, "Edit the selected environment"),
+		set:         qt.NewQComboBox2(),
 	}
 
-	label := func(text string) *qt.QWidget {
-		label := qt.NewQLabel3(text)
-		label.SetStyleSheet("font-weight: bold")
-		return label.QWidget
+	title := func(text string) *qt.QToolButton {
+		button := qt.NewQToolButton2()
+		button.SetText(text)
+		button.SetAutoRaise(true)
+		button.SetFocusPolicy(qt.NoFocus)
+		// Bold through the font and not a style sheet, which would draw the
+		// text in the colour of a light theme whatever the theme is.
+		font := qt.NewQFont5(button.Font())
+		font.SetBold(true)
+		button.SetFont(font)
+		font.Delete()
+		return button
 	}
+	s.workspaceTitle = title("Workspace:")
+	s.environmentTitle = title("Environment:")
+	s.setTitle = title("Request Set:")
 
 	// Each is as wide as its longest name, which a combo box otherwise is
 	// only for the names it has when first shown, where the window has the
 	// room. It can be narrower than that, down to selectorMinWidth, so that
 	// a long name never makes the window wider: the name is cut short.
-	for _, combo := range []*qt.QComboBox{s.workspace, s.environment} {
+	for _, combo := range []*qt.QComboBox{s.workspace, s.environment, s.set} {
 		combo.SetSizeAdjustPolicy(qt.QComboBox__AdjustToContents)
 		combo.SetMinimumWidth(selectorMinWidth)
 	}
@@ -67,17 +90,53 @@ func newEnvironmentSelector() *environmentSelector {
 		}
 	})
 
-	layout := qt.NewQHBoxLayout(s.root)
-	layout.SetContentsMargins(9, 4, 9, 4)
-	layout.AddStretch()
-	layout.AddWidget(label("Workspace:"))
+	s.set.OnCurrentIndexChanged(func(index int) {
+		if !s.updating && index >= 0 && s.onSet != nil {
+			// The first entry is for no set.
+			s.onSet(index - 1)
+		}
+	})
+
+	// The drop-downs are in a frame of their own at the right, kept apart
+	// from the tabs beneath by the margin below it. Its border is drawn in
+	// edgeColour, worked out from the palette as it is when drawn, as the
+	// palette's own colour for edges hardly shows in a dark theme. It is
+	// painted rather than given by a style sheet, under which Qt draws the
+	// titles in the colours of a light theme whatever the theme is.
+	frame := qt.NewQWidget2()
+	frame.OnPaintEvent(func(super func(*qt.QPaintEvent), event *qt.QPaintEvent) {
+		super(event)
+		painter := qt.NewQPainter2(frame.QPaintDevice)
+		defer painter.Delete()
+		painter.SetRenderHint(qt.QPainter__Antialiasing)
+		pen := qt.NewQPen3(qt.NewQColor6(edgeColour()))
+		defer pen.Delete()
+		painter.SetPenWithPen(pen)
+		painter.SetBrushWithStyle(qt.NoBrush)
+		// Half a pixel in, so that the line falls on whole pixels.
+		edge := qt.NewQRectF4(0.5, 0.5, float64(frame.Width())-1, float64(frame.Height())-1)
+		defer edge.Delete()
+		painter.DrawRoundedRect(edge, 4, 4)
+		painter.End()
+	})
+	outer := qt.NewQHBoxLayout(s.root)
+	outer.SetContentsMargins(9, 6, 9, 8)
+	outer.AddStretch()
+	outer.AddWidget(frame)
+
+	layout := qt.NewQHBoxLayout(frame)
+	layout.SetContentsMargins(6, 4, 6, 4)
+	layout.AddWidget(s.workspaceTitle.QWidget)
 	layout.AddWidget(s.workspace.QWidget)
 	layout.AddSpacing(12)
-	layout.AddWidget(label("Environment:"))
+	layout.AddWidget(s.environmentTitle.QWidget)
 	layout.AddWidget(s.environment.QWidget)
-	layout.AddWidget(s.edit.QWidget)
+	layout.AddSpacing(12)
+	layout.AddWidget(s.setTitle.QWidget)
+	layout.AddWidget(s.set.QWidget)
 
 	s.setEnvironments(nil, -1)
+	s.setSets(nil, -1)
 
 	return s
 }
@@ -90,10 +149,14 @@ func (s *environmentSelector) setWorkspaces(names []string, active int) {
 
 // setEnvironments lists the environments to choose from, with the one at the
 // active index selected, or none if it is -1. onEnvironment is not called.
-// There is nothing for the button to edit when none is selected.
 func (s *environmentSelector) setEnvironments(names []string, active int) {
 	s.fill(s.environment, append([]string{noEnvironment}, names...), active+1)
-	s.edit.SetEnabled(active >= 0)
+}
+
+// setSets lists the sets of requests to choose from, with the one at the
+// active index selected, or none if it is -1. onSet is not called.
+func (s *environmentSelector) setSets(names []string, active int) {
+	s.fill(s.set, append([]string{noSet}, names...), active+1)
 }
 
 // fill gives a combo box its entries and selects one of them, without what

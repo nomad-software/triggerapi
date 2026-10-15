@@ -60,6 +60,18 @@ func fadedTextColour() string {
 	return fmt.Sprintf("#%02x%02x%02x", mix(text.Red(), window.Red()), mix(text.Green(), window.Green()), mix(text.Blue(), window.Blue()))
 }
 
+// edgeColour returns the colour of a line around something: the colour of
+// text mixed a third of the way into the colour of the window, which stands
+// out from the window in a light theme and a dark one alike.
+func edgeColour() string {
+	palette := qt.QGuiApplication_Palette()
+	window := palette.ColorWithCr(qt.QPalette__Window)
+	text := palette.ColorWithCr(qt.QPalette__WindowText)
+
+	mix := func(a, b int) int { return (a*2 + b) / 3 }
+	return fmt.Sprintf("#%02x%02x%02x", mix(window.Red(), text.Red()), mix(window.Green(), text.Green()), mix(window.Blue(), text.Blue()))
+}
+
 // plainPage gives the page of a tab widget the background of the window.
 // Some styles, such as the one Qt falls back on where it has none of the
 // desktop's own, draw the pages of a tab widget lighter than the window,

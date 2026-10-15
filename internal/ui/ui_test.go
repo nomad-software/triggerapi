@@ -611,23 +611,23 @@ func TestWindowSizeRemembered(t *testing.T) {
 			t.Errorf("default size = %dx%d", w.Width(), w.Height())
 		}
 		w.Show()
-		w.Resize(900, 650)
+		w.Resize(1000, 650)
 		w.Close()
 	})
 
-	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default, PublicKey: testPublic, PrivateKey: testPrivate}); !reflect.DeepEqual(got, want) {
+	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 1000, Height: 650, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default, PublicKey: testPublic, PrivateKey: testPrivate}); !reflect.DeepEqual(got, want) {
 		t.Errorf("saved %+v, want %+v", got, want)
 	}
 
 	mainthread.Wait(func() {
 		w := NewWindow(files.Files)
-		if w.Width() != 900 || w.Height() != 650 {
+		if w.Width() != 1000 || w.Height() != 650 {
 			t.Errorf("restored size = %dx%d", w.Width(), w.Height())
 		}
 	})
 
 	// A maximised window is restored maximised and keeps its normal size.
-	settings.Settings{Width: 900, Height: 650, Maximized: true, PublicKey: testPublic, PrivateKey: testPrivate}.Save(files.Settings)
+	settings.Settings{Width: 1000, Height: 650, Maximized: true, PublicKey: testPublic, PrivateKey: testPrivate}.Save(files.Settings)
 	mainthread.Wait(func() {
 		w := NewWindow(files.Files)
 		w.Show()
@@ -636,7 +636,7 @@ func TestWindowSizeRemembered(t *testing.T) {
 		}
 		w.Close()
 	})
-	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 900, Height: 650, Maximized: true, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default, PublicKey: testPublic, PrivateKey: testPrivate}); !reflect.DeepEqual(got, want) {
+	if got, want := withoutLayout(settings.Load(files.Settings)), (settings.Settings{Width: 1000, Height: 650, Maximized: true, ResponseFont: "Iosevka Term Curly", Workspace: workspace.Default, PublicKey: testPublic, PrivateKey: testPrivate}); !reflect.DeepEqual(got, want) {
 		t.Errorf("saved %+v, want %+v", got, want)
 	}
 }
@@ -739,14 +739,14 @@ func TestMenuBar(t *testing.T) {
 		}
 
 		// Quit closes the window, which saves the settings.
-		w.Resize(900, 600)
+		w.Resize(1000, 600)
 		w.quit.Trigger()
 		if w.IsVisible() {
 			t.Error("window still open after quit")
 		}
 	})
 
-	if got := settings.Load(files.Settings); got.Width != 900 || got.Height != 600 {
+	if got := settings.Load(files.Settings); got.Width != 1000 || got.Height != 600 {
 		t.Errorf("settings not saved on quit: %+v", got)
 	}
 }
@@ -2144,30 +2144,41 @@ func TestWorkspaceSelector(t *testing.T) {
 			t.Error("the selector is not apart from the tabs and the request UI")
 		}
 
-		// There is nothing to edit until there is an environment.
-		if selector.edit.IsEnabled() {
-			t.Error("the edit button is enabled with no environment")
+		// The titles are buttons. With no environment in use, that of the
+		// environments shows them in the sidebar.
+		selector.environmentTitle.Click()
+		if w.sidebar.CurrentIndex() != tabEnvironments || w.stack.CurrentIndex() == pageEditor {
+			t.Errorf("with no environment: sidebar tab %d, page %d", w.sidebar.CurrentIndex(), w.stack.CurrentIndex())
 		}
 		w.environments.add()
 		w.editor.name.SetText("Local")
 		w.closeEditor()
-		if !selector.edit.IsEnabled() {
-			t.Error("the edit button is disabled with an environment selected")
-		}
 
-		// The button opens the environment in the editor.
-		selector.edit.Click()
-		if w.stack.CurrentIndex() != pageEditor || w.editor.name.Text() != "Local" {
+		// With one, it opens it in the editor.
+		w.sidebar.SetCurrentIndex(tabRequests)
+		selector.environmentTitle.Click()
+		if w.stack.CurrentIndex() != pageEditor || w.editor.name.Text() != "Local" || w.sidebar.CurrentIndex() != tabEnvironments {
 			t.Errorf("page = %d, editing %q", w.stack.CurrentIndex(), w.editor.name.Text())
 		}
 		w.closeEditor()
+
+		// That of the workspaces shows them, and that of the sets shows
+		// the sets.
+		selector.workspaceTitle.Click()
+		if w.sidebar.CurrentIndex() != tabWorkspaces {
+			t.Errorf("sidebar tab %d after the workspace title", w.sidebar.CurrentIndex())
+		}
+		selector.setTitle.Click()
+		if w.sidebar.CurrentIndex() != tabRequests || w.requests.views.CurrentIndex() != viewSets {
+			t.Errorf("sidebar tab %d, view %d after the set title", w.sidebar.CurrentIndex(), w.requests.views.CurrentIndex())
+		}
 
 		// A workspace that is added is listed and selected.
 		w.workspaces.add()
 		if !reflect.DeepEqual(names(selector.workspace), []string{"Default", "New Workspace"}) || selector.workspace.CurrentText() != "New Workspace" {
 			t.Errorf("workspaces = %q, selected %q", names(selector.workspace), selector.workspace.CurrentText())
 		}
-		if selector.environment.Count() != 1 || selector.edit.IsEnabled() {
+		if selector.environment.Count() != 1 {
 			t.Errorf("the new workspace has %d environments listed", selector.environment.Count())
 		}
 
@@ -2176,7 +2187,7 @@ func TestWorkspaceSelector(t *testing.T) {
 		if w.workspaces.current() != "Default" || w.config.Workspace != "Default" || selector.workspace.CurrentText() != "Default" {
 			t.Errorf("workspace = %q, selected %q", w.workspaces.current(), selector.workspace.CurrentText())
 		}
-		if selector.environment.CurrentText() != "Local" || !selector.edit.IsEnabled() {
+		if selector.environment.CurrentText() != "Local" {
 			t.Errorf("environment = %q", selector.environment.CurrentText())
 		}
 
@@ -2226,9 +2237,9 @@ func TestSelectorWidth(t *testing.T) {
 		if w.Width() != 1000 || combo.Width() >= w.Width() || w.environment.root.Width() > w.Width() {
 			t.Errorf("window = %d wide, selector %d, drop-down %d", w.Width(), w.environment.root.Width(), combo.Width())
 		}
-		// The button after it is still on show.
-		if edit := w.environment.edit; edit.X()+edit.Width() > w.environment.root.Width() {
-			t.Errorf("the edit button ends at %d of %d", edit.X()+edit.Width(), w.environment.root.Width())
+		// What is after it is still on show.
+		if set := w.environment.set; set.X()+set.Width() > w.environment.root.Width() {
+			t.Errorf("the set selector ends at %d of %d", set.X()+set.Width(), w.environment.root.Width())
 		}
 	})
 }
@@ -6649,6 +6660,61 @@ func TestNewTabAndSave(t *testing.T) {
 		w.tabs.bar.SetCurrentIndex(w.tabs.newAt)
 		if w.tabs.bar.CurrentIndex() != 0 || w.tabs.current() != w.tabs.tabs[0] {
 			t.Errorf("New was shown: tab %d", w.tabs.bar.CurrentIndex())
+		}
+	})
+}
+
+func TestSetSelector(t *testing.T) {
+	files := testFiles(t)
+	store := &collection.Store{}
+	folder := store.AddFolder("F")
+	a := folder.Add(collection.NewREST("A", rest.Request{Method: "GET"}))
+	b := folder.Add(collection.NewREST("B", rest.Request{Method: "GET"}))
+	store.AddSet("Work", []*collection.Request{a, b})
+	store.AddSet("Play", []*collection.Request{b})
+	if err := store.Save(files.Requests); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+		combo := w.environment.set
+		items := func() []string {
+			var names []string
+			for i := range combo.Count() {
+				names = append(names, combo.ItemText(i))
+			}
+			return names
+		}
+
+		// The sets are listed with None chosen to begin with.
+		if got := items(); !reflect.DeepEqual(got, []string{"None", "Play", "Work"}) || combo.CurrentText() != "None" {
+			t.Errorf("sets %q, chosen %q", got, combo.CurrentText())
+		}
+
+		// Choosing one there opens its tabs, and selects it in the list.
+		combo.SetCurrentIndex(2)
+		if got := tabNames(w); !reflect.DeepEqual(got, []string{"A*", "B*"}) || w.requests.sets.active == nil || w.requests.sets.selected() != w.requests.sets.active {
+			t.Errorf("after choosing Work: tabs %q", got)
+		}
+
+		// Choosing one in the list is shown there too.
+		w.requests.sets.list.SetCurrentItem(w.requests.sets.list.Item(0))
+		if combo.CurrentText() != "Play" || !reflect.DeepEqual(tabNames(w), []string{"B*"}) {
+			t.Errorf("after choosing Play in the list: %q, tabs %q", combo.CurrentText(), tabNames(w))
+		}
+
+		// None chooses no set, which takes the tabs away.
+		combo.SetCurrentIndex(0)
+		if w.requests.sets.active != nil || w.requests.sets.selected() != nil || !reflect.DeepEqual(tabNames(w), []string{"Untitled"}) {
+			t.Errorf("after None: tabs %q", tabNames(w))
+		}
+
+		// A set added is listed.
+		w.requests.sets.add()
+		if got := items(); !reflect.DeepEqual(got, []string{"None", "New Set", "Play", "Work"}) || combo.CurrentText() != "New Set" {
+			t.Errorf("after adding: %q, chosen %q", got, combo.CurrentText())
 		}
 	})
 }

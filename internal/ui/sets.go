@@ -37,6 +37,9 @@ type setList struct {
 	pinned func() []*collection.Request
 	// onChoose is called when the user chooses a set, or none.
 	onChoose func(*collection.Set)
+	// onChanged is called when the sets are listed, or the one chosen
+	// changes, for the selector of sets to follow.
+	onChanged func()
 }
 
 func newSetList(owner *requestTree) *setList {
@@ -139,13 +142,38 @@ func (l *setList) draw(selected *collection.Set) {
 			item := qt.NewQListWidgetItem7(set.Name, l.list)
 			item.SetIcon(icon)
 			item.SetFlags(item.Flags() | qt.ItemIsEditable)
-			item.SetToolTip(fmt.Sprintf("%s: %s", set.Name, plural(len(set.Requests), "request")))
 			if set == selected {
 				l.list.SetCurrentItem(item)
 			}
 		}
 	})
 	l.applySearch()
+	l.changed()
+}
+
+// changed reports that the sets, or the one chosen, have changed.
+func (l *setList) changed() {
+	if l.onChanged != nil {
+		l.onChanged()
+	}
+}
+
+// chooseAt chooses the set at an index of the store, or none if it is -1,
+// as selecting it in the list does.
+func (l *setList) chooseAt(index int) {
+	var set *collection.Set
+	if index >= 0 && index < len(l.owner.store.Sets) {
+		set = l.owner.store.Sets[index]
+	}
+	l.quietly(func() {
+		if item := l.list.Item(index); set != nil && item != nil {
+			l.list.SetCurrentItem(item)
+		} else {
+			l.list.SetCurrentItem(nil)
+			l.list.ClearSelection()
+		}
+	})
+	l.choose(set)
 }
 
 // load shows the sets of the store, of which active is the one chosen.
@@ -190,6 +218,7 @@ func (l *setList) choose(set *collection.Set) {
 	if l.onChoose != nil {
 		l.onChoose(set)
 	}
+	l.changed()
 }
 
 // keep records the requests pinned in tabs as those of the active set, and

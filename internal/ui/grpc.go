@@ -62,7 +62,6 @@ func newGRPCPanel() *grpcPanel {
 	p.highlight.lineEdit(p.url)
 
 	p.tls = qt.NewQCheckBox3("TLS")
-	p.tls.SetToolTip("Connect to the server using TLS")
 	p.tls.OnToggled(func(bool) {
 		p.changed()
 		p.targetChanged()
@@ -70,7 +69,6 @@ func newGRPCPanel() *grpcPanel {
 
 	p.invoke = qt.NewQPushButton3("Invoke")
 	makePrimary(p.invoke)
-	p.invoke.SetToolTip("Ctrl+Return")
 	// Save is only for a request that is not saved, as one that is saved is
 	// saved with every change.
 	p.save = qt.NewQPushButton3("Save")
@@ -79,7 +77,6 @@ func newGRPCPanel() *grpcPanel {
 	p.method.OnCurrentIndexChanged(func(int) { p.changed() })
 
 	p.reload = qt.NewQPushButton3("Reload")
-	p.reload.SetToolTip("Load the service definition from the server again")
 
 	// The address takes a quarter of the width left by the buttons and the
 	// method the rest.
@@ -110,7 +107,6 @@ func newGRPCPanel() *grpcPanel {
 	p.messageFold = newFolder(p.message, isJSON)
 
 	p.example = qt.NewQPushButton3("Use Example Message")
-	p.example.SetToolTip("Replace the message with one that has every field of the method's request")
 
 	exampleBar := qt.NewQHBoxLayout2()
 	exampleBar.AddWidget(p.example.QWidget)

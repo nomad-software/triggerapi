@@ -99,10 +99,7 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	// Zero is shown as what it means.
 	d.timeout.SetSpecialValueText("No limit")
 	d.timeout.SetValue(current.Timeout)
-	d.timeout.SetToolTip("How long a request can take before it is given up on")
 	d.redirects.SetChecked(!current.NoRedirects)
-	d.redirects.SetToolTip("Send a REST request again to the address a response redirects it to. " +
-		"Without this, the response which redirects is the one shown.")
 
 	d.workspaces.SetText(orDefault(current.WorkspacesDir, defaults.Workspaces))
 
@@ -131,13 +128,11 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	sharing := sectionHeading("Import and export")
 	sharing.SetContentsMargins(0, 12, 0, 0)
 
-	d.exportButton.SetToolTip("Write every workspace to a zip file, encrypted for someone else's public key")
 	d.exportButton.OnClicked(func() {
 		if d.onExport != nil {
 			d.onExport(d.QWidget)
 		}
 	})
-	d.importButton.SetToolTip("Add the workspaces of a zip file that was exported for your public key")
 	d.importButton.OnClicked(func() {
 		if d.onImport != nil {
 			d.onImport(d.QWidget)
@@ -371,7 +366,6 @@ type swatch struct {
 func (d *settingsDialog) newSwatch(label string, chosen *string, fallback func() string) *swatch {
 	s := &swatch{button: qt.NewQPushButton2(), chosen: chosen, fallback: fallback}
 	s.button.SetFixedWidth(swatchWidth)
-	s.button.SetToolTip("Choose the colour")
 	s.button.OnClicked(func() {
 		picked := qt.QColorDialog_GetColor3(qt.NewQColor6(s.colour()), d.QWidget, "Colour of "+label)
 		if picked.IsValid() {

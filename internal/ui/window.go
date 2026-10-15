@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -462,7 +463,12 @@ func NewWindow(files Files) *Window {
 	// the environment does what the edit button of the sidebar does.
 	w.environment.onWorkspace = w.workspaces.list.SetCurrentRow
 	w.environment.onEnvironment = w.environments.list.SetCurrentRow
-	w.environment.edit.OnClicked(w.environments.edit)
+	w.environment.workspaceTitle.OnClicked(func() { w.focusSidebar(tabWorkspaces) })
+	w.environment.environmentTitle.OnClicked(w.editEnvironment)
+	w.environment.setTitle.OnClicked(w.showSets)
+	w.environment.onSet = w.requests.sets.chooseAt
+	w.requests.sets.onChanged = w.updateSets
+	w.updateSets()
 
 	w.newMenuBar()
 	w.updateHeaders()
@@ -1216,6 +1222,36 @@ func (w *Window) showDraft(draft *collection.Request) {
 	if w.stack.CurrentIndex() != pageEditor {
 		w.stack.SetCurrentIndex(w.requestPage())
 	}
+}
+
+// editEnvironment opens the environment in use in the editor, or shows the
+// environments in the sidebar if none is in use.
+func (w *Window) editEnvironment() {
+	if w.environments.store.Active < 0 {
+		w.focusSidebar(tabEnvironments)
+		return
+	}
+	w.sidebar.SetCurrentIndex(tabEnvironments)
+	w.environments.edit()
+}
+
+// showSets shows the sets in the sidebar, with the keyboard in their list,
+// where the one chosen is selected.
+func (w *Window) showSets() {
+	w.sidebar.SetCurrentIndex(tabRequests)
+	w.requests.showView(viewSets)
+	w.requests.sets.list.SetFocus()
+}
+
+// updateSets lists the sets of requests in the selector above the tabs, with
+// the one chosen selected.
+func (w *Window) updateSets() {
+	store := w.requests.store
+	names := make([]string, len(store.Sets))
+	for i, set := range store.Sets {
+		names[i] = set.Name
+	}
+	w.environment.setSets(names, slices.Index(store.Sets, w.requests.sets.active))
 }
 
 // status shows a message in the status bar until another replaces it. Line
