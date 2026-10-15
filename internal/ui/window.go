@@ -24,6 +24,7 @@ import (
 	"github.com/nomad-software/triggerapi/internal/rpc"
 	"github.com/nomad-software/triggerapi/internal/settings"
 	"github.com/nomad-software/triggerapi/internal/workspace"
+	"github.com/nomad-software/triggerapi/internal/ws"
 )
 
 // Pages of the main stack.
@@ -31,6 +32,7 @@ const (
 	pageRequest = iota
 	pageEditor
 	pageGRPC
+	pageWS
 )
 
 // sidebarIconSize is the size of the icons on the tabs of the sidebar.
@@ -152,6 +154,11 @@ type Window struct {
 	// grpc and grpcResponse are the gRPC request UI.
 	grpc         *grpcPanel
 	grpcResponse *responsePanel
+	// ws and wsResponse are the WebSocket request UI, and socket the
+	// connection it has open, or nil.
+	ws         *wsPanel
+	wsResponse *responsePanel
+	socket     *wsSession
 
 	// open is the saved request shown in the request UI for its type, which
 	// edits are written back to. It is nil when the REST request UI holds an
@@ -182,6 +189,7 @@ func NewWindow(files Files) *Window {
 		client:      &http.Client{},
 		request:     newRequestPanel(),
 		grpc:        newGRPCPanel(),
+		ws:          newWSPanel(),
 		editor:      newEnvEditor(),
 		tabs:        newRequestTabs(),
 		environment: newEnvironmentSelector(),
@@ -203,12 +211,13 @@ func NewWindow(files Files) *Window {
 	setColours(w.config.Colours)
 	w.response = newResponsePanel(w.config.ResponseFont)
 	w.grpcResponse = newResponsePanel(w.config.ResponseFont)
+	w.wsResponse = newResponsePanel(w.config.ResponseFont)
 	// What to capture from a response is set beside the response, though
 	// it is kept by the request.
 	w.response.setCaptureTable(w.request.captures)
 	w.grpcResponse.setCaptureTable(w.grpc.captures)
 	// A response is saved to a file named after its request.
-	for _, response := range []*responsePanel{w.response, w.grpcResponse} {
+	for _, response := range []*responsePanel{w.response, w.grpcResponse, w.wsResponse} {
 		response.requestName = func() string {
 			if w.open == nil {
 				return ""
@@ -225,6 +234,8 @@ func NewWindow(files Files) *Window {
 			// The window is going away, so there is nowhere to show this.
 			fmt.Fprintln(os.Stderr, "triggerapi: settings could not be saved:", err)
 		}
+		// An open connection is closed with the window.
+		w.disconnectWS()
 		super(event)
 	})
 
@@ -250,6 +261,7 @@ func NewWindow(files Files) *Window {
 	// current store is looked up each time.
 	w.request.highlight.expand = w.expand
 	w.grpc.highlight.expand = w.expand
+	w.ws.highlight.expand = w.expand
 
 	w.environments = newEnvList(envs, envPath)
 	w.environments.onError = saveFailed
@@ -303,6 +315,7 @@ func NewWindow(files Files) *Window {
 	w.tabs.onNew = w.newRequest
 	w.request.save.OnClicked(w.saveRequest)
 	w.grpc.save.OnClicked(w.saveRequest)
+	w.ws.save.OnClicked(w.saveRequest)
 	w.requests.sets.onChoose = w.chooseSet
 	w.requests.create = func() (*collection.Request, bool) {
 		switch typ, ok := askRequestType(w.QWidget); {
@@ -313,6 +326,8 @@ func NewWindow(files Files) *Window {
 			return w.composed("New Request"), true
 		case typ == collection.TypeGRPC:
 			return collection.NewGRPC("New Request", rpc.Request{}), true
+		case typ == collection.TypeWebSocket:
+			return collection.NewWebSocket("New Request", ws.Request{}), true
 		default:
 			return collection.NewREST("New Request", rest.Request{Method: http.MethodGet}), true
 		}
@@ -323,6 +338,7 @@ func NewWindow(files Files) *Window {
 	w.request.options = w.options
 	w.request.setCodeFont(w.config.ResponseFont)
 	w.grpc.setCodeFont(w.config.ResponseFont)
+	w.ws.setCodeFont(w.config.ResponseFont)
 	w.request.onChange = func() {
 		if w.open != nil && w.open.Type == collection.TypeREST {
 			request := w.request.request()
@@ -346,12 +362,30 @@ func NewWindow(files Files) *Window {
 	w.grpc.endpoints.onCreate = w.createRequests
 	w.grpc.invoke.OnClicked(w.invoke)
 
+	w.ws.onChange = func() {
+		if w.open != nil && w.open.Type == collection.TypeWebSocket {
+			request := w.ws.request()
+			w.open.WebSocket = &request
+			w.requests.save()
+		}
+	}
+	w.ws.connect.OnClicked(w.toggleWS)
+	w.ws.send.OnClicked(w.sendWS)
+
 	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+Return"), w.QObject).OnActivated(func() {
 		switch w.stack.CurrentIndex() {
 		case pageRequest:
 			w.send()
 		case pageGRPC:
 			w.invoke()
+		case pageWS:
+			// The message is sent over the connection, which is opened
+			// first if it is not.
+			if w.socket == nil {
+				w.toggleWS()
+			} else {
+				w.sendWS()
+			}
 		}
 	})
 
@@ -369,16 +403,24 @@ func NewWindow(files Files) *Window {
 	grpc.SetStretchFactor(0, 1)
 	grpc.SetStretchFactor(1, 1)
 
+	socket := qt.NewQSplitter3(qt.Vertical)
+	socket.AddWidget(w.ws.root)
+	socket.AddWidget(w.wsResponse.root)
+	socket.SetChildrenCollapsible(false)
+	socket.SetStretchFactor(0, 1)
+	socket.SetStretchFactor(1, 1)
+
 	// The order matches the page constants.
 	w.stack = qt.NewQStackedWidget2()
 	w.stack.AddWidget(main.QWidget)
 	w.stack.AddWidget(w.editor.root)
 	w.stack.AddWidget(grpc.QWidget)
+	w.stack.AddWidget(socket.QWidget)
 
 	// Dragging the response on one page sets its height on the others, which
 	// are given it when they are next shown.
 	w.responseHeight = w.config.ResponseHeight
-	w.splits = map[int]*qt.QSplitter{pageRequest: main, pageGRPC: grpc}
+	w.splits = map[int]*qt.QSplitter{pageRequest: main, pageGRPC: grpc, pageWS: socket}
 	for _, split := range w.splits {
 		split.OnSplitterMoved(func(int, int) { w.responseHeight = split.Sizes()[1] })
 	}
@@ -696,8 +738,11 @@ func (w *Window) saveRequest() {
 // UI, with a name. It is not in the store.
 func (w *Window) composed(name string) *collection.Request {
 	w.request.url.commit()
-	if w.unsaved == collection.TypeGRPC {
+	switch w.unsaved {
+	case collection.TypeGRPC:
 		return collection.NewGRPC(name, w.grpc.request())
+	case collection.TypeWebSocket:
+		return collection.NewWebSocket(name, w.ws.request())
 	}
 	return collection.NewREST(name, w.request.request())
 }
@@ -711,8 +756,11 @@ func (w *Window) newRequest() {
 		return
 	}
 	draft := collection.NewREST("", rest.Request{Method: http.MethodGet})
-	if typ == collection.TypeGRPC {
+	switch typ {
+	case collection.TypeGRPC:
 		draft = collection.NewGRPC("", rpc.Request{})
+	case collection.TypeWebSocket:
+		draft = collection.NewWebSocket("", ws.Request{})
 	}
 
 	w.stash(w.tabs.current())
@@ -963,6 +1011,8 @@ func (w *Window) applySettings(s settings.Settings) error {
 	w.request.setCodeFont(s.ResponseFont)
 	w.grpc.setCodeFont(s.ResponseFont)
 	w.grpcResponse.setBodyFont(s.ResponseFont)
+	w.ws.setCodeFont(s.ResponseFont)
+	w.wsResponse.setBodyFont(s.ResponseFont)
 
 	// The curl command says how long the request can take and whether it
 	// follows redirects.
@@ -1017,8 +1067,11 @@ func (w *Window) applyJSONColours() {
 	w.request.refreshPlaceholders()
 	w.grpc.highlight.json.setColours(colours)
 	w.grpc.refreshPlaceholders()
+	w.ws.highlight.json.setColours(colours)
+	w.ws.refreshPlaceholders()
 	w.response.setJSONColours(colours)
 	w.grpcResponse.setJSONColours(colours)
+	w.wsResponse.setJSONColours(colours)
 }
 
 // drawSidebarIcons gives the tabs of the sidebar their icons.
@@ -1041,7 +1094,7 @@ func (w *Window) applyColours() {
 	w.requests.sets.draw(w.requests.sets.selected())
 	w.tabs.recolour()
 
-	for _, button := range []*qt.QPushButton{w.request.send, w.request.execute, w.grpc.invoke} {
+	for _, button := range []*qt.QPushButton{w.request.send, w.request.execute, w.grpc.invoke, w.ws.connect} {
 		makePrimary(button)
 	}
 
@@ -1049,10 +1102,14 @@ func (w *Window) applyColours() {
 	w.request.refreshPlaceholders()
 	w.grpc.highlight.setColours()
 	w.grpc.refreshPlaceholders()
+	w.ws.highlight.setColours()
+	w.ws.refreshPlaceholders()
+	w.ws.styleSend()
 
 	w.grpc.recolour()
 	w.response.recolour()
 	w.grpcResponse.recolour()
+	w.wsResponse.recolour()
 }
 
 // expand substitutes the variables of the active environment into text.
@@ -1083,6 +1140,7 @@ func (w *Window) environmentChanged() {
 	w.updateHeaders()
 	w.request.refreshPlaceholders()
 	w.grpc.refreshPlaceholders()
+	w.ws.refreshPlaceholders()
 }
 
 // openEditor shows the selected environment in place of the request UI. The
@@ -1105,6 +1163,9 @@ func (w *Window) requestPage() int {
 	if w.open == nil && w.unsaved == collection.TypeGRPC {
 		return pageGRPC
 	}
+	if w.open != nil && w.open.Type == collection.TypeWebSocket || w.open == nil && w.unsaved == collection.TypeWebSocket {
+		return pageWS
+	}
 	return pageRequest
 }
 
@@ -1121,6 +1182,8 @@ func (w *Window) escape() {
 		}
 	case pageGRPC:
 		w.grpcResponse.find.close()
+	case pageWS:
+		w.wsResponse.find.close()
 	}
 }
 
@@ -1131,6 +1194,8 @@ func (w *Window) find() {
 		w.response.find.open()
 	case pageGRPC:
 		w.grpcResponse.find.open()
+	case pageWS:
+		w.wsResponse.find.open()
 	}
 }
 
@@ -1181,12 +1246,15 @@ func (w *Window) show(r *collection.Request) {
 	if w.cancel != nil {
 		w.cancel()
 	}
+	// A connection is to the request it was opened for.
+	w.disconnectWS()
 	w.shown++
 
 	w.open = r
 	w.unsaved = collection.TypeREST
 	w.request.save.SetVisible(r == nil)
 	w.grpc.save.SetVisible(r == nil)
+	w.ws.save.SetVisible(r == nil)
 	switch {
 	case r == nil:
 		w.request.load(rest.Request{Method: http.MethodGet})
@@ -1194,6 +1262,9 @@ func (w *Window) show(r *collection.Request) {
 		w.grpc.load(*r.GRPC)
 		w.grpcResponse.clear()
 		w.reflect(false)
+	case r.Type == collection.TypeWebSocket:
+		w.ws.load(*r.WebSocket)
+		w.wsResponse.clear()
 	default:
 		w.request.load(*r.Request)
 	}
@@ -1212,11 +1283,15 @@ func (w *Window) show(r *collection.Request) {
 // for, in the request UI of its type.
 func (w *Window) showDraft(draft *collection.Request) {
 	w.unsaved = draft.Type
-	if draft.Type == collection.TypeGRPC {
+	switch draft.Type {
+	case collection.TypeGRPC:
 		w.grpc.load(*draft.GRPC)
 		w.grpcResponse.clear()
 		w.reflect(false)
-	} else {
+	case collection.TypeWebSocket:
+		w.ws.load(*draft.WebSocket)
+		w.wsResponse.clear()
+	default:
 		w.request.load(*draft.Request)
 	}
 	if w.stack.CurrentIndex() != pageEditor {

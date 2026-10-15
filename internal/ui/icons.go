@@ -464,6 +464,22 @@ func drawArrows(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
+// drawPulse draws the line of a pulse, for a WebSocket: a connection that
+// stays open, with messages going both ways along it.
+func drawPulse(painter *qt.QPainter) {
+	painter.SetPenWithPen(whitePen())
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	path := qt.NewQPainterPath()
+	path.MoveTo2(26, 66)
+	path.LineTo2(46, 66)
+	path.LineTo2(56, 38)
+	path.LineTo2(72, 92)
+	path.LineTo2(82, 66)
+	path.LineTo2(102, 66)
+	painter.DrawPath(path)
+}
+
 // drawRevolver draws a revolver seen from the side, pointing right: the
 // program is named after its trigger.
 func drawRevolver(painter *qt.QPainter) {

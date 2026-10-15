@@ -16,6 +16,7 @@ var requestTypes = []struct {
 }{
 	{collection.TypeREST, colourREST, drawBraces},
 	{collection.TypeGRPC, colourGRPC, drawArrows},
+	{collection.TypeWebSocket, colourWebSocket, drawPulse},
 }
 
 // requestTypeIcons holds the icons once they have been drawn. They are drawn

@@ -6,6 +6,7 @@ require (
 	connectrpc.com/connect v1.21.0
 	connectrpc.com/grpcreflect v1.3.1
 	filippo.io/age v1.3.2
+	github.com/coder/websocket v1.8.15
 	github.com/mappu/miqt v0.15.0
 	golang.org/x/crypto v0.55.0
 	google.golang.org/protobuf v1.36.11

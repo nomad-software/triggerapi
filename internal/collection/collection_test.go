@@ -10,6 +10,7 @@ import (
 
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
+	"github.com/nomad-software/triggerapi/internal/ws"
 )
 
 func TestSaveLoad(t *testing.T) {
@@ -484,5 +485,39 @@ func TestSets(t *testing.T) {
 	}
 	if s, err = Load(path); err != nil || len(s.Sets) != 1 || len(s.Sets[0].Requests) != 1 {
 		t.Errorf("broken paths: %+v, %v", s.Sets, err)
+	}
+}
+
+func TestWebSocketRequest(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "requests.json")
+	s := &Store{}
+	f := s.AddFolder("Sockets")
+	f.Add(NewWebSocket("Chat", ws.Request{URL: "ws://chat.test/{{room}}", Message: `{"say":"hi"}`, Headers: []rest.KeyValue{{Key: "X-A", Value: "b", Enabled: true}}}))
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), `"type": "websocket"`) || !strings.Contains(string(data), `"websocket": {`) {
+		t.Errorf("written as %s", data)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := loaded.Folders[0].Requests[0]
+	if r.Type != TypeWebSocket || r.WebSocket == nil || r.Request != nil || r.GRPC != nil || r.WebSocket.URL != "ws://chat.test/{{room}}" || len(r.WebSocket.Headers) != 1 {
+		t.Errorf("loaded %+v %+v", r, r.WebSocket)
+	}
+	if c := r.Clone(); c.WebSocket == r.WebSocket || c.WebSocket.Message != r.WebSocket.Message {
+		t.Errorf("clone %+v", c.WebSocket)
+	}
+
+	// One with nothing of its own is given an empty request.
+	if err := os.WriteFile(path, []byte(`{"folders":[{"name":"a","requests":[{"name":"w","type":"websocket"}]}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if loaded, err = Load(path); err != nil || loaded.Folders[0].Requests[0].WebSocket == nil {
+		t.Errorf("empty websocket request: %+v, %v", loaded.Folders[0].Requests[0], err)
 	}
 }

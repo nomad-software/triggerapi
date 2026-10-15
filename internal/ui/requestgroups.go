@@ -10,9 +10,10 @@ const mixedGroup collection.Type = "mixed"
 
 // groupLabels are the names the headings of the request tree are shown by.
 var groupLabels = map[collection.Type]string{
-	collection.TypeREST: typeLabels[collection.TypeREST],
-	collection.TypeGRPC: typeLabels[collection.TypeGRPC],
-	mixedGroup:          "Mixed",
+	collection.TypeREST:      typeLabels[collection.TypeREST],
+	collection.TypeGRPC:      typeLabels[collection.TypeGRPC],
+	collection.TypeWebSocket: typeLabels[collection.TypeWebSocket],
+	mixedGroup:               "Mixed",
 }
 
 // groupOf returns the heading a top level folder is listed under: the type
@@ -40,11 +41,11 @@ type topEntry struct {
 }
 
 // groupFolders sorts the top level folders under their headings, gRPC then
-// REST then Mixed, leaving out the headings with none. The folders that hold
+// REST then WebSocket then Mixed, leaving out the headings with none. The folders that hold
 // no requests come after the headings, each on its own. Nothing of this is
 // kept in the store; it is worked out again whenever the tree is drawn.
 func groupFolders(folders []*collection.Folder) []topEntry {
-	order := []collection.Type{collection.TypeGRPC, collection.TypeREST, mixedGroup}
+	order := []collection.Type{collection.TypeGRPC, collection.TypeREST, collection.TypeWebSocket, mixedGroup}
 
 	grouped := map[collection.Type][]*collection.Folder{}
 	var empty []*collection.Folder

@@ -1,6 +1,7 @@
 # TriggerAPI
 
-A desktop client for making REST API and gRPC calls. It is written
+A desktop client for making REST API and gRPC calls and talking to
+WebSocket servers. It is written
 in Go with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
 bindings.
 
@@ -20,8 +21,9 @@ bindings.
   TriggerAPI's and no service in the middle. See [Encryption](#encryption).
 - **Native.** It is a single compiled program with a Qt interface, not a web
   browser in a window.
-- **REST and gRPC together.** Both kinds of request live in the same folders,
-  use the same environments and capture values for each other.
+- **REST, gRPC and WebSocket together.** Every kind of request lives in the
+  same folders and uses the same environments, and REST and gRPC requests
+  capture values for each other.
 - **A whole gRPC server as requests, in two clicks.** TriggerAPI asks the
   server what it has, lists every endpoint, and makes a saved request of each
   one you tick, in a folder for each service. There are no protobuf files to
@@ -71,6 +73,22 @@ bindings.
   folder made that way. See
   [Creating requests from a server](#creating-requests-from-a-server).
 
+**WebSocket**
+
+- Connect to a WebSocket server (`ws://` or `wss://`, which is assumed when
+  there is no scheme), with headers and basic or bearer authorization on the
+  handshake. The connection stays open until Disconnect is pressed, the
+  server closes it or another request is shown.
+- Send the message as often as wanted while connected, with Send or
+  Ctrl+Return; Ctrl+Return connects first if need be. A message can be any
+  text, and is coloured, foldable and formatted when it is JSON.
+- Every message sent and received is listed beneath, in order, each with
+  which way it went and when, and can be searched and saved to a file. The
+  bar beneath says whether the connection is open, how many messages went
+  each way and how long the handshake took, and how the server closed the
+  connection, in red unless it closed normally. The headers of the server's
+  answer to the handshake are in their own tab.
+
 **Responses**
 
 - The status, time, size and protocol of a response are shown beneath it,
@@ -106,8 +124,8 @@ bindings.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically, and
   requests can be searched by name, showing only the folders that hold a
-  request found. The top level folders are listed under gRPC, REST and Mixed
-  headings by the requests they hold; this is worked out as they are shown
+  request found. The top level folders are listed under gRPC, REST, WebSocket
+  and Mixed headings by the requests they hold; this is worked out as they are shown
   and is not saved.
 - Open a request without the mouse: Ctrl+P goes to the search, Return goes
   on to what was found, the arrow keys move through the folders and requests
@@ -118,10 +136,10 @@ bindings.
   into a bin while the pointer is over the tab; double-click the bin to unpin
   the tab (a single click does nothing, so a tab is not unpinned by accident).
   Drag the tabs into another order; the tab that is not pinned is pinned by
-  being dragged. The last tab, New, drawn faded, opens a new REST or gRPC
-  request without saving it; Save, shown beside Send or Invoke only while the
-  request is not saved, adds it to the sidebar, as does the add button of the
-  sidebar.
+  being dragged. The last tab, New, drawn faded, opens a new REST, gRPC or
+  WebSocket request without saving it; Save, shown beside Send, Invoke or
+  Connect only while the request is not saved, adds it to the sidebar, as does
+  the add button of the sidebar.
 - Save the pinned tabs as named sets, on the Sets tab beneath the search of
   the Requests tab. A set holds the pinned tabs, which can be requests from
   any folders; choosing another set replaces the tabs with its own, and
@@ -204,7 +222,7 @@ where the variable is used, as in `id-{{request_id}}`.
 
 | Keys | Does |
 |---|---|
-| Ctrl+Return | Send the REST request or invoke the gRPC method. While one is in flight, cancel it. |
+| Ctrl+Return | Send the REST request or invoke the gRPC method. While one is in flight, cancel it. For a WebSocket request, send the message, connecting first if need be. |
 | Ctrl+1, Ctrl+2, Ctrl+3 | Go to the Workspaces, Environments or Requests tab of the sidebar, with the keyboard in its list. |
 | Ctrl+P | Go to the search of the Requests tab, to find a request and open it. |
 | Ctrl+F | Find text in the response. |

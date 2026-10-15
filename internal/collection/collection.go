@@ -11,24 +11,27 @@ import (
 	"github.com/nomad-software/triggerapi/internal/jsonfile"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
+	"github.com/nomad-software/triggerapi/internal/ws"
 )
 
 // Type is the kind of a saved request.
 type Type string
 
 const (
-	TypeREST Type = "rest"
-	TypeGRPC Type = "grpc"
+	TypeREST      Type = "rest"
+	TypeGRPC      Type = "grpc"
+	TypeWebSocket Type = "websocket"
 )
 
 // Request is a saved request. Only the field for its type is set: Request for
-// TypeREST, whose fields are stored alongside the name, and GRPC for
-// TypeGRPC.
+// TypeREST, whose fields are stored alongside the name, GRPC for TypeGRPC and
+// WebSocket for TypeWebSocket.
 type Request struct {
 	Name string `json:"name"`
 	Type Type   `json:"type"`
 	*rest.Request
-	GRPC *rpc.Request `json:"grpc,omitempty"`
+	GRPC      *rpc.Request `json:"grpc,omitempty"`
+	WebSocket *ws.Request  `json:"websocket,omitempty"`
 }
 
 // NewREST returns a REST request.
@@ -41,19 +44,31 @@ func NewGRPC(name string, request rpc.Request) *Request {
 	return &Request{Name: name, Type: TypeGRPC, GRPC: &request}
 }
 
+// NewWebSocket returns a WebSocket request.
+func NewWebSocket(name string, request ws.Request) *Request {
+	return &Request{Name: name, Type: TypeWebSocket, WebSocket: &request}
+}
+
 // normalise makes the request hold exactly the field for its type. Requests
 // saved before there were types are REST requests.
 func (r *Request) normalise() {
-	if r.Type == TypeGRPC {
-		r.Request = nil
+	switch r.Type {
+	case TypeGRPC:
+		r.Request, r.WebSocket = nil, nil
 		if r.GRPC == nil {
 			r.GRPC = &rpc.Request{}
+		}
+		return
+	case TypeWebSocket:
+		r.Request, r.GRPC = nil, nil
+		if r.WebSocket == nil {
+			r.WebSocket = &ws.Request{}
 		}
 		return
 	}
 
 	r.Type = TypeREST
-	r.GRPC = nil
+	r.GRPC, r.WebSocket = nil, nil
 	if r.Request == nil {
 		r.Request = &rest.Request{}
 	}

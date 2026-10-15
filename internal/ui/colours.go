@@ -17,6 +17,7 @@ const (
 	colourRequests
 	colourREST
 	colourGRPC
+	colourWebSocket
 	colourRemove
 	colourAction
 	colourSend
@@ -49,6 +50,7 @@ var colourKinds = []struct {
 	{colourRequests, "Requests", "#17807c"},
 	{colourREST, "REST", "#2e9e5b"},
 	{colourGRPC, "gRPC", "#2f7fd1"},
+	{colourWebSocket, "WebSocket", "#c8871e"},
 	{colourRemove, "Delete", "#e03131"},
 	{colourAction, "Action", "#0b4f6c"},
 	{colourSend, "Send", primaryColour},
@@ -76,6 +78,8 @@ func customIconColour(custom *settings.Colours, kind colourKind) *string {
 		return &custom.Requests
 	case colourREST:
 		return &custom.REST
+	case colourWebSocket:
+		return &custom.WebSocket
 	case colourGRPC:
 		return &custom.GRPC
 	case colourRemove:

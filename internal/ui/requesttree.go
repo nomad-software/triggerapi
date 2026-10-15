@@ -30,8 +30,9 @@ const (
 
 // typeLabels are the names the request types are shown by.
 var typeLabels = map[collection.Type]string{
-	collection.TypeREST: "REST",
-	collection.TypeGRPC: "gRPC",
+	collection.TypeREST:      "REST",
+	collection.TypeGRPC:      "gRPC",
+	collection.TypeWebSocket: "WebSocket",
 }
 
 // requestTree lists the saved requests in their folders. Clicking a request
