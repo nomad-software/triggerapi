@@ -4,7 +4,7 @@ A desktop client for making REST API and gRPC calls. It is written
 in Go with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
 bindings.
 
-![TriggerAPI showing saved requests under gRPC, REST and Mixed headings with a favourite folder, a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
+![TriggerAPI showing saved requests under gRPC, REST and Mixed headings, a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
 
 ## Why TriggerAPI
 
@@ -107,17 +107,28 @@ bindings.
   request found. The top level folders are listed under gRPC, REST and Mixed
   headings by the requests they hold; this is worked out as they are shown
   and is not saved.
-- Mark top level folders as favourites with the star that appears at the
-  right of one when the pointer is over it, and see them alone on the
-  Favourites tab beneath the search. A folder moved inside another is no
-  longer a favourite.
 - Open a request without the mouse: Ctrl+P goes to the search, Return goes
   on to what was found, the arrow keys move through the folders and requests
   (left closes a folder and right opens one), and Return opens the request.
-- Pin requests to keep them open in tabs, which are reopened the next time
-  TriggerAPI is run. The tab that is not pinned has a pin button to pin it;
-  a pinned tab shows the icon of its request's type, which turns into a bin
-  to unpin it while the pointer is over the tab.
+- Pin requests to keep them open in tabs. TriggerAPI always starts with one
+  empty tab, and nothing selected. The tab that is not pinned has a pin button
+  to pin it; a pinned tab shows the icon of its request's type, which turns
+  into a bin while the pointer is over the tab; double-click the bin to unpin
+  the tab (a single click does nothing, so a tab is not unpinned by accident).
+  Drag the tabs into another order; the tab that is not pinned is pinned by
+  being dragged. The last tab, New, drawn faded, opens a new REST or gRPC
+  request without saving it; Save, shown beside Send or Invoke only while the
+  request is not saved, adds it to the sidebar, as does the add button of the
+  sidebar.
+- Save the pinned tabs as named sets, on the Sets tab beneath the search of
+  the Requests tab. A set holds the pinned tabs, which can be requests from
+  any folders; choosing another set replaces the tabs with its own, and
+  pinning, unpinning and moving tabs changes the set chosen. Deselecting the
+  set takes its tabs away and leaves one empty tab, which belongs to no set.
+  Add a set to keep the tabs pinned now, and duplicate, rename or remove sets
+  with the buttons beneath them. A request renamed or moved stays in its sets,
+  and one that is removed is taken out of them. The set chosen in a workspace
+  is chosen again when you go back to it, but not when TriggerAPI is next run.
 - Duplicate a workspace, an environment, a request, or a folder with
   everything in it.
 - Import an OpenAPI 3 or Swagger 2 document, as JSON or YAML, or a Postman
@@ -144,10 +155,11 @@ bindings.
 - Set how long a request can take before it is given up on, and whether a
   REST request follows redirects or shows the response that redirects.
 - Choose the colours of the interface, which are listed in sections: the
-  icons of the sidebar and of each type of request, the star of favourites,
-  the buttons, placeholders, errors, the capture marks, the matches of a
-  search and JSON highlighting.
-- The size and layout of the window are remembered.
+  icons of the sidebar and of each type of request, the buttons, the sets,
+  placeholders, errors, the capture marks, the matches of a search and JSON
+  highlighting.
+- The size and layout of the window are remembered. Folders of requests all
+  start closed; choosing a request's tab opens the folders it is in.
 - Escape closes the environment editor, the search of a response, the curl
   command and the URL preview.
 
@@ -196,8 +208,7 @@ where the variable is used, as in `id-{{request_id}}`.
 
 | Keys | Where | Does |
 |---|---|---|
-| Return | The URL of a REST request | Send the request, or cancel the one in flight. |
-| Return | The server address of a gRPC request | Invoke the method, or cancel the call in flight. |
+| Return | The URL of a REST request | Take in what was typed: the params and the preview follow it, and it is saved. It does not send the request; Ctrl+Return does. |
 
 **The sidebar**
 
@@ -210,7 +221,8 @@ where the variable is used, as in `id-{{request_id}}`.
 
 | Keys | Where | Does |
 |---|---|---|
-| Return | The search box | Go to the tree, at the first request found. |
+| Return | The search box | Go to the tree, at the first request found, or with the sets shown to the first set found. |
+| Return | The list of sets | Choose the set, replacing the tabs with its own. |
 | Up, Down | The tree | Move to the item above or below, without opening it. |
 | Left | The tree | Close the folder, or go to the folder an item is in. |
 | Right | The tree | Open the folder, or go to the first item in it. |
@@ -405,8 +417,7 @@ The settings are kept where the system keeps the configuration of programs:
 | macOS | `~/Library/Application Support/triggerapi/settings.json` |
 
 They hold the window size and layout, the code font, colours, the
-workspaces folder, the encryption keys, the workspace in use and the pinned
-requests.
+workspaces folder, the encryption keys and the workspace in use.
 
 The workspaces are kept, by default, where the system keeps the data of
 programs:
@@ -426,11 +437,6 @@ after it inside the workspaces folder. Workspaces are added, renamed and
 removed in the Workspaces tab of the sidebar; the selected one is the one in
 use. The workspaces folder can be kept elsewhere, such as a folder that is
 synced or shared, by choosing its location in File > Settings.
-
-Earlier versions kept the workspaces in a `workspaces` folder in the directory
-TriggerAPI was run from. The first time this version is run from that
-directory, with no workspaces yet in the new place, they are copied there and
-left where they were.
 
 Changes are saved as they are made. The files of the workspaces are encrypted,
 and they and the settings file can be read and written only by the user who

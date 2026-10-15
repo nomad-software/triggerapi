@@ -359,7 +359,7 @@ func TestPathAndFind(t *testing.T) {
 }
 
 func TestClone(t *testing.T) {
-	folder := &Folder{Name: "Hotel", Collapsed: true}
+	folder := &Folder{Name: "Hotel"}
 	original := folder.Add(NewREST("Book", rest.Request{
 		Method:  "POST",
 		URL:     "api.test",
@@ -401,38 +401,88 @@ func Load(path string) (*Store, error) {
 	return LoadWith(path, nil)
 }
 
-func TestFavourite(t *testing.T) {
-	// A file from before there were favourites has none.
+func TestFavouriteDropped(t *testing.T) {
+	// A file from when folders could be favourites loads with nothing else
+	// lost, and the mark is not written again.
 	path := filepath.Join(t.TempDir(), "requests.json")
-	if err := os.WriteFile(path, []byte(`{"folders":[{"name":"a"}]}`), 0o600); err != nil {
+	old := `{"folders":[{"name":"a","collapsed":true,"favourite":true,"requests":[{"name":"r","method":"GET","url":"example.com"}]}]}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	s, err := LoadWith(path, nil)
-	if err != nil || s.Folders[0].Favourite {
+	if err != nil || len(s.Folders) != 1 || len(s.Folders[0].Requests) != 1 || s.Folders[0].Requests[0].Request.URL != "example.com" {
 		t.Fatalf("loaded %+v, %v", s.Folders, err)
 	}
-
-	// Only a favourite is written as one, and is read back.
-	s.Folders[0].Favourite = true
-	s.AddFolder("b")
 	if err := s.Save(path); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(path)
-	if n := strings.Count(string(data), `"favourite"`); n != 1 {
-		t.Errorf("favourite written %d times: %s", n, data)
+	if strings.Contains(string(data), "favourite") {
+		t.Errorf("favourite written: %s", data)
 	}
-	if s, err = LoadWith(path, nil); err != nil || !s.Folders[0].Favourite || s.Folders[1].Favourite {
-		t.Fatalf("read back %+v, %v", s.Folders, err)
+}
+
+func TestSets(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "requests.json")
+
+	// A file from before there were sets has none, and is written without
+	// them.
+	old := `{"folders":[{"name":"A","requests":[{"name":"get","method":"GET","url":"a.example"}]}]}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil || len(s.Sets) != 0 || len(s.Folders) != 1 {
+		t.Fatalf("loaded %+v, %v", s, err)
+	}
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); strings.Contains(string(data), "sets") {
+		t.Errorf("sets written: %s", data)
 	}
 
-	// Moving a favourite about the top level keeps it one; moving it into
-	// another folder does not.
-	a, b := s.Folders[0], s.Folders[1]
-	if !s.MoveFolder(a, nil, 2) || !a.Favourite {
-		t.Error("reordering lost the favourite")
+	// A set holds requests from any folder, as their paths in the file.
+	get := s.Folders[0].Requests[0]
+	b := s.AddFolder("B").AddFolder("Inner")
+	ping := b.Add(NewGRPC("ping", rpc.Request{}))
+	s.AddSet("work", []*Request{ping, get})
+	s.AddSet("empty", nil)
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
 	}
-	if !s.MoveFolder(a, b, 0) || a.Favourite {
-		t.Error("a folder inside another is a favourite")
+	s, err = Load(path)
+	if err != nil || len(s.Sets) != 2 || s.Sets[0].Name != "empty" || s.Sets[1].Name != "work" {
+		t.Fatalf("read back %+v, %v", s.Sets, err)
+	}
+	work := s.Sets[1]
+	if len(work.Requests) != 2 || work.Requests[0].Name != "ping" || work.Requests[1].Name != "get" {
+		t.Fatalf("requests of the set: %+v", work.Requests)
+	}
+
+	// Renaming or moving a request keeps it in the set.
+	work.Requests[0].Name = "pong"
+	s.MoveRequest(work.Requests[1], s.Folders[1], 0)
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if s, err = Load(path); err != nil || len(s.Sets[1].Requests) != 2 || s.Sets[1].Requests[0].Name != "pong" {
+		t.Fatalf("after rename and move: %+v, %v", s.Sets[1].Requests, err)
+	}
+
+	// A request removed is taken out of the set.
+	s.FolderOf(s.Sets[1].Requests[0]).Remove(0)
+	s.PruneSets()
+	if got := s.Sets[1].Requests; len(got) != 1 || got[0].Name != "get" {
+		t.Errorf("after removal: %+v", got)
+	}
+
+	// A path that cannot be found is left out.
+	broken := `{"folders":[{"name":"A","requests":[{"name":"get"}]}],"sets":[{"name":"t","requests":[["A","gone"],["A","get"],["A","get"]]}]}`
+	if err := os.WriteFile(path, []byte(broken), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if s, err = Load(path); err != nil || len(s.Sets) != 1 || len(s.Sets[0].Requests) != 1 {
+		t.Errorf("broken paths: %+v, %v", s.Sets, err)
 	}
 }

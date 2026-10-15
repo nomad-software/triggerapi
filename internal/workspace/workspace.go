@@ -229,9 +229,9 @@ func Duplicate(dir, name string) (string, error) {
 	return copied, Import(dir, copied, Environments(dir, name), Requests(dir, name))
 }
 
-// Import copies the files of environments and requests from before there
-// were workspaces into a workspace. A file that does not exist is skipped,
-// and nothing already in the workspace is replaced.
+// Import copies files of environments and requests into a workspace. A file
+// that does not exist is skipped, and nothing already in the workspace is
+// replaced.
 func Import(dir, name, environments, requests string) error {
 	return errors.Join(
 		copyFile(environments, Environments(dir, name)),

@@ -24,9 +24,10 @@ func newMethodCombo() *methodCombo {
 	c := &methodCombo{QComboBox: qt.NewQComboBox2(), model: qt.NewQStandardItemModel()}
 
 	c.SetModel(c.model.QAbstractItemModel)
-	// Stop a long method name from forcing the window wider.
+	// Stop a long method name from forcing the window wider: the width is
+	// not taken from the names, and the combo fills whatever room there is.
 	c.SetSizeAdjustPolicy(qt.QComboBox__AdjustToMinimumContentsLengthWithIcon)
-	c.SetMinimumContentsLength(20)
+	c.SetSizePolicy2(qt.QSizePolicy__Expanding, qt.QSizePolicy__Fixed)
 	c.SetMaxVisibleItems(25)
 
 	// The text of a row is the short name, so the full name is substituted

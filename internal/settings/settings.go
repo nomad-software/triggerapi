@@ -58,23 +58,11 @@ type Settings struct {
 	PublicKey  string `json:"publicKey,omitempty"`
 	PrivateKey string `json:"privateKey,omitempty"`
 
-	// Pinned are the requests that are kept open in tabs of their own.
-	Pinned []Pin `json:"pinned,omitempty"`
-
 	// JSONColours are the colours JSON is highlighted in.
 	JSONColours JSONColours `json:"jsonColours,omitzero"`
 
 	// Colours are the colours of the icons and of placeholders.
 	Colours Colours `json:"colours,omitzero"`
-}
-
-// Pin names a request that is kept open in a tab.
-type Pin struct {
-	// Workspace is the name of the workspace the request is in.
-	Workspace string `json:"workspace"`
-	// Path is the names of the folders the request is in, outermost first,
-	// followed by its own name.
-	Path []string `json:"path"`
 }
 
 // JSONColours are the colours of the parts of JSON, as #rrggbb. The default
@@ -127,15 +115,15 @@ type Colours struct {
 	// Match is the colour that marks the places text looked for in a
 	// response was found.
 	Match string `json:"match,omitempty"`
-	// Favourite is the colour of the star which makes a folder of requests
-	// a favourite.
-	Favourite string `json:"favourite,omitempty"`
+	// Sets is the colour of the sets, of their tab in the sidebar and of
+	// their buttons.
+	Sets string `json:"sets,omitempty"`
 }
 
 // valid returns the colours with any that are not of the form #rrggbb
 // emptied.
 func (c Colours) valid() Colours {
-	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Captured, &c.NotCaptured, &c.Match, &c.Favourite)
+	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Captured, &c.NotCaptured, &c.Match, &c.Sets)
 	return c
 }
 

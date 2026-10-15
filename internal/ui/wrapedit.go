@@ -18,10 +18,17 @@ type wrapEdit struct {
 	// being recoloured, which a text edit also reports as a change.
 	text string
 
-	// onChange is called when the text changes, however it was changed.
+	// onChange is called when the text changes. What is typed is reported
+	// only once it is committed (commit): when Return is pressed or the
+	// field loses the keyboard. Text set from code is reported at once.
 	onChange func(string)
-	// onReturn is called when Return is pressed in the field.
+	// onReturn is called when Return is pressed in the field, after what
+	// was typed is committed.
 	onReturn func()
+
+	// typing is set while a key is handled, so that a change it makes
+	// waits for commit; pending is set while one is waiting.
+	typing, pending bool
 }
 
 func newWrapEdit() *wrapEdit {
@@ -48,12 +55,19 @@ func newWrapEdit() *wrapEdit {
 		switch event.Key() {
 		case int(qt.Key_Return), int(qt.Key_Enter):
 			// There is only the one line.
+			e.commit()
 			if e.onReturn != nil && !e.IsReadOnly() {
 				e.onReturn()
 			}
 		default:
+			e.typing = true
 			super(event)
+			e.typing = false
 		}
+	})
+	e.OnFocusOutEvent(func(super func(*qt.QFocusEvent), event *qt.QFocusEvent) {
+		e.commit()
+		super(event)
 	})
 
 	e.OnTextChanged(func() {
@@ -69,12 +83,27 @@ func newWrapEdit() *wrapEdit {
 			return
 		}
 		e.text = text
+		if e.typing {
+			e.pending = true
+			return
+		}
+		e.pending = false
 		if e.onChange != nil {
 			e.onChange(text)
 		}
 	})
 
 	return e
+}
+
+// commit reports what has been typed since it was last reported, if anything.
+func (e *wrapEdit) commit() {
+	if e.pending {
+		e.pending = false
+		if e.onChange != nil {
+			e.onChange(e.text)
+		}
+	}
 }
 
 // fit makes the field as tall as its text.

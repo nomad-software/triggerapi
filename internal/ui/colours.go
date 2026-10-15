@@ -26,7 +26,7 @@ const (
 	colourCaptured
 	colourNotCaptured
 	colourMatch
-	colourFavourite
+	colourSets
 )
 
 // colourKinds are the colours, with what each is called in the settings and
@@ -37,8 +37,8 @@ const (
 // environment defines is green, and one that it does not is the colour of an
 // error. Captured and not captured are of the tick and the cross which say
 // how capturing from a response went, and the last is what marks each place
-// that text looked for in a response was found. Favourites is the colour of
-// the star of a favourite folder of requests.
+// that text looked for in a response was found. Sets is the colour of the
+// sets of the Requests tab, their tab and their buttons.
 var colourKinds = []struct {
 	kind     colourKind
 	label    string
@@ -58,7 +58,7 @@ var colourKinds = []struct {
 	{colourCaptured, "Captured", "#2e9e5b"},
 	{colourNotCaptured, "Not captured", failureColour},
 	{colourMatch, "Search matches", "#ffd43b"},
-	{colourFavourite, "Favourites", "#ffd43b"},
+	{colourSets, "Sets", "#b8508c"},
 }
 
 // customColours are the colours the user has chosen. See setColours.
@@ -94,8 +94,8 @@ func customIconColour(custom *settings.Colours, kind colourKind) *string {
 		return &custom.NotCaptured
 	case colourMatch:
 		return &custom.Match
-	case colourFavourite:
-		return &custom.Favourite
+	case colourSets:
+		return &custom.Sets
 	default:
 		return &custom.Action
 	}
@@ -154,8 +154,7 @@ func setColours(custom settings.Colours) {
 
 	requestTypeIcons = map[collection.Type]*qt.QIcon{}
 	folderIcon, workspaceIconCache, environmentIconCache, removeIcon = nil, nil, nil, nil
-	capturedIcon, notCapturedIcon = nil, nil
-	starIcons = [2]*qt.QIcon{}
+	capturedIcon, notCapturedIcon, setIconCache = nil, nil, nil
 
 	for _, paint := range painted {
 		paint()

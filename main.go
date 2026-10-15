@@ -11,14 +11,7 @@ import (
 	"github.com/nomad-software/triggerapi/internal/workspace"
 )
 
-// The workspaces used to be kept in the directory the program is run from,
-// as were the environments and requests files from before there were
-// workspaces.
-var files = ui.Files{
-	OldWorkspaces: "workspaces",
-	Environments:  "environments.json",
-	Requests:      "requests.json",
-}
+var files ui.Files
 
 func main() {
 	// The settings are kept where the system keeps the configuration of
@@ -34,7 +27,7 @@ func main() {
 
 	// The workspaces are kept where the system keeps the data of programs,
 	// unless the settings name another folder.
-	files.Workspaces = files.OldWorkspaces
+	files.Workspaces = "workspaces"
 	if dir, err := workspace.DefaultDir(); err != nil {
 		fmt.Fprintln(os.Stderr, "triggerapi: the workspaces are kept in the current directory:", err)
 	} else {

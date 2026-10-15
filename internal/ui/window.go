@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -86,16 +85,6 @@ type Files struct {
 	// Workspaces is the folder the workspaces are kept in, unless the
 	// settings name another.
 	Workspaces string
-	// OldWorkspaces is the folder the workspaces were kept in, unless the
-	// settings named another, before they were kept where the system keeps
-	// the data of programs. The workspaces in it are brought into
-	// Workspaces if that has none.
-	OldWorkspaces string
-	// Environments and Requests are the paths of the files the
-	// environments and requests were kept in before there were workspaces.
-	// What is in them is brought into the first workspace.
-	Environments string
-	Requests     string
 }
 
 // The tabs of the sidebar, in order.
@@ -118,6 +107,14 @@ type Window struct {
 	// settings in effect, which can keep the workspaces elsewhere.
 	files  Files
 	config settings.Settings
+	// unsaved is the type of the request that is not saved, which is on
+	// show while open is nil.
+	unsaved collection.Type
+	// chosenSets are the names of the sets chosen in the workspaces that
+	// have been left, by the names of the workspaces, to be chosen again
+	// when they are gone back to. They are not kept between runs, which
+	// start with no set chosen.
+	chosenSets map[string]string
 	// keys are the keys of the settings, which the environments and
 	// requests are encrypted with. They are nil if the settings have none.
 	keys *crypt.Keys
@@ -233,7 +230,7 @@ func NewWindow(files Files) *Window {
 	// The workspace that was last in use is opened, which is the first
 	// there is if this is the first run with workspaces.
 	w.workspaces = newWorkspaceList(w.workspacesDir)
-	w.migrate()
+	w.firstWorkspace()
 	// A failure to open the keys is reported when the files are loaded.
 	w.keys, _ = openKeys(w.QWidget, w.config)
 	currentKeys := func() *crypt.Keys { return w.keys }
@@ -299,15 +296,22 @@ func NewWindow(files Files) *Window {
 		w.stash(from)
 		w.showTab(to, true)
 	}
+	// The pinned tabs are those of the set chosen, which follows them.
+	w.tabs.onPins = func() { w.requests.sets.keep(w.tabs.pinned()) }
+	w.requests.sets.pinned = w.tabs.pinned
+	w.tabs.onNew = w.newRequest
+	w.request.save.OnClicked(w.saveRequest)
+	w.grpc.save.OnClicked(w.saveRequest)
+	w.requests.sets.onChoose = w.chooseSet
 	w.requests.create = func() (*collection.Request, bool) {
 		switch typ, ok := askRequestType(w.QWidget); {
 		case !ok:
 			return nil, false
+		case w.open == nil && w.unsaved == typ:
+			// An unsaved request being composed becomes the new request.
+			return w.composed("New Request"), true
 		case typ == collection.TypeGRPC:
 			return collection.NewGRPC("New Request", rpc.Request{}), true
-		case w.open == nil:
-			// An unsaved request being composed becomes the new request.
-			return collection.NewREST("New Request", w.request.request()), true
 		default:
 			return collection.NewREST("New Request", rest.Request{Method: http.MethodGet}), true
 		}
@@ -327,7 +331,6 @@ func NewWindow(files Files) *Window {
 	}
 	w.request.send.OnClicked(w.send)
 	w.request.execute.OnClicked(w.executeCurl)
-	w.request.url.onReturn = w.send
 
 	w.grpc.onChange = func() {
 		if w.open != nil && w.open.Type == collection.TypeGRPC {
@@ -341,7 +344,6 @@ func NewWindow(files Files) *Window {
 	w.grpc.example.OnClicked(w.useExample)
 	w.grpc.endpoints.onCreate = w.createRequests
 	w.grpc.invoke.OnClicked(w.invoke)
-	w.grpc.url.OnReturnPressed(w.invoke)
 
 	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+Return"), w.QObject).OnActivated(func() {
 		switch w.stack.CurrentIndex() {
@@ -465,8 +467,6 @@ func NewWindow(files Files) *Window {
 	w.newMenuBar()
 	w.updateHeaders()
 	w.applyJSONColours()
-	// The requests start on the Favourites tab if there are any.
-	w.requests.startView()
 	w.restoreTabs()
 
 	w.request.url.SetFocus()
@@ -505,34 +505,14 @@ func (w *Window) workspacesDir() string {
 	return w.files.Workspaces
 }
 
-// migrate brings in what was saved by earlier versions, if there are no
-// workspaces. The workspaces from where they used to be kept are copied to
-// where they are kept now. If there were none, the first workspace is made,
-// and the environments and requests from before there were workspaces are
-// copied into it. Everything copied is left where it was.
-func (w *Window) migrate() {
+// firstWorkspace makes the first workspace, named Default, if there are
+// none, so that there is always one to work in.
+func (w *Window) firstWorkspace() {
 	dir := w.workspacesDir()
 	if names, err := workspace.List(dir); err != nil || len(names) > 0 {
 		return
 	}
-
-	// Only the default folder has moved. One chosen in the settings is
-	// where it was.
-	if w.config.WorkspacesDir == "" && w.files.OldWorkspaces != "" {
-		if err := workspace.CopyAll(w.files.OldWorkspaces, dir); err != nil {
-			w.status("The workspaces could not be moved to " + dir + ": " + err.Error())
-			return
-		}
-		if names, err := workspace.List(dir); err != nil || len(names) > 0 {
-			return
-		}
-	}
-
-	err := workspace.Create(dir, workspace.Default)
-	if err == nil {
-		err = workspace.Import(dir, workspace.Default, w.files.Environments, w.files.Requests)
-	}
-	if err != nil {
+	if err := workspace.Create(dir, workspace.Default); err != nil {
 		w.status("The first workspace could not be made: " + err.Error())
 	}
 }
@@ -666,7 +646,7 @@ func (w *Window) changeKeys(keys *crypt.Keys) error {
 func (w *Window) openWorkspace(name string) {
 	// The pinned requests of the workspace being left are noted while its
 	// requests are still there to be found.
-	w.keepPins()
+	w.keepSet()
 
 	envs, envPath, requests, requestsPath := w.loadWorkspace(name)
 	w.config.Workspace = name
@@ -683,38 +663,87 @@ func (w *Window) openWorkspace(name string) {
 	w.environmentChanged()
 }
 
-// keepPins records the requests that are pinned, among those of the other
-// workspaces, to be opened again in tabs the next time the workspace is
-// used. Those of workspaces that have gone are forgotten.
-func (w *Window) keepPins() {
-	name := w.config.Workspace
-
-	pins := slices.DeleteFunc(slices.Clone(w.config.Pinned), func(p settings.Pin) bool { return p.Workspace == name })
-	for _, r := range w.tabs.pinned() {
-		if path := w.requests.store.Path(r); path != nil {
-			pins = append(pins, settings.Pin{Workspace: name, Path: path})
-		}
+// keepSet records the set chosen in the workspace in use, for its tabs to be
+// opened again when the workspace is gone back to. Tabs that are not in a
+// set are not remembered.
+func (w *Window) keepSet() {
+	if w.chosenSets == nil {
+		w.chosenSets = map[string]string{}
 	}
-	w.config.Pinned = slices.DeleteFunc(pins, func(p settings.Pin) bool {
-		return !slices.Contains(w.workspaces.names, p.Workspace)
-	})
+	if set := w.requests.sets.active; set != nil {
+		w.chosenSets[w.config.Workspace] = set.Name
+	} else {
+		delete(w.chosenSets, w.config.Workspace)
+	}
 }
 
-// restoreTabs opens a tab for each request that was pinned in the workspace
-// in use, and shows the first, or a request that is not saved if there are
-// none.
+// saveRequest saves the request being composed in the tab that holds no
+// saved request, which it shows in that tab, and adds it to the sidebar.
+func (w *Window) saveRequest() {
+	if w.open != nil {
+		return
+	}
+	w.requests.insert(w.composed("New Request"))
+}
+
+// composed returns the request that is not saved, as it is in the request
+// UI, with a name. It is not in the store.
+func (w *Window) composed(name string) *collection.Request {
+	w.request.url.commit()
+	if w.unsaved == collection.TypeGRPC {
+		return collection.NewGRPC(name, w.grpc.request())
+	}
+	return collection.NewREST(name, w.request.request())
+}
+
+// newRequest asks for the type of a request, and shows an empty request of
+// that type in the tab that is not pinned, without saving it: it is added to
+// the sidebar only once it is saved.
+func (w *Window) newRequest() {
+	typ, ok := askRequestType(w.QWidget)
+	if !ok {
+		return
+	}
+	draft := collection.NewREST("", rest.Request{Method: http.MethodGet})
+	if typ == collection.TypeGRPC {
+		draft = collection.NewGRPC("", rpc.Request{})
+	}
+
+	w.stash(w.tabs.current())
+	tab := w.tabs.open(nil)
+	tab.draft, tab.replay = draft, nil
+	w.showTab(tab, true)
+	w.closeEditor()
+}
+
+// chooseSet replaces the tabs with those of a set, and shows the first.
+// Choosing no set, by deselecting the one chosen, takes the tabs away and
+// leaves one empty tab.
+func (w *Window) chooseSet(set *collection.Set) {
+	w.stash(w.tabs.current())
+	var requests []*collection.Request
+	if set != nil {
+		requests = set.Requests
+	}
+	w.tabs.reset(requests)
+	w.showTab(w.tabs.current(), true)
+}
+
+// restoreTabs opens a tab for each request of the set that was chosen in
+// the workspace in use when it was left, and shows the first. With no set,
+// as at startup, there is only a request that is not saved and nothing is
+// selected: tabs are only remembered in sets.
 func (w *Window) restoreTabs() {
-	var pinned []*collection.Request
-	for _, pin := range w.config.Pinned {
-		if pin.Workspace != w.config.Workspace {
-			continue
-		}
-		if r := w.requests.store.Find(pin.Path); r != nil && !slices.Contains(pinned, r) {
-			pinned = append(pinned, r)
+	if name, ok := w.chosenSets[w.config.Workspace]; ok {
+		if set := w.requests.store.FindSet(name); set != nil {
+			w.requests.sets.load(set)
+			w.tabs.reset(set.Requests)
+			w.showTab(w.tabs.current(), true)
+			return
 		}
 	}
 
-	w.tabs.reset(pinned)
+	w.tabs.reset(nil)
 	w.showTab(w.tabs.current(), true)
 }
 
@@ -722,8 +751,9 @@ func (w *Window) restoreTabs() {
 // saved, so that it is still there when the tab is shown again.
 func (w *Window) stash(tab *requestTab) {
 	if tab != nil && tab.request == nil {
-		draft := w.request.request()
-		tab.draft = &draft
+		tab.draft = w.composed("")
+	} else {
+		w.request.url.commit()
 	}
 }
 
@@ -733,7 +763,7 @@ func (w *Window) stash(tab *requestTab) {
 func (w *Window) showTab(tab *requestTab, sync bool) {
 	w.show(tab.request)
 	if tab.request == nil && tab.draft != nil {
-		w.request.load(*tab.draft)
+		w.showDraft(tab.draft)
 	}
 	if tab.replay != nil {
 		tab.replay()
@@ -746,11 +776,6 @@ func (w *Window) showTab(tab *requestTab, sync bool) {
 // renamedWorkspace follows the workspace in use to its new name, which is
 // also the name of the folder its files are in.
 func (w *Window) renamedWorkspace(name string) {
-	for i, pin := range w.config.Pinned {
-		if pin.Workspace == w.config.Workspace {
-			w.config.Pinned[i].Workspace = name
-		}
-	}
 	w.config.Workspace = name
 	if w.environments.path != "" {
 		w.environments.path = workspace.Environments(w.workspacesDir(), name)
@@ -808,7 +833,6 @@ func (w *Window) restoreResponseHeight(split *qt.QSplitter) {
 // maximised window is that of the window before it was maximised, falling
 // back to the previous setting if the platform does not report one.
 func (w *Window) settings() settings.Settings {
-	w.keepPins()
 	s := w.config
 
 	// The layout is only known once the window has been shown. The response
@@ -1008,6 +1032,7 @@ func (w *Window) applyColours() {
 	w.environments.recolour()
 	w.requests.draw(w.requests.selection())
 	w.requests.drawViewIcons()
+	w.requests.sets.draw(w.requests.sets.selected())
 	w.tabs.recolour()
 
 	for _, button := range []*qt.QPushButton{w.request.send, w.request.execute, w.grpc.invoke} {
@@ -1071,6 +1096,9 @@ func (w *Window) requestPage() int {
 	if w.open != nil && w.open.Type == collection.TypeGRPC {
 		return pageGRPC
 	}
+	if w.open == nil && w.unsaved == collection.TypeGRPC {
+		return pageGRPC
+	}
 	return pageRequest
 }
 
@@ -1104,6 +1132,7 @@ func (w *Window) find() {
 // search box, to find a request and open it without the mouse.
 func (w *Window) quickOpen() {
 	w.sidebar.SetCurrentIndex(tabRequests)
+	w.requests.showView(viewRequests)
 	w.requests.focusSearch()
 }
 
@@ -1118,7 +1147,7 @@ func (w *Window) focusSidebar(tab int) {
 	case tabEnvironments:
 		w.environments.list.SetFocus()
 	case tabRequests:
-		w.requests.tree.SetFocus()
+		w.requests.focusList()
 	}
 }
 
@@ -1141,12 +1170,17 @@ func (w *Window) openRequest(r *collection.Request) {
 // an empty unsaved REST request if r is nil. The environment editor is left
 // open if it is.
 func (w *Window) show(r *collection.Request) {
+	// What was typed into the URL is kept by the request it was typed into.
+	w.request.url.commit()
 	if w.cancel != nil {
 		w.cancel()
 	}
 	w.shown++
 
 	w.open = r
+	w.unsaved = collection.TypeREST
+	w.request.save.SetVisible(r == nil)
+	w.grpc.save.SetVisible(r == nil)
 	switch {
 	case r == nil:
 		w.request.load(rest.Request{Method: http.MethodGet})
@@ -1162,6 +1196,22 @@ func (w *Window) show(r *collection.Request) {
 
 	if w.requestPage() == pageRequest {
 		w.response.clear()
+	}
+	if w.stack.CurrentIndex() != pageEditor {
+		w.stack.SetCurrentIndex(w.requestPage())
+	}
+}
+
+// showDraft shows a request that is not saved, which show(nil) has made way
+// for, in the request UI of its type.
+func (w *Window) showDraft(draft *collection.Request) {
+	w.unsaved = draft.Type
+	if draft.Type == collection.TypeGRPC {
+		w.grpc.load(*draft.GRPC)
+		w.grpcResponse.clear()
+		w.reflect(false)
+	} else {
+		w.request.load(*draft.Request)
 	}
 	if w.stack.CurrentIndex() != pageEditor {
 		w.stack.SetCurrentIndex(w.requestPage())
@@ -1269,6 +1319,7 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(
 
 // send starts the REST request, or cancels the request in flight.
 func (w *Window) send() {
+	w.request.url.commit()
 	request := w.request.request()
 	req := request.Expand(w.expander())
 	req.Options = w.options()

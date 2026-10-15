@@ -11,7 +11,7 @@ import (
 func TestSaveLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 
-	want := Settings{Width: 900, Height: 600, Maximized: true, SidebarWidth: 310, ResponseHeight: 240, ResponseFont: "Hack", WorkspacesDir: "/a/workspaces", Workspace: "Default", Pinned: []Pin{{Workspace: "Default", Path: []string{"Folder", "Request"}}}, JSONColours: JSONColours{Key: "#A31515", Number: "#098658"}, Colours: Colours{Workspaces: "#112233", GRPC: "#445566"}}
+	want := Settings{Width: 900, Height: 600, Maximized: true, SidebarWidth: 310, ResponseHeight: 240, ResponseFont: "Hack", WorkspacesDir: "/a/workspaces", Workspace: "Default", JSONColours: JSONColours{Key: "#A31515", Number: "#098658"}, Colours: Colours{Workspaces: "#112233", GRPC: "#445566"}}
 	if err := want.Save(path); err != nil {
 		t.Fatal(err)
 	}

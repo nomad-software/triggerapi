@@ -17,6 +17,8 @@ type grpcPanel struct {
 	url    *qt.QLineEdit
 	tls    *qt.QCheckBox
 	invoke *qt.QPushButton
+	// save saves a request that is not saved yet.
+	save   *qt.QPushButton
 	method *methodCombo
 	reload *qt.QPushButton
 	// status reports a failure to load the service definition.
@@ -69,6 +71,9 @@ func newGRPCPanel() *grpcPanel {
 	p.invoke = qt.NewQPushButton3("Invoke")
 	makePrimary(p.invoke)
 	p.invoke.SetToolTip("Ctrl+Return")
+	// Save is only for a request that is not saved, as one that is saved is
+	// saved with every change.
+	p.save = qt.NewQPushButton3("Save")
 
 	p.method = newMethodCombo()
 	p.method.OnCurrentIndexChanged(func(int) { p.changed() })
@@ -84,6 +89,7 @@ func newGRPCPanel() *grpcPanel {
 	top.AddWidget(p.reload.QWidget)
 	top.AddWidget(p.tls.QWidget)
 	top.AddWidget(p.invoke.QWidget)
+	top.AddWidget(p.save.QWidget)
 
 	p.status = qt.NewQLabel2()
 	p.status.SetTextFormat(qt.PlainText)

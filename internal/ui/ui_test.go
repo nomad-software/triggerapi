@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1122,7 +1123,7 @@ func TestGRPCAndRESTRequests(t *testing.T) {
 		if got := itemType(topFolder(tree, 0).Child(0)); got != collection.TypeREST {
 			t.Errorf("type shown as %q", got)
 		}
-		if tree.ColumnCount() != 2 || itemType(topFolder(tree, 0)) != "" {
+		if tree.ColumnCount() != 1 || itemType(topFolder(tree, 0)) != "" {
 			t.Errorf("columns = %d, folder shown as %q", tree.ColumnCount(), itemType(topFolder(tree, 0)))
 		}
 
@@ -2825,14 +2826,30 @@ func TestURLWraps(t *testing.T) {
 			t.Errorf("text = %q, shown as %q", got, url.ToPlainText())
 		}
 
-		// Return sends the request and adds nothing.
+		// What is typed is reported only when Return is pressed, which
+		// adds nothing and does not send the request.
+		if url.onReturn != nil {
+			t.Error("Return in the URL sends the request")
+		}
 		url.onReturn = func() { sent++ }
+		typed := 0
+		report := url.onChange
+		url.onChange = func(text string) { typed++; report(text) }
+		url.MoveCursor(qt.QTextCursor__End)
+		key := qt.NewQKeyEvent3(qt.QEvent__KeyPress, int(qt.Key_S), qt.NoModifier, "s")
+		defer key.Delete()
+		qt.QCoreApplication_SendEvent(url.QObject, key.QEvent)
+		if typed != 0 || url.Text() != "example.test/userss" {
+			t.Errorf("typing reported %d changes, text = %q", typed, url.Text())
+		}
 		event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(qt.Key_Return), qt.NoModifier)
 		defer event.Delete()
 		qt.QCoreApplication_SendEvent(url.QObject, event.QEvent)
-		if sent != 1 || url.Text() != "example.test/users" {
-			t.Errorf("sent %d times, text = %q", sent, url.Text())
+		if sent != 1 || typed != 1 || url.Text() != "example.test/userss" {
+			t.Errorf("return: %d calls, %d changes, text = %q", sent, typed, url.Text())
 		}
+		url.onChange = report
+		url.SetText("example.test/users")
 
 		// Recolouring the placeholders is not an edit.
 		changes := 0
@@ -3872,13 +3889,56 @@ func TestImportDialog(t *testing.T) {
 	})
 }
 
-func TestFoldersStayOpenOrClosed(t *testing.T) {
+func TestFoldersStartClosed(t *testing.T) {
 	files := testFiles(t)
 
+	// A file from when whether folders were open was saved.
+	old := `{"folders":[{"name":"a","folders":[{"name":"inner","requests":[{"name":"r","method":"GET"}]}]},{"name":"b","collapsed":true}]}`
+	if err := os.WriteFile(files.Requests, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for run := range 2 {
+		mainthread.Wait(func() {
+			w := NewWindow(files.Files)
+			w.Show()
+			tree := w.requests.tree
+
+			// Every folder is closed at startup, however it was left.
+			if treeItem(tree, "a").IsExpanded() || treeItem(tree, "a", "inner").IsExpanded() || treeItem(tree, "b").IsExpanded() {
+				t.Errorf("run %d: folders do not start closed", run)
+			}
+
+			// Folders opened stay open while the tree is drawn again.
+			treeItem(tree, "a").SetExpanded(true)
+			w.requests.draw(nil)
+			if !treeItem(tree, "a").IsExpanded() || treeItem(tree, "a", "inner").IsExpanded() {
+				t.Errorf("run %d: folders not kept open within the run", run)
+			}
+
+			// Adding to a closed folder opens it.
+			tree.SetCurrentItem(treeItem(tree, "a", "inner"))
+			w.requests.addRequest()
+			if !treeItem(tree, "a", "inner").IsExpanded() {
+				t.Errorf("run %d: folder not opened for the request added to it", run)
+			}
+			w.Close()
+		})
+	}
+
+	// Whether a folder is open is never saved.
+	if data, err := os.ReadFile(files.Requests); err != nil {
+		t.Fatal(err)
+	} else if saved, err := loadRequests(files.Requests); err != nil || len(saved.Folders) != 2 || strings.Contains(string(data), "collapsed") {
+		t.Errorf("saved %+v, %v", saved, err)
+	}
+}
+
+func TestOpenedForTab(t *testing.T) {
+	files := testFiles(t)
 	store := &collection.Store{}
-	a := store.AddFolder("a")
-	a.AddFolder("inner").Add(collection.NewREST("r", rest.Request{Method: "GET"}))
-	store.AddFolder("b")
+	store.AddFolder("a").AddFolder("inner").Add(collection.NewREST("r", rest.Request{Method: "GET"}))
+	store.AddFolder("b").Add(collection.NewREST("s", rest.Request{Method: "GET"}))
 	if err := store.Save(files.Requests); err != nil {
 		t.Fatal(err)
 	}
@@ -3888,38 +3948,19 @@ func TestFoldersStayOpenOrClosed(t *testing.T) {
 		w.Show()
 		tree := w.requests.tree
 
-		// Folders are open until they are closed.
-		if !treeItem(tree, "a").IsExpanded() || !treeItem(tree, "a", "inner").IsExpanded() {
-			t.Error("folders do not start open")
-		}
+		// Choosing the tab of a request in closed folders opens them, to
+		// show it selected.
+		treeItem(tree, "a").SetExpanded(true)
+		treeItem(tree, "a", "inner").SetExpanded(true)
+		tree.SetCurrentItem(treeItem(tree, "a", "inner", "r"))
+		w.tabs.current().button.Click()
 		treeItem(tree, "a", "inner").SetExpanded(false)
-		treeItem(tree, "b").SetExpanded(false)
+		treeItem(tree, "a").SetExpanded(false)
 		treeItem(tree, "b").SetExpanded(true)
-	})
-
-	saved, err := loadRequests(files.Requests)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if saved.Folders[0].Collapsed || !saved.Folders[0].Folders[0].Collapsed || saved.Folders[1].Collapsed {
-		t.Errorf("saved %+v, inner %+v", saved.Folders[0], saved.Folders[0].Folders[0])
-	}
-
-	// They are as they were left the next time.
-	mainthread.Wait(func() {
-		w := NewWindow(files.Files)
-		w.Show()
-		tree := w.requests.tree
-
-		if !treeItem(tree, "a").IsExpanded() || treeItem(tree, "a", "inner").IsExpanded() || !treeItem(tree, "b").IsExpanded() {
-			t.Error("folders were not restored as they were left")
-		}
-
-		// Adding to a closed folder opens it.
-		tree.SetCurrentItem(treeItem(tree, "a", "inner"))
-		w.requests.addRequest()
-		if !treeItem(tree, "a", "inner").IsExpanded() {
-			t.Error("folder not opened for the request added to it")
+		tree.SetCurrentItem(treeItem(tree, "b", "s"))
+		w.tabs.bar.SetCurrentIndex(0)
+		if !treeItem(tree, "a").IsExpanded() || !treeItem(tree, "a", "inner").IsExpanded() || tree.CurrentItem().Text(colName) != "r" {
+			t.Error("the folders of the request of the tab were not opened")
 		}
 	})
 }
@@ -4422,181 +4463,6 @@ func TestAddRequestWithNothingSelected(t *testing.T) {
 	})
 }
 
-func TestFavourites(t *testing.T) {
-	files := testFiles(t)
-
-	store := &collection.Store{}
-	store.AddFolder("Hotel").Add(collection.NewREST("Ping", rest.Request{Method: "GET"}))
-	store.AddFolder("Service").Add(collection.NewGRPC("Get", rpc.Request{}))
-	users := store.AddFolder("Users")
-	users.Add(collection.NewREST("List", rest.Request{Method: "GET"}))
-	users.AddFolder("Admin").Add(collection.NewREST("Ban", rest.Request{Method: "POST"}))
-	store.AddFolder("Empty")
-	if err := store.Save(files.Requests); err != nil {
-		t.Fatal(err)
-	}
-
-	mainthread.Wait(func() {
-		w := NewWindow(files.Files)
-		w.Show()
-		rt := w.requests
-		tree := rt.tree
-
-		// mouse sends the tree an event of the pointer at the middle of a
-		// column of an item.
-		mouse := func(kind qt.QEvent__Type, item *qt.QTreeWidgetItem, column int) {
-			rect := tree.VisualItemRect(item)
-			x := tree.Header().SectionViewportPosition(column) + tree.Header().SectionSize(column)/2
-			pos := qt.NewQPointF3(float64(x), float64(rect.Y()+rect.Height()/2))
-			defer pos.Delete()
-			button := qt.NoButton
-			if kind == qt.QEvent__MouseButtonPress {
-				button = qt.LeftButton
-			}
-			event := qt.NewQMouseEvent(kind, pos, button, button, qt.NoModifier)
-			defer event.Delete()
-			qt.QCoreApplication_SendEvent(tree.Viewport().QObject, event.QEvent)
-		}
-		star := func(item *qt.QTreeWidgetItem) bool { return !item.Icon(colStar).IsNull() }
-		shown := func() []string {
-			var names []string
-			for _, item := range topFolders(tree) {
-				names = append(names, item.Text(colName))
-			}
-			return names
-		}
-
-		// The star is shown on a folder under a heading while the pointer is
-		// over it, and on nothing else.
-		mouse(qt.QEvent__MouseMove, treeItem(tree, "Hotel"), colName)
-		if !star(treeItem(tree, "Hotel")) {
-			t.Error("no star on the folder under the pointer")
-		}
-		for _, names := range [][]string{{"Users", "List"}, {"Users", "Admin"}, {"Empty"}} {
-			mouse(qt.QEvent__MouseMove, treeItem(tree, names...), colName)
-			if star(treeItem(tree, names...)) || star(treeItem(tree, "Hotel")) {
-				t.Errorf("star shown with the pointer over %q", names)
-			}
-		}
-		mouse(qt.QEvent__MouseMove, tree.TopLevelItem(0), colName)
-		if star(tree.TopLevelItem(0)) {
-			t.Error("star on a heading")
-		}
-
-		// Clicking the star makes the folder a favourite, without selecting
-		// it, and it is filled from then on.
-		hotel := treeItem(tree, "Hotel")
-		mouse(qt.QEvent__MouseMove, hotel, colStar)
-		if hotel.Icon(colStar).CacheKey() != starIcon(false).CacheKey() {
-			t.Error("the star of a folder that is not a favourite is not in outline")
-		}
-		mouse(qt.QEvent__MouseButtonPress, hotel, colStar)
-		if !rt.store.Folders[1].Favourite || rt.store.Folders[1].Name != "Hotel" || tree.CurrentItem() != nil {
-			t.Errorf("not made a favourite, or selected %v", tree.CurrentItem())
-		}
-		if hotel.Icon(colStar).CacheKey() != starIcon(true).CacheKey() {
-			t.Error("the star of a favourite is not filled")
-		}
-		rt.toggleFavourite(rt.store.Folders[2]) // Service
-		rt.toggleFavourite(rt.store.Folders[3]) // Users
-
-		// The Favourites tab shows those alone, under their headings, and
-		// the search is applied to them.
-		rt.views.SetCurrentIndex(viewFavourites)
-		if got, want := shown(), []string{"Service", "Hotel", "Users"}; !reflect.DeepEqual(got, want) {
-			t.Errorf("favourites %q, want %q", got, want)
-		}
-		rt.search.SetText("ban")
-		if got := shown(); treeItem(tree, "Hotel").IsHidden() == false || treeItem(tree, "Users", "Admin", "Ban").IsHidden() || len(got) != 3 {
-			t.Error("the search is not applied to the favourites")
-		}
-		rt.search.SetText("")
-
-		// Clicking the star of a favourite there takes it away.
-		mouse(qt.QEvent__MouseMove, treeItem(tree, "Hotel"), colStar)
-		mouse(qt.QEvent__MouseButtonPress, treeItem(tree, "Hotel"), colStar)
-		if got, want := shown(), []string{"Service", "Users"}; !reflect.DeepEqual(got, want) || rt.store.Folders[1].Favourite {
-			t.Errorf("favourites %q after removing Hotel", got)
-		}
-
-		// A favourite moved into another folder is no longer one, and the
-		// tree goes back to showing everything so it can be seen.
-		users := rt.store.Folders[3]
-		if !rt.drop(users, nil, rt.store.Folders[1], nil, dropOn) {
-			t.Fatal("not moved")
-		}
-		if users.Favourite || rt.favourites || rt.views.CurrentIndex() != viewAll || tree.CurrentItem().Text(colName) != "Users" {
-			t.Errorf("after the move: favourite %t, favourites shown %t", users.Favourite, rt.favourites)
-		}
-	})
-
-	// At startup the favourites are shown, as there are some, and with
-	// none every folder is.
-	mainthread.Wait(func() {
-		w := NewWindow(files.Files)
-		if !w.requests.favourites || w.requests.views.CurrentIndex() != viewFavourites || topCount(w.requests.tree) != 1 {
-			t.Errorf("favourites not shown at startup: tab %d, %d folders", w.requests.views.CurrentIndex(), topCount(w.requests.tree))
-		}
-		// The tabs have icons: that of the requests, and the star.
-		if w.requests.views.TabIcon(viewAll).IsNull() || w.requests.views.TabIcon(viewFavourites).CacheKey() != starIcon(true).CacheKey() {
-			t.Error("the tabs of the views have no icons")
-		}
-
-		// A first pinned request in a favourite is selected there.
-		current := func() string {
-			if item := w.requests.tree.CurrentItem(); item != nil {
-				return item.Text(colName)
-			}
-			return ""
-		}
-		w.config.Pinned = []settings.Pin{{Workspace: w.config.Workspace, Path: []string{"Service", "Get"}}}
-		w.restoreTabs()
-		if !w.requests.favourites || current() != "Get" {
-			t.Errorf("pinned favourite: favourites shown %t, at %q", w.requests.favourites, current())
-		}
-
-		// One that is not in a favourite is shown on the Requests tab.
-		w.config.Pinned = []settings.Pin{{Workspace: w.config.Workspace, Path: []string{"Hotel", "Ping"}}}
-		w.restoreTabs()
-		if w.requests.favourites || w.requests.views.CurrentIndex() != viewAll || current() != "Ping" {
-			t.Errorf("pinned request elsewhere: favourites shown %t, at %q", w.requests.favourites, current())
-		}
-		w.config.Pinned = nil
-
-		w.requests.toggleFavourite(w.requests.store.Folders[2]) // Service
-		w.Close()
-
-		w = NewWindow(files.Files)
-		if w.requests.favourites || w.requests.views.CurrentIndex() != viewAll || topCount(w.requests.tree) != 3 {
-			t.Errorf("every folder not shown at startup: tab %d, %d folders", w.requests.views.CurrentIndex(), topCount(w.requests.tree))
-		}
-		w.requests.toggleFavourite(w.requests.store.Folders[2]) // Service again
-		w.Close()
-	})
-
-	// Only the favourite is saved as one.
-	saved, err := loadRequests(files.Requests)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var favourites []string
-	var walk func(f *collection.Folder)
-	walk = func(f *collection.Folder) {
-		if f.Favourite {
-			favourites = append(favourites, f.Name)
-		}
-		for _, sub := range f.Folders {
-			walk(sub)
-		}
-	}
-	for _, f := range saved.Folders {
-		walk(f)
-	}
-	if !reflect.DeepEqual(favourites, []string{"Service"}) {
-		t.Errorf("saved favourites %q", favourites)
-	}
-}
-
 func TestSearchRequests(t *testing.T) {
 	files := testFiles(t)
 
@@ -4604,11 +4470,9 @@ func TestSearchRequests(t *testing.T) {
 	hotel := store.AddFolder("Hotel")
 	hotel.Add(collection.NewREST("Ping", rest.Request{Method: "GET"}))
 	rooms := hotel.AddFolder("Rooms")
-	rooms.Collapsed = true
 	rooms.Add(collection.NewREST("Book room", rest.Request{Method: "POST"}))
 	rooms.Add(collection.NewREST("List rooms", rest.Request{Method: "GET"}))
 	users := store.AddFolder("Users")
-	users.Collapsed = true
 	users.Add(collection.NewREST("List users", rest.Request{Method: "GET"}))
 	store.AddFolder("Empty")
 	if err := store.Save(files.Requests); err != nil {
@@ -4677,14 +4541,15 @@ func TestSearchRequests(t *testing.T) {
 		// Clearing the search shows everything, with the folders open or
 		// closed as they were, and the request still selected.
 		check("", "/Hotel", "/Hotel/Rooms", "/Hotel/Rooms/Book room", "/Hotel/Rooms/List rooms", "/Hotel/Ping", "/Users", "/Users/List users", "/Empty")
-		// Rooms was closed, but is left open to show the selected request.
+		// The folders were closed, but those of the selected request are
+		// left open to show it.
 		if !treeItem(tree, "Hotel", "Rooms").IsExpanded() || treeItem(tree, "Users").IsExpanded() || !treeItem(tree, "Hotel").IsExpanded() {
 			t.Error("the folders are not as they were")
 		}
 		if item := tree.CurrentItem(); item == nil || item.Text(colName) != "Book room" {
 			t.Error("the request is no longer selected")
 		}
-		if !rooms.Collapsed || !users.Collapsed || hotel.Collapsed {
+		if users := rt.store.Folders[2]; users.Name != "Users" || users.Open {
 			t.Error("the search changed which folders are closed")
 		}
 
@@ -5039,84 +4904,11 @@ func TestWorkspaces(t *testing.T) {
 	})
 }
 
-func TestWorkspaceMigration(t *testing.T) {
-	dir := t.TempDir()
-	files := Files{
-		Settings:     filepath.Join(dir, "settings.json"),
-		Workspaces:   filepath.Join(dir, "workspaces"),
-		Environments: filepath.Join(dir, "environments.json"),
-		Requests:     filepath.Join(dir, "requests.json"),
-	}
-	saveTestKeys(t, files.Settings)
-
-	// There are environments and requests from before there were
-	// workspaces.
-	envs := &env.Store{Active: 0, Environments: []env.Environment{{Name: "Local", Variables: []env.Variable{{Key: "host", Value: "old.test", Enabled: true}}}}}
-	if err := envs.Save(files.Environments); err != nil {
-		t.Fatal(err)
-	}
-	elsewhere := files.Requests
-	requests := &collection.Store{}
-	requests.AddFolder("Old").Add(collection.NewREST("Ping", rest.Request{Method: "GET", URL: "{{host}}/ping"}))
-	if err := requests.Save(elsewhere); err != nil {
-		t.Fatal(err)
-	}
-	before, _ := os.ReadFile(elsewhere)
-
-	mainthread.Wait(func() {
-		w := NewWindow(files)
-		w.Show()
-
-		// They are in a workspace named Default, which is the one in use.
-		if !reflect.DeepEqual(w.workspaces.names, []string{"Default"}) || w.workspaces.current() != "Default" || w.StatusBar().CurrentMessage() != "" {
-			t.Fatalf("workspaces = %q, status %q", w.workspaces.names, w.StatusBar().CurrentMessage())
-		}
-		if w.environments.list.Count() != 1 || w.expand("{{host}}") != "old.test" {
-			t.Errorf("%d environments, host %q", w.environments.list.Count(), w.expand("{{host}}"))
-		}
-		tree := w.requests.tree
-		if topCount(tree) != 1 || topFolder(tree, 0).Text(colName) != "Old" {
-			t.Fatal("the requests were not brought in")
-		}
-
-		// Changes go to the workspace, not to the files they came from.
-		tree.SetCurrentItem(topFolder(tree, 0).Child(0))
-		w.request.url.SetText("{{host}}/changed")
-		w.Close()
-	})
-
-	if after, _ := os.ReadFile(elsewhere); string(after) != string(before) {
-		t.Error("the old requests file was changed")
-	}
-	if old, _ := loadEnvs(files.Environments); len(old.Environments) != 1 {
-		t.Error("the old environments file was changed")
-	}
-	moved, err := loadRequests(workspace.Requests(files.Workspaces, "Default"))
-	if err != nil || len(moved.Folders) != 1 || moved.Folders[0].Requests[0].URL != "{{host}}/changed" {
-		t.Errorf("requests of the workspace = %+v, %v", moved, err)
-	}
-	if saved := settings.Load(files.Settings); saved.Workspace != "Default" {
-		t.Errorf("saved settings = %+v", saved)
-	}
-
-	// The old files are not brought in again, once there is a workspace.
-	requests.AddFolder("Later")
-	requests.Save(elsewhere)
-	mainthread.Wait(func() {
-		w := NewWindow(files)
-		if topCount(w.requests.tree) != 1 || len(w.workspaces.names) != 1 {
-			t.Errorf("%d folders in %q", topCount(w.requests.tree), w.workspaces.names)
-		}
-	})
-}
-
 func TestFirstRun(t *testing.T) {
 	dir := t.TempDir()
 	files := Files{
-		Settings:     filepath.Join(dir, "settings.json"),
-		Workspaces:   filepath.Join(dir, "workspaces"),
-		Environments: filepath.Join(dir, "environments.json"),
-		Requests:     filepath.Join(dir, "requests.json"),
+		Settings:   filepath.Join(dir, "settings.json"),
+		Workspaces: filepath.Join(dir, "workspaces"),
 	}
 	saveTestKeys(t, files.Settings)
 
@@ -5153,6 +4945,20 @@ func tabNames(w *Window) []string {
 	return names
 }
 
+// doubleClick double clicks a button as the pointer does: a press and a
+// release, then a double click and a release.
+func doubleClick(button *qt.QToolButton) {
+	for _, kind := range []qt.QEvent__Type{qt.QEvent__MouseButtonPress, qt.QEvent__MouseButtonRelease, qt.QEvent__MouseButtonDblClick, qt.QEvent__MouseButtonRelease} {
+		buttons := qt.LeftButton
+		if kind == qt.QEvent__MouseButtonRelease {
+			buttons = qt.NoButton
+		}
+		event := qt.NewQMouseEvent(kind, qt.NewQPointF3(2, 2), qt.LeftButton, buttons, qt.NoModifier)
+		qt.QCoreApplication_SendEvent(button.QObject, event.QEvent)
+		event.Delete()
+	}
+}
+
 func TestPinnedRequests(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("pong"))
@@ -5172,7 +4978,7 @@ func TestPinnedRequests(t *testing.T) {
 	var w *Window
 	check := func(what string, current int, want ...string) {
 		t.Helper()
-		if got := tabNames(w); !reflect.DeepEqual(got, want) || w.tabs.bar.CurrentIndex() != current || w.tabs.bar.Count() != len(want) {
+		if got := tabNames(w); !reflect.DeepEqual(got, want) || w.tabs.bar.CurrentIndex() != current || w.tabs.bar.Count() != len(want)+1 {
 			t.Errorf("%s: tabs = %q with %d shown, want %q with %d shown", what, got, w.tabs.bar.CurrentIndex(), want, current)
 		}
 	}
@@ -5235,7 +5041,7 @@ func TestPinnedRequests(t *testing.T) {
 			t.Error("the buttons do not show a pin and the type of the request")
 		}
 		w.tabs.hover(pinned)
-		if key(pinned) != w.tabs.pinnedIcon.CacheKey() || !strings.Contains(pinned.button.ToolTip(), "Unpin") {
+		if key(pinned) != w.tabs.pinnedIcon.CacheKey() || pinned.button.ToolTip() != "" || w.tabs.bar.TabToolTip(0) != "" {
 			t.Error("the button of a pinned tab is not a pin under the pointer")
 		}
 		w.tabs.hover(preview)
@@ -5273,13 +5079,16 @@ func TestPinnedRequests(t *testing.T) {
 			t.Errorf("response = %q %q", fieldValue(w.response, "Status"), w.response.body.ToPlainText())
 		}
 
-		// Unpinning a tab that is not shown closes it.
+		// A click does not unpin a tab; it takes a double click, which
+		// closes a tab that is not shown.
 		w.tabs.tabs[1].button.Click()
+		check("after clicking Alpha", 0, "B*", "Alpha*", "C")
+		doubleClick(w.tabs.tabs[1].button)
 		check("after unpinning Alpha", 0, "B*", "C")
 
 		// Unpinning the tab that is shown makes it the one that follows
 		// the selection, in place of the other.
-		w.tabs.current().button.Click()
+		doubleClick(w.tabs.current().button)
 		check("after unpinning B", 0, "B")
 		if w.open.Name != "B" {
 			t.Errorf("open = %+v", w.open)
@@ -5287,8 +5096,9 @@ func TestPinnedRequests(t *testing.T) {
 		tree.SetCurrentItem(treeItem(tree, "Folder", "C"))
 		check("after selecting C", 0, "C")
 
-		// B and C are left pinned.
-		w.tabs.current().button.Click()
+		// B and C are left pinned. Double clicking a tab that is not
+		// pinned pins it, and the second click does not unpin it again.
+		doubleClick(w.tabs.current().button)
 		tree.SetCurrentItem(treeItem(tree, "Folder", "B"))
 		w.tabs.current().button.Click()
 		check("after pinning C and B", 1, "C*", "B*")
@@ -5296,20 +5106,23 @@ func TestPinnedRequests(t *testing.T) {
 		w.Close()
 	})
 
-	// The pinned requests are kept in the settings.
-	want := []settings.Pin{{Workspace: "Default", Path: []string{"Folder", "C"}}, {Workspace: "Default", Path: []string{"Folder", "B"}}}
-	if saved := settings.Load(files.Settings); !reflect.DeepEqual(saved.Pinned, want) {
-		t.Errorf("saved pins = %+v, want %+v", saved.Pinned, want)
-	}
-
-	// They are opened again by the next run, with the first shown.
+	// Tabs that are not in a set are not opened again by the next run.
 	mainthread.Wait(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree
 		w.requests.confirm = func(string) bool { return true }
 
-		check("on the next run", 0, "C*", "B*")
+		check("on the next run", 0, "Untitled")
+		if w.open != nil {
+			t.Errorf("open on the next run: %+v", w.open)
+		}
+		tree.SetCurrentItem(treeItem(tree, "Folder", "C"))
+		w.tabs.current().button.Click()
+		tree.SetCurrentItem(treeItem(tree, "Folder", "B"))
+		w.tabs.current().button.Click()
+		w.tabs.bar.SetCurrentIndex(0)
+		check("pinned again", 0, "C*", "B*")
 		if w.open == nil || w.open.Name != "C" || w.stack.CurrentIndex() != pageGRPC || tree.CurrentItem() == nil || tree.CurrentItem().Text(colName) != "C" {
 			t.Fatalf("open = %+v on page %d", w.open, w.stack.CurrentIndex())
 		}
@@ -5346,7 +5159,8 @@ func TestPinnedRequests(t *testing.T) {
 			t.Errorf("tabs after removing B = %q", got)
 		}
 
-		// Each workspace has its own pinned requests.
+		// Pinned tabs that are not in a set are not kept when the workspace
+		// is left.
 		w.workspaces.warn = func(message string) { t.Error(message) }
 		w.workspaces.add()
 		check("in a new workspace", 0, "Untitled")
@@ -5354,7 +5168,7 @@ func TestPinnedRequests(t *testing.T) {
 			t.Errorf("open = %+v", w.open)
 		}
 		w.workspaces.list.SetCurrentRow(0)
-		if got := tabNames(w); len(got) != 1 || got[0] != "C*" || w.open == nil || w.open.Name != "C" {
+		if got := tabNames(w); !reflect.DeepEqual(got, []string{"Untitled"}) || w.open != nil {
 			t.Errorf("tabs back in the first workspace = %q, open %+v", got, w.open)
 		}
 	})
@@ -5451,79 +5265,6 @@ func TestDuplicate(t *testing.T) {
 	if copied, err := loadRequests(workspace.Requests(files.Workspaces, "Default copy")); err != nil || len(copied.Folders) != 1 {
 		t.Errorf("requests of the copy = %+v, %v", copied, err)
 	}
-}
-
-func TestWorkspacesMoved(t *testing.T) {
-	dir := t.TempDir()
-	files := Files{
-		Settings:      filepath.Join(dir, "config", "settings.json"),
-		Workspaces:    filepath.Join(dir, "data", "workspaces"),
-		OldWorkspaces: filepath.Join(dir, "workspaces"),
-	}
-	saveTestKeys(t, files.Settings)
-	os.Mkdir(filepath.Dir(files.Settings), 0o755)
-
-	// There are workspaces where they used to be kept.
-	for name, url := range map[string]string{"Hotel": "hotel.test", "Payments": "pay.test"} {
-		if err := workspace.Create(files.OldWorkspaces, name); err != nil {
-			t.Fatal(err)
-		}
-		store := &collection.Store{}
-		store.AddFolder("Folder").Add(collection.NewREST("Ping", rest.Request{Method: "GET", URL: url}))
-		if err := store.Save(workspace.Requests(files.OldWorkspaces, name)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := (settings.Settings{Width: 900, Height: 650, Workspace: "Payments", PublicKey: testPublic, PrivateKey: testPrivate}).Save(files.Settings); err != nil {
-		t.Fatal(err)
-	}
-
-	mainthread.Wait(func() {
-		w := NewWindow(files)
-		w.Show()
-
-		// They are where they are kept now, with the one that was in use
-		// still the one in use.
-		if !reflect.DeepEqual(w.workspaces.names, []string{"Hotel", "Payments"}) || w.workspaces.current() != "Payments" || w.StatusBar().CurrentMessage() != "" {
-			t.Fatalf("workspaces = %q, current %q, status %q", w.workspaces.names, w.workspaces.current(), w.StatusBar().CurrentMessage())
-		}
-		if w.requests.path != workspace.Requests(files.Workspaces, "Payments") {
-			t.Errorf("requests kept at %q", w.requests.path)
-		}
-
-		// Changes go there, and not to where they came from.
-		tree := w.requests.tree
-		tree.SetCurrentItem(treeItem(tree, "Folder", "Ping"))
-		w.request.url.SetText("changed.test")
-		w.Close()
-	})
-
-	if moved, err := loadRequests(workspace.Requests(files.Workspaces, "Payments")); err != nil || moved.Folders[0].Requests[0].URL != "changed.test" {
-		t.Errorf("requests = %+v, %v", moved, err)
-	}
-	if old, err := loadRequests(workspace.Requests(files.OldWorkspaces, "Payments")); err != nil || old.Folders[0].Requests[0].URL != "pay.test" {
-		t.Errorf("the workspace copied from was changed: %+v, %v", old, err)
-	}
-
-	// They are not brought in again, nor over a folder chosen in the
-	// settings.
-	workspace.Create(files.OldWorkspaces, "Later")
-	chosen := filepath.Join(dir, "chosen")
-	mainthread.Wait(func() {
-		w := NewWindow(files)
-		if len(w.workspaces.names) != 2 {
-			t.Errorf("workspaces = %q", w.workspaces.names)
-		}
-	})
-	if err := (settings.Settings{Width: 900, Height: 650, WorkspacesDir: chosen}).Save(files.Settings); err != nil {
-		t.Fatal(err)
-	}
-	mainthread.Wait(func() {
-		w := NewWindow(files)
-		if !reflect.DeepEqual(w.workspaces.names, []string{"Default"}) || w.workspacesDir() != chosen {
-			t.Errorf("workspaces = %q in %q", w.workspaces.names, w.workspacesDir())
-		}
-	})
 }
 
 // The tab of the request shown is the one its method is likely to need: the
@@ -6593,5 +6334,321 @@ func TestFocusSidebar(t *testing.T) {
 			t.Errorf("the workspace in use changed to %q", w.workspaces.current())
 		}
 		w.Close()
+	})
+}
+
+func TestSets(t *testing.T) {
+	files := testFiles(t)
+	store := &collection.Store{}
+	one := store.AddFolder("One")
+	one.Add(collection.NewREST("A", rest.Request{Method: "GET", URL: "a.test"}))
+	one.Add(collection.NewREST("B", rest.Request{Method: "GET", URL: "b.test"}))
+	two := store.AddFolder("Two")
+	two.Add(collection.NewREST("C", rest.Request{Method: "GET", URL: "c.test"}))
+	two.Add(collection.NewREST("D", rest.Request{Method: "GET", URL: "d.test"}))
+	if err := store.Save(files.Requests); err != nil {
+		t.Fatal(err)
+	}
+
+	var w *Window
+	check := func(what string, want ...string) {
+		t.Helper()
+		if got := tabNames(w); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: tabs = %q, want %q", what, got, want)
+		}
+	}
+	setNames := func() []string {
+		var names []string
+		for _, set := range w.requests.store.Sets {
+			name := set.Name + "["
+			for i, r := range set.Requests {
+				if i > 0 {
+					name += " "
+				}
+				name += strconv.Quote(r.Name)
+			}
+			names = append(names, name+"]")
+		}
+		return names
+	}
+	// drag moves a tab as dragging it does: pressed, moved, and let go.
+	drag := func(from, to int) {
+		centre := w.tabs.bar.TabRect(from).Center()
+		at := qt.NewQPointF3(float64(centre.X()), float64(centre.Y()))
+		press := qt.NewQMouseEvent(qt.QEvent__MouseButtonPress, at, qt.LeftButton, qt.LeftButton, qt.NoModifier)
+		defer press.Delete()
+		qt.QCoreApplication_SendEvent(w.tabs.bar.QObject, press.QEvent)
+		w.tabs.bar.MoveTab(from, to)
+		release := qt.NewQMouseEvent(qt.QEvent__MouseButtonRelease, at, qt.LeftButton, qt.NoButton, qt.NoModifier)
+		defer release.Delete()
+		qt.QCoreApplication_SendEvent(w.tabs.bar.QObject, release.QEvent)
+	}
+
+	mainthread.Wait(func() {
+		w = NewWindow(files.Files)
+		w.Show()
+		rt := w.requests
+		tree := rt.tree
+		pick := func(folder, name string) { tree.SetCurrentItem(treeItem(tree, folder, name)) }
+		pin := func(folder, name string) {
+			pick(folder, name)
+			w.tabs.current().button.Click()
+		}
+
+		// The views have icons, and the sets are on a page of their own.
+		if rt.views.Count() != 2 || rt.views.TabIcon(viewRequests).IsNull() || rt.views.TabIcon(viewSets).CacheKey() != setIcon().CacheKey() {
+			t.Error("the views have no icons")
+		}
+		rt.views.SetCurrentIndex(viewSets)
+		if rt.pages.CurrentIndex() != viewSets {
+			t.Error("the sets are not shown")
+		}
+
+		// A set added holds the pinned tabs, from any folder, and is the
+		// one chosen.
+		pin("One", "A")
+		pin("Two", "C")
+		check("pinned", "A*", "C*")
+		rt.sets.add()
+		if got := setNames(); !reflect.DeepEqual(got, []string{`New Set["A" "C"]`}) || rt.sets.active != rt.store.Sets[0] {
+			t.Errorf("sets = %q", got)
+		}
+		rt.sets.list.CurrentItem().SetText("Work")
+	})
+	waitFor(t, "the set to be renamed", func() bool {
+		return mainthread.Wait2(func() bool {
+			return w.requests.sets.list.Item(0).Text() == "Work" && w.requests.store.Sets[0].Name == "Work"
+		})
+	})
+
+	mainthread.Wait(func() {
+		rt := w.requests
+		tree := rt.tree
+		pick := func(folder, name string) { tree.SetCurrentItem(treeItem(tree, folder, name)) }
+
+		// A second set, made while the first is chosen, starts with its
+		// tabs, and the tabs pinned and unpinned are kept in it.
+		rt.sets.add()
+		doubleClick(w.tabs.tabs[0].button) // A, which is not shown
+		pick("Two", "D")
+		w.tabs.current().button.Click()
+		check("second set", "C*", "D*")
+		if got := setNames(); !reflect.DeepEqual(got, []string{`New Set["C" "D"]`, `Work["A" "C"]`}) {
+			t.Errorf("sets = %q", got)
+		}
+
+		// Choosing the first replaces the tabs with its own.
+		rt.sets.list.SetCurrentItem(rt.sets.list.Item(1))
+		check("first set", "A*", "C*")
+		if w.open == nil || w.open.Name != "A" || rt.sets.active.Name != "Work" {
+			t.Errorf("open %+v", w.open)
+		}
+
+		// Deselecting the set takes its tabs away, leaving one empty tab,
+		// which belongs to no set: pinning changes none.
+		rt.sets.list.ClearSelection()
+		if rt.sets.active != nil {
+			t.Fatal("a set is chosen with none selected")
+		}
+		check("deselected", "Untitled")
+		if w.open != nil {
+			t.Errorf("open after deselecting: %+v", w.open)
+		}
+		pick("One", "B")
+		w.tabs.current().button.Click()
+		check("pinned with none chosen", "B*")
+		if got := setNames(); !reflect.DeepEqual(got, []string{`New Set["C" "D"]`, `Work["A" "C"]`}) {
+			t.Errorf("sets changed while none was chosen: %q", got)
+		}
+		rt.sets.list.SetCurrentItem(rt.sets.list.Item(1))
+		check("first set again", "A*", "C*")
+
+		// Tabs are dragged into another order, which the set keeps.
+		drag(0, 1)
+		check("moved", "C*", "A*")
+		if got := setNames()[1]; got != `Work["C" "A"]` {
+			t.Errorf("after the move: %q", got)
+		}
+
+		// A tab that is not pinned is pinned by being moved.
+		pick("One", "B")
+		check("B", "C*", "A*", "B")
+		drag(2, 0)
+		check("B moved", "B*", "C*", "A*")
+		if got := setNames()[1]; got != `Work["B" "C" "A"]` {
+			t.Errorf("after pinning by moving: %q", got)
+		}
+
+		// A tab dragged past New leaves New at the end.
+		drag(0, 3)
+		check("B moved to the end", "C*", "A*", "B*")
+		if got := setNames()[1]; got != `Work["C" "A" "B"]` || w.tabs.bar.TabText(3) != "New" || w.tabs.newAt != 3 {
+			t.Errorf("after moving past New: %q, last tab %q", got, w.tabs.bar.TabText(3))
+		}
+		drag(2, 0)
+
+		// Renaming a request keeps it in the set, and removing one takes
+		// it out of every set.
+		treeItem(tree, "Two", "C").SetText(colName, "Charlie")
+	})
+	waitFor(t, "the rename to be sorted", func() bool {
+		return mainthread.Wait2(func() bool { return treeItem(w.requests.tree, "Two", "Charlie") != nil })
+	})
+	mainthread.Wait(func() {
+		rt := w.requests
+		rt.confirm = func(string) bool { return true }
+		if got := setNames(); !reflect.DeepEqual(got, []string{`New Set["Charlie" "D"]`, `Work["B" "Charlie" "A"]`}) {
+			t.Errorf("after the rename: %q", got)
+		}
+		rt.tree.SetCurrentItem(treeItem(rt.tree, "Two", "Charlie"))
+		rt.remove()
+		if got := setNames(); !reflect.DeepEqual(got, []string{`New Set["D"]`, `Work["B" "A"]`}) {
+			t.Errorf("after the removal: %q", got)
+		}
+		// What was beside it is opened in the tab that is not pinned.
+		check("after the removal", "B*", "A*", "D")
+
+		// The search narrows the sets while they are shown.
+		rt.search.SetText("wor")
+		if !rt.sets.list.Item(0).IsHidden() || rt.sets.list.Item(1).IsHidden() {
+			t.Error("the search does not narrow the sets")
+		}
+		rt.search.SetText("")
+	})
+
+	// The set chosen is chosen again when its workspace is gone back to.
+	mainthread.Wait(func() {
+		w.workspaces.warn = func(message string) { t.Error(message) }
+		w.workspaces.add()
+		if w.requests.sets.active != nil {
+			t.Errorf("chosen in a new workspace: %+v", w.requests.sets.active)
+		}
+		w.workspaces.list.SetCurrentRow(0)
+		if w.requests.sets.active == nil || w.requests.sets.active.Name != "Work" || w.requests.sets.selected() != w.requests.sets.active {
+			t.Errorf("chosen back in the first workspace: %+v", w.requests.sets.active)
+		}
+		check("back in the first workspace", "B*", "A*")
+	})
+
+	// The sets are saved, but none is chosen at the next run, and nothing is
+	// selected.
+	saved, err := loadRequests(files.Requests)
+	if err != nil || len(saved.Sets) != 2 || saved.Sets[1].Name != "Work" || len(saved.Sets[1].Requests) != 2 {
+		t.Fatalf("saved %+v", saved.Sets)
+	}
+	mainthread.Wait(func() {
+		w.Close()
+		w = NewWindow(files.Files)
+		if w.requests.sets.active != nil || w.requests.sets.selected() != nil || w.requests.tree.CurrentItem() != nil || w.open != nil {
+			t.Errorf("at the next run: set %+v, open %+v", w.requests.sets.active, w.open)
+		}
+		check("next run", "Untitled")
+
+		// Removing a set leaves the tabs alone, and none is chosen.
+		w.requests.sets.list.SetCurrentItem(w.requests.sets.list.Item(1))
+		check("Work chosen", "B*", "A*")
+		w.requests.confirm = func(string) bool { return true }
+		w.requests.sets.remove()
+		if len(w.requests.store.Sets) != 1 || w.requests.sets.active != nil {
+			t.Errorf("after removing: %q", setNames())
+		}
+		check("after removing", "B*", "A*")
+	})
+}
+
+func TestNewTabAndSave(t *testing.T) {
+	files := testFiles(t)
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+		click := func(index int) {
+			centre := w.tabs.bar.TabRect(index).Center()
+			at := qt.NewQPointF3(float64(centre.X()), float64(centre.Y()))
+			for _, kind := range []qt.QEvent__Type{qt.QEvent__MouseButtonPress, qt.QEvent__MouseButtonRelease} {
+				buttons := qt.LeftButton
+				if kind == qt.QEvent__MouseButtonRelease {
+					buttons = qt.NoButton
+				}
+				event := qt.NewQMouseEvent(kind, at, qt.LeftButton, buttons, qt.NoModifier)
+				qt.QCoreApplication_SendEvent(w.tabs.bar.QObject, event.QEvent)
+				event.Delete()
+			}
+		}
+
+		// Save is beside Send, for the request that is not saved.
+		if w.request.save.IsHidden() || w.request.save.Text() != "Save" {
+			t.Error("Save is not there for the request that is not saved")
+		}
+		w.request.url.SetText("example.test/users?page=2")
+		w.request.save.Click()
+		if w.open == nil || w.open.Name != "New Request" || w.open.URL != "example.test/users" || len(w.open.Params) != 1 {
+			t.Fatalf("saved %+v", w.open)
+		}
+		if got := tabNames(w); !reflect.DeepEqual(got, []string{"New Request"}) || !w.request.save.IsHidden() {
+			t.Errorf("after saving: tabs %q, Save shown %t", got, !w.request.save.IsHidden())
+		}
+
+		// New is the last tab, and is never shown: clicking it shows a new
+		// request of the type chosen, which is not saved until Save is
+		// pressed.
+		saved := w.open
+		w.tabs.current().button.Click()
+		if w.tabs.bar.Count() != 2 || w.tabs.bar.TabText(1) != "New" {
+			t.Fatalf("tabs %d, last %q", w.tabs.bar.Count(), w.tabs.bar.TabText(1))
+		}
+		defer func(prev collection.Type) { testRequestType = prev }(testRequestType)
+		testRequestType = ""
+		click(w.tabs.newAt)
+		if w.open != saved || w.tabs.bar.CurrentIndex() != 0 {
+			t.Errorf("after deciding against a request: open %+v, tab %d", w.open, w.tabs.bar.CurrentIndex())
+		}
+		count := func() int {
+			n := 0
+			for _, f := range w.requests.store.Folders {
+				n += len(f.All())
+			}
+			return n
+		}
+		testRequestType = collection.TypeGRPC
+		click(w.tabs.newAt)
+		if w.open != nil || w.stack.CurrentIndex() != pageGRPC || w.grpc.save.IsHidden() || count() != 1 {
+			t.Errorf("after New: open %+v, page %d, %d saved", w.open, w.stack.CurrentIndex(), count())
+			return
+		}
+		if got := tabNames(w); !reflect.DeepEqual(got, []string{"New Request*", "Untitled"}) || w.tabs.bar.TabText(2) != "New" {
+			t.Errorf("after New: tabs %q", got)
+		}
+
+		// It is kept while another tab is shown.
+		w.grpc.url.SetText("localhost:1")
+		w.tabs.bar.SetCurrentIndex(0)
+		if w.open != saved || w.stack.CurrentIndex() != pageRequest {
+			t.Errorf("back on the saved tab: open %+v, page %d", w.open, w.stack.CurrentIndex())
+		}
+		w.tabs.bar.SetCurrentIndex(1)
+		if w.open != nil || w.stack.CurrentIndex() != pageGRPC || w.grpc.url.Text() != "localhost:1" || count() != 1 {
+			t.Errorf("back on the new tab: open %+v, page %d, address %q", w.open, w.stack.CurrentIndex(), w.grpc.url.Text())
+		}
+
+		// Save beside Invoke adds it to the sidebar.
+		w.grpc.save.Click()
+		if w.open == nil || w.open.Type != collection.TypeGRPC || w.open.GRPC.URL != "localhost:1" || count() != 2 || !w.grpc.save.IsHidden() {
+			t.Errorf("after saving: open %+v, %d saved", w.open, count())
+		}
+
+		// A REST request from New is not saved either.
+		testRequestType = collection.TypeREST
+		click(w.tabs.newAt)
+		if w.open != nil || w.stack.CurrentIndex() != pageRequest || w.request.url.Text() != "" || count() != 2 {
+			t.Errorf("after New: open %+v, page %d, %d saved", w.open, w.stack.CurrentIndex(), count())
+		}
+
+		// Choosing New otherwise, as the wheel does, leaves the tab shown.
+		w.tabs.bar.SetCurrentIndex(0)
+		w.tabs.bar.SetCurrentIndex(w.tabs.newAt)
+		if w.tabs.bar.CurrentIndex() != 0 || w.tabs.current() != w.tabs.tabs[0] {
+			t.Errorf("New was shown: tab %d", w.tabs.bar.CurrentIndex())
+		}
 	})
 }

@@ -6,7 +6,6 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
-	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
 // pinIconSize is the size of the icon of the button that pins a tab.
@@ -24,10 +23,16 @@ type requestTab struct {
 	// whichever request was last selected in the sidebar.
 	pinned bool
 	button *qt.QToolButton
+	// pinnedByClick is set when the click just before pinned the tab, so
+	// that the double click it may be the start of does not unpin it.
+	pinnedByClick bool
+	// doubleClicked is set from a double click until the release that ends
+	// it, which is not taken for another click.
+	doubleClicked bool
 
 	// draft is the request that was being composed in the tab, without
 	// being saved, when another tab was shown.
-	draft *rest.Request
+	draft *collection.Request
 	// replay shows the response the request of the tab was last given
 	// again. It is nil if there has been none.
 	replay func()
@@ -42,15 +47,31 @@ type requestTab struct {
 // a pin, which pins the tab. On a pinned tab it shows the type of the
 // request, and turns into a pin, which unpins the tab, while the pointer is
 // over the tab.
+//
+// Tabs are reordered by dragging them, and a tab that is not pinned is
+// pinned by being dragged to another place.
+//
+// After the last tab is one more, New, which is not a tab of a request: it
+// is never shown, and clicking it calls onNew. The bar holds it at newAt,
+// which is the end but for while a tab is dragged past it; s.tabs leaves it
+// out, so a position in the bar is turned into a tab by tabAt and back by
+// barIndex.
 type requestTabs struct {
 	bar *qt.QTabBar
-	// tabs are the tabs in the order they are shown.
-	tabs     []*requestTab
+	// tabs are the tabs of requests in the order they are shown.
+	tabs []*requestTab
+	// newAt is the position of New in the bar.
+	newAt    int
 	updating bool
 	// last is the tab that was shown before the one that is now.
 	last *requestTab
 	// hovered is the tab the pointer is over, or nil.
 	hovered *requestTab
+	// pressed is the tab the pointer was pressed on, which may be dragged,
+	// and moved is set once it has been dragged to another place, until
+	// the drag ends.
+	pressed *requestTab
+	moved   bool
 
 	pinnedIcon   *qt.QIcon
 	unpinnedIcon *qt.QIcon
@@ -58,6 +79,11 @@ type requestTabs struct {
 	// onSelect is called when the user picks a tab, with the tab that was
 	// shown until then, which is nil if it has gone.
 	onSelect func(from, to *requestTab)
+	// onPins is called when the pinned tabs change, or their order does,
+	// by the user's doing.
+	onPins func()
+	// onNew is called when New is clicked.
+	onNew func()
 }
 
 func newRequestTabs() *requestTabs {
@@ -74,16 +100,75 @@ func newRequestTabs() *requestTabs {
 	s.bar.SetDrawBase(false)
 	s.bar.SetUsesScrollButtons(true)
 	s.bar.SetElideMode(qt.ElideRight)
+	s.bar.AddTab("New")
+	// New is drawn at half strength, background and text alike, by
+	// painting the background of the window over it at half opacity.
+	s.bar.OnPaintEvent(func(super func(*qt.QPaintEvent), event *qt.QPaintEvent) {
+		super(event)
+		painter := qt.NewQPainter2(s.bar.QPaintDevice)
+		defer painter.Delete()
+		// The palette's own colour is copied, not changed.
+		veil := qt.NewQColor10(s.bar.Palette().Color(qt.QPalette__Active, qt.QPalette__Window))
+		defer veil.Delete()
+		veil.SetAlpha(128)
+		painter.FillRect6(s.bar.TabRect(s.newAt), veil)
+		painter.End()
+	})
+
+	// Tabs are dragged into another order. The tab bar reports each step
+	// of the way, as the tab dragged swaps places with the one beside it,
+	// and the tabs are kept in the same order as it.
+	s.bar.SetMovable(true)
+	s.bar.OnTabMoved(func(from, to int) {
+		order := s.order()
+		if from < 0 || from >= len(order) || to < 0 || to >= len(order) {
+			return
+		}
+		moving := order[from]
+		order = slices.Insert(slices.Delete(order, from, from+1), to, moving)
+		// DeleteFunc changes the slice it is given, so New is found first.
+		s.newAt = slices.Index(order, nil)
+		s.tabs = slices.DeleteFunc(order, func(tab *requestTab) bool { return tab == nil })
+		if s.pressed != nil {
+			s.moved = true
+		}
+	})
+	s.bar.OnMousePressEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
+		index := s.bar.TabAt(event.Pos())
+		if index >= 0 && index == s.newAt {
+			// New is not chosen or dragged.
+			if event.Button() == qt.LeftButton && s.onNew != nil {
+				s.onNew()
+			}
+			return
+		}
+		s.pressed, s.moved = s.tabAt(index), false
+		super(event)
+	})
+	s.bar.OnMouseReleaseEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
+		super(event)
+		dragged, moved := s.pressed, s.moved
+		s.pressed, s.moved = nil, false
+		// A tab dragged past New leaves it at the end again.
+		if s.newAt != len(s.tabs) {
+			s.quietly(func() { s.bar.MoveTab(s.newAt, len(s.tabs)) })
+		}
+		if !moved {
+			return
+		}
+		// A tab dragged to another place is pinned there.
+		if dragged != nil && !dragged.pinned && dragged.request != nil {
+			dragged.pinned = true
+			s.refresh(dragged)
+		}
+		s.changedPins()
+	})
 
 	// The tab under the pointer is followed, to show the pin on it.
 	s.bar.SetMouseTracking(true)
 	s.bar.OnMouseMoveEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
 		super(event)
-		if index := s.bar.TabAt(event.Pos()); index >= 0 && index < len(s.tabs) {
-			s.hover(s.tabs[index])
-		} else {
-			s.hover(nil)
-		}
+		s.hover(s.tabAt(s.bar.TabAt(event.Pos())))
 	})
 	s.bar.OnLeaveEvent(func(super func(*qt.QEvent), event *qt.QEvent) {
 		super(event)
@@ -91,10 +176,18 @@ func newRequestTabs() *requestTabs {
 	})
 
 	s.bar.OnCurrentChanged(func(index int) {
-		if s.updating || index < 0 || index >= len(s.tabs) {
+		if s.updating {
 			return
 		}
-		from, to := s.last, s.tabs[index]
+		to := s.tabAt(index)
+		if to == nil {
+			// New, as by the wheel: the tab shown stays shown.
+			if s.last != nil {
+				s.show(s.last)
+			}
+			return
+		}
+		from := s.last
 		s.last = to
 		if s.onSelect != nil && from != to {
 			s.onSelect(from, to)
@@ -105,9 +198,42 @@ func newRequestTabs() *requestTabs {
 	return s
 }
 
+// order returns what is in the bar, in its order, with nil for New.
+func (s *requestTabs) order() []*requestTab {
+	return slices.Insert(slices.Clone(s.tabs), s.newAt, nil)
+}
+
+// tabAt returns the tab at a position in the bar, or nil for New or a
+// position where there is none.
+func (s *requestTabs) tabAt(index int) *requestTab {
+	if order := s.order(); index >= 0 && index < len(order) {
+		return order[index]
+	}
+	return nil
+}
+
+// barIndex returns the position of a tab in the bar, or -1 if it is not
+// there.
+func (s *requestTabs) barIndex(tab *requestTab) int {
+	if tab == nil {
+		return -1
+	}
+	return slices.Index(s.order(), tab)
+}
+
+// changedPins reports that the pinned tabs have changed.
+func (s *requestTabs) changedPins() {
+	if s.onPins != nil {
+		s.onPins()
+	}
+}
+
 // current returns the tab that is shown. There always is one.
 func (s *requestTabs) current() *requestTab {
-	return s.tabs[max(0, s.bar.CurrentIndex())]
+	if tab := s.tabAt(s.bar.CurrentIndex()); tab != nil {
+		return tab
+	}
+	return s.tabs[0]
 }
 
 // pinned returns the requests that are pinned, in the order of their tabs.
@@ -148,13 +274,38 @@ func (s *requestTabs) quietly(change func()) {
 	change()
 }
 
-// add puts a tab at the end of the row.
+// add puts a tab at the end of the row, before New.
 func (s *requestTabs) add(tab *requestTab) {
 	tab.button = qt.NewQToolButton2()
 	tab.button.SetIconSize(qt.NewQSize2(pinIconSize, pinIconSize))
 	tab.button.SetAutoRaise(true)
 	tab.button.SetFocusPolicy(qt.NoFocus)
-	tab.button.OnClicked(func() { s.toggle(tab) })
+	// A click pins the tab, and it takes a double click to unpin it, so
+	// that a pinned tab is not unpinned by a stray click.
+	tab.button.OnMousePressEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
+		tab.pinnedByClick, tab.doubleClicked = false, false
+		super(event)
+	})
+	tab.button.OnClicked(func() {
+		if tab.doubleClicked {
+			tab.doubleClicked = false
+			return
+		}
+		if !tab.pinned {
+			s.toggle(tab)
+			tab.pinnedByClick = tab.pinned
+		}
+	})
+	tab.button.OnMouseDoubleClickEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
+		// The button handles a double click as a press, which clears the
+		// flags, so they are read first.
+		justPinned := tab.pinnedByClick
+		super(event)
+		tab.doubleClicked = true
+		if event.Button() == qt.LeftButton && !justPinned && tab.pinned {
+			s.toggle(tab)
+		}
+	})
 	// The tab bar is not told of the pointer moving over the button.
 	tab.button.OnEnterEvent(func(super func(*qt.QEnterEvent), event *qt.QEnterEvent) {
 		super(event)
@@ -163,7 +314,8 @@ func (s *requestTabs) add(tab *requestTab) {
 
 	s.quietly(func() {
 		s.tabs = append(s.tabs, tab)
-		index := s.bar.AddTab("")
+		index := s.bar.InsertTab(s.newAt, "")
+		s.newAt++
 		s.bar.SetTabButton(index, qt.QTabBar__LeftSide, tab.button.QWidget)
 	})
 	s.refresh(tab)
@@ -171,20 +323,22 @@ func (s *requestTabs) add(tab *requestTab) {
 
 // take removes a tab from the row.
 func (s *requestTabs) take(tab *requestTab) {
-	index := slices.Index(s.tabs, tab)
+	index := s.barIndex(tab)
 	if index < 0 {
 		return
 	}
 	s.quietly(func() {
-		s.tabs = slices.Delete(s.tabs, index, index+1)
+		s.tabs = slices.DeleteFunc(s.tabs, func(t *requestTab) bool { return t == tab })
+		if index < s.newAt {
+			s.newAt--
+		}
 		// The tab bar deletes the button of the tab.
 		s.bar.RemoveTab(index)
 	})
-	if s.last == tab {
-		s.last = nil
-	}
-	if s.hovered == tab {
-		s.hovered = nil
+	for _, gone := range []**requestTab{&s.last, &s.hovered, &s.pressed} {
+		if *gone == tab {
+			*gone = nil
+		}
 	}
 }
 
@@ -205,39 +359,36 @@ func (s *requestTabs) hover(tab *requestTab) {
 
 // show makes a tab the one that is shown, without calling onSelect.
 func (s *requestTabs) show(tab *requestTab) {
-	s.quietly(func() { s.bar.SetCurrentIndex(slices.Index(s.tabs, tab)) })
+	s.quietly(func() { s.bar.SetCurrentIndex(s.barIndex(tab)) })
 	s.last = tab
 }
 
 // refresh puts the name of its request on a tab, and the pin or the type of
 // the request on its button.
 func (s *requestTabs) refresh(tab *requestTab) {
-	index := slices.Index(s.tabs, tab)
+	index := s.barIndex(tab)
 	if index < 0 {
 		return
 	}
 
-	name, tip := untitled, "A request that has not been saved"
+	// Neither the tabs nor their buttons have tooltips.
+	name := untitled
 	if tab.request != nil {
-		name, tip = tab.request.Name, tab.request.Name
+		name = tab.request.Name
 	}
 	s.bar.SetTabText(index, name)
-	s.bar.SetTabToolTip(index, tip)
 
 	// A request has to be saved before it can be pinned.
 	tab.button.SetEnabled(tab.request != nil)
 	switch {
 	case !tab.pinned:
 		tab.button.SetIcon(s.unpinnedIcon)
-		tab.button.SetToolTip("Pin this tab, to keep this request open in it")
 	case tab == s.hovered:
 		tab.button.SetIcon(s.pinnedIcon)
-		tab.button.SetToolTip("Unpin this tab")
 	default:
 		if icon := requestTypeIcon(tab.request.Type); icon != nil {
 			tab.button.SetIcon(icon)
 		}
-		tab.button.SetToolTip(typeLabels[tab.request.Type] + " request, pinned")
 	}
 }
 
@@ -289,9 +440,11 @@ func (s *requestTabs) toggle(tab *requestTab) {
 		s.show(tab)
 	default:
 		s.take(tab)
+		s.changedPins()
 		return
 	}
 	s.refresh(tab)
+	s.changedPins()
 }
 
 // rename shows the new name of a request on its tabs.
@@ -307,17 +460,22 @@ func (s *requestTabs) rename(r *collection.Request) {
 // not pinned if it shows the request. It does not call onSelect, though the
 // tab that is shown may be another afterwards.
 func (s *requestTabs) remove(r *collection.Request) {
+	unpinned := false
 	for _, tab := range slices.Clone(s.tabs) {
 		switch {
 		case tab.request != r:
 		case tab.pinned:
 			s.take(tab)
+			unpinned = true
 		default:
 			tab.request, tab.draft, tab.replay = nil, nil, nil
 			s.refresh(tab)
 		}
 	}
 	s.settle()
+	if unpinned {
+		s.changedPins()
+	}
 }
 
 // settle makes sure there is a tab, and that the row agrees with which one

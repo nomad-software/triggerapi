@@ -53,6 +53,8 @@ type requestPanel struct {
 	// taller to show it all.
 	url  *wrapEdit
 	send *qt.QPushButton
+	// save saves a request that is not saved yet.
+	save *qt.QPushButton
 
 	// preview, the button between the URL field and Send, shows in place
 	// of the field what the URL resolves to.
@@ -139,6 +141,10 @@ func newRequestPanel() *requestPanel {
 	makePrimary(p.send)
 	p.send.SetToolTip("Ctrl+Return")
 
+	// Save is only for a request that is not saved, as one that is saved is
+	// saved with every change.
+	p.save = qt.NewQPushButton3("Save")
+
 	// Only one of the two is on show, and the other takes no room.
 	p.resolved = newWrapEdit()
 	p.resolved.SetReadOnly(true)
@@ -147,6 +153,7 @@ func newRequestPanel() *requestPanel {
 	p.preview = newIconButton(colourAction, drawEye, "Show the URL with the values of its placeholders")
 	p.preview.SetCheckable(true)
 	p.preview.OnToggled(func(checked bool) {
+		p.url.commit()
 		p.url.SetVisible(!checked)
 		p.resolved.SetVisible(checked)
 		if checked {
@@ -178,6 +185,7 @@ func newRequestPanel() *requestPanel {
 	bar.AddLayout2(urls.QLayout, 1)
 	beside(p.preview.QWidget)
 	beside(p.send.QWidget)
+	beside(p.save.QWidget)
 
 	p.params = newKeyValueTable("Key", "Value")
 	p.params.onChange = p.paramsChanged
@@ -196,6 +204,7 @@ func newRequestPanel() *requestPanel {
 	p.curl = newIconButton(colourAction, drawPrompt, "Show the request as a curl command")
 	p.curl.SetCheckable(true)
 	p.curl.OnToggled(func(checked bool) {
+		p.url.commit()
 		if checked {
 			p.pages.SetCurrentIndex(pageCurl)
 			p.updateCurl()

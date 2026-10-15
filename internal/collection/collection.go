@@ -75,15 +75,12 @@ func (r *Request) Clone() *Request {
 // listed.
 type Folder struct {
 	Name string `json:"name"`
-	// Collapsed records that the folder is shown closed.
-	Collapsed bool `json:"collapsed,omitempty"`
-	// Favourite records that a folder at the top level is one of the
-	// favourites. It is left out of the file when it is not, so files from
-	// before there were favourites are read and written as they were, and
-	// it is cleared when the folder is moved inside another.
-	Favourite bool       `json:"favourite,omitempty"`
-	Folders   []*Folder  `json:"folders,omitempty"`
-	Requests  []*Request `json:"requests,omitempty"`
+	// Open records that the folder is shown open, for as long as the
+	// program runs. It is never saved, so every folder starts closed (and
+	// a "collapsed" mark in a file from before is ignored).
+	Open     bool       `json:"-"`
+	Folders  []*Folder  `json:"folders,omitempty"`
+	Requests []*Request `json:"requests,omitempty"`
 }
 
 // Clone returns a copy of the folder, and of everything in it, which shares
@@ -101,7 +98,109 @@ func (f *Folder) Clone() *Folder {
 // requests are held by pointer so they keep their identity when others are
 // added or removed.
 type Store struct {
+	Folders []*Folder
+	// Sets are sets of requests to be kept open in tabs together. They
+	// are not in folders.
+	Sets []*Set
+
+	// paths are the requests of each set as they were read, until they
+	// are found in the folders by LoadWith.
+	paths [][][]string
+}
+
+// Set is a named set of requests, from any folders, which are opened in
+// tabs together. It holds the requests themselves, so renaming or moving
+// one leaves it in the set; in the file each is written as its path.
+type Set struct {
+	Name     string
+	Requests []*Request
+}
+
+// storeFile is how a store is written. Sets are left out of the file when
+// there are none, so a file from before there were sets reads and writes
+// as it did.
+type storeFile struct {
 	Folders []*Folder `json:"folders"`
+	Sets    []setFile `json:"sets,omitempty"`
+}
+
+// setFile is how a set is written: each request as the path Store.Path
+// gives it.
+type setFile struct {
+	Name     string     `json:"name"`
+	Requests [][]string `json:"requests,omitempty"`
+}
+
+// MarshalJSON writes the store, with each request of a set as its path.
+// A request of a set that is not in the store is left out.
+func (s *Store) MarshalJSON() ([]byte, error) {
+	file := storeFile{Folders: s.Folders}
+	for _, set := range s.Sets {
+		written := setFile{Name: set.Name}
+		for _, r := range set.Requests {
+			if path := s.Path(r); path != nil {
+				written.Requests = append(written.Requests, path)
+			}
+		}
+		file.Sets = append(file.Sets, written)
+	}
+	return json.Marshal(file)
+}
+
+// UnmarshalJSON reads the store. The requests of the sets are found by
+// LoadWith once the folders have been normalised.
+func (s *Store) UnmarshalJSON(data []byte) error {
+	var file storeFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		return err
+	}
+	s.Folders, s.Sets, s.paths = file.Folders, nil, nil
+	for _, set := range file.Sets {
+		s.Sets = append(s.Sets, &Set{Name: set.Name})
+		s.paths = append(s.paths, set.Requests)
+	}
+	return nil
+}
+
+// AddSet appends a set holding the requests given.
+func (s *Store) AddSet(name string, requests []*Request) *Set {
+	set := &Set{Name: name, Requests: slices.Clone(requests)}
+	s.Sets = append(s.Sets, set)
+	return set
+}
+
+// RemoveSet deletes a set. The requests it held are left as they are.
+func (s *Store) RemoveSet(set *Set) {
+	s.Sets = slices.DeleteFunc(s.Sets, func(t *Set) bool { return t == set })
+}
+
+// SortSets puts the sets in alphabetical order, ignoring case.
+func (s *Store) SortSets() {
+	slices.SortStableFunc(s.Sets, func(a, b *Set) int { return compareNames(a.Name, b.Name) })
+}
+
+// FindSet returns the first set with a name, or nil if there is none.
+func (s *Store) FindSet(name string) *Set {
+	for _, set := range s.Sets {
+		if set.Name == name {
+			return set
+		}
+	}
+	return nil
+}
+
+// PruneSets takes out of every set the requests that are no longer in the
+// store, as after they have been removed.
+func (s *Store) PruneSets() {
+	held := map[*Request]bool{}
+	for _, f := range s.Folders {
+		for _, r := range f.All() {
+			held[r] = true
+		}
+	}
+	for _, set := range s.Sets {
+		set.Requests = slices.DeleteFunc(set.Requests, func(r *Request) bool { return !held[r] })
+	}
 }
 
 // AddFolder appends a new folder at the top level.
@@ -139,15 +238,6 @@ func (f *Folder) Add(r *Request) *Request {
 // Remove deletes the request at index.
 func (f *Folder) Remove(index int) {
 	f.Requests = slices.Delete(f.Requests, index, index+1)
-}
-
-// Collapse closes every folder inside the folder, at any depth, leaving the
-// folder itself as it is.
-func (f *Folder) Collapse() {
-	for _, sub := range f.Folders {
-		sub.Collapsed = true
-		sub.Collapse()
-	}
 }
 
 // All returns the requests in the folder and in every folder inside it.
@@ -331,8 +421,7 @@ func (s *Store) MoveRequest(r *Request, to *Folder, index int) bool {
 }
 
 // MoveFolder moves a folder into another, or to the top level if that is
-// nil, before the folder at index there. Only a folder at the top level can
-// be a favourite, so one moved into another is no longer. It reports false,
+// nil, before the folder at index there. It reports false,
 // having done nothing, if the folder is not in the store or would be moved
 // inside itself.
 func (s *Store) MoveFolder(f *Folder, to *Folder, index int) bool {
@@ -347,7 +436,6 @@ func (s *Store) MoveFolder(f *Folder, to *Folder, index int) bool {
 	}
 	if to != nil {
 		into = &to.Folders
-		f.Favourite = false
 	}
 	move(from, into, f, index)
 	return true
@@ -380,7 +468,18 @@ func LoadWith(path string, keys *crypt.Keys) (*Store, error) {
 	for _, f := range store.Folders {
 		f.normalise()
 	}
+	// A request of a set that cannot be found, or is in it twice, is left
+	// out.
+	for i, set := range store.Sets {
+		for _, path := range store.paths[i] {
+			if r := store.Find(path); r != nil && !slices.Contains(set.Requests, r) {
+				set.Requests = append(set.Requests, r)
+			}
+		}
+	}
+	store.paths = nil
 	store.Sort()
+	store.SortSets()
 
 	return store, nil
 }
