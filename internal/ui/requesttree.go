@@ -79,6 +79,11 @@ type requestTree struct {
 	// browsing is set while a key moves the selection, which does not open
 	// what it moves to.
 	browsing bool
+	// copied is a copy of the folder or request last copied with Ctrl+C,
+	// or nil. It is kept in the tree, which stays when the workspace
+	// changes, so that it can be pasted into another; it never goes to
+	// the system clipboard, as requests hold tokens and passwords.
+	copied any
 
 	// onRename is called after a request is renamed.
 	onRename func(*collection.Request)
@@ -269,6 +274,14 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 			// As the rename button does.
 			t.rename()
 		default:
+			switch {
+			case event.Matches(qt.QKeySequence__Copy):
+				t.copy()
+				return
+			case event.Matches(qt.QKeySequence__Paste):
+				t.paste()
+				return
+			}
 			defer func(prev bool) { t.browsing = prev }(t.browsing)
 			t.browsing = true
 			prev := t.tree.CurrentItem()
@@ -937,6 +950,72 @@ func (t *requestTree) insert(request *collection.Request) {
 	if t.onOpen != nil {
 		t.onOpen(request)
 	}
+}
+
+// copy keeps a copy of the selected request, or of the selected folder and
+// everything in it, to be pasted. Nothing is copied from a heading.
+func (t *requestTree) copy() {
+	item := t.tree.CurrentItem()
+	if item == nil {
+		return
+	}
+	switch folder, request := t.locate(item); {
+	case request != nil:
+		t.copied = request.Clone()
+	case folder != nil:
+		t.copied = folder.Clone()
+	}
+}
+
+// paste adds a copy of what was copied: into the selected folder, or the
+// folder of the selected request, or else at the top level, a request in a
+// new folder of its own there as requests are always in a folder. Something
+// with the name of another beside it has " copy" added to its name. A
+// request pasted is opened.
+func (t *requestTree) paste() {
+	var into *collection.Folder
+	if parent := t.folderItem(); parent != nil {
+		into, _ = t.locate(parent)
+	}
+
+	switch copied := t.copied.(type) {
+	case *collection.Request:
+		request := copied.Clone()
+		if into == nil {
+			into = t.store.AddFolder("New Folder")
+		}
+		for slices.ContainsFunc(into.Requests, func(r *collection.Request) bool { return r.Name == request.Name }) {
+			request.Name += " copy"
+		}
+		into.Add(request)
+		into.Open = true
+		t.pasted(request)
+		if t.onOpen != nil {
+			t.onOpen(request)
+		}
+	case *collection.Folder:
+		folder := copied.Clone()
+		siblings := &t.store.Folders
+		if into != nil {
+			siblings = &into.Folders
+			into.Open = true
+		}
+		for slices.ContainsFunc(*siblings, func(f *collection.Folder) bool { return f.Name == folder.Name }) {
+			folder.Name += " copy"
+		}
+		*siblings = append(*siblings, folder)
+		t.pasted(folder)
+	}
+}
+
+// pasted shows and saves a folder or request that has just been pasted,
+// selected, in its place in the order.
+func (t *requestTree) pasted(what any) {
+	t.showView(viewRequests)
+	t.clearSearch()
+	t.store.Sort()
+	t.draw(what)
+	t.save()
 }
 
 // duplicate makes a copy of the selected request, or of the selected folder

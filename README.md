@@ -133,6 +133,13 @@ bindings.
   is chosen again when you go back to it, but not when TriggerAPI is next run.
 - Duplicate a workspace, an environment, a request, or a folder with
   everything in it.
+- Copy a request, a folder with everything in it, or an environment with
+  Ctrl+C, and paste it with Ctrl+V, in the same workspace or another. A
+  request or folder is pasted into the selected folder (or the folder of the
+  selected request), or else at the top level; something given the name of
+  another beside it has " copy" added. What is copied is kept by TriggerAPI
+  itself and never put on the system clipboard, so the tokens and passwords
+  in requests and environments do not leave it.
 - Import an OpenAPI 3 or Swagger 2 document, as JSON or YAML, or a Postman
   collection, to create a folder of requests.
 
@@ -218,6 +225,8 @@ where the variable is used, as in `id-{{request_id}}`.
 |---|---|---|
 | F2 | A workspace, a folder or a request | Rename it, as the rename button does. |
 | F2 | An environment | Edit it, as the edit button does, with the keyboard in its name. |
+| Ctrl+C | A folder, a request or an environment | Copy it, to paste in this workspace or another. Nothing is put on the system clipboard. |
+| Ctrl+V | The tree of requests or the list of environments | Paste what was copied there. |
 
 **Finding and opening a request**
 

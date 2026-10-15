@@ -97,35 +97,21 @@ func newEnvironmentSelector() *environmentSelector {
 		}
 	})
 
-	// The drop-downs are in a frame of their own at the right, kept apart
-	// from the tabs beneath by the margin below it. Its border is drawn in
-	// edgeColour, worked out from the palette as it is when drawn, as the
-	// palette's own colour for edges hardly shows in a dark theme. It is
-	// painted rather than given by a style sheet, under which Qt draws the
+	// The drop-downs are in a frame of their own, kept apart from the tabs
+	// beneath by the margin below it. The frame is the style's own panel,
+	// in the theme's colours, with no style sheet: under one Qt draws the
 	// titles in the colours of a light theme whatever the theme is.
-	frame := qt.NewQWidget2()
-	frame.OnPaintEvent(func(super func(*qt.QPaintEvent), event *qt.QPaintEvent) {
-		super(event)
-		painter := qt.NewQPainter2(frame.QPaintDevice)
-		defer painter.Delete()
-		painter.SetRenderHint(qt.QPainter__Antialiasing)
-		pen := qt.NewQPen3(qt.NewQColor6(edgeColour()))
-		defer pen.Delete()
-		painter.SetPenWithPen(pen)
-		painter.SetBrushWithStyle(qt.NoBrush)
-		// Half a pixel in, so that the line falls on whole pixels.
-		edge := qt.NewQRectF4(0.5, 0.5, float64(frame.Width())-1, float64(frame.Height())-1)
-		defer edge.Delete()
-		painter.DrawRoundedRect(edge, 4, 4)
-		painter.End()
-	})
+	panel := qt.NewQFrame2()
+	panel.SetFrameStyle(int(qt.QFrame__StyledPanel) | int(qt.QFrame__Plain))
+	frame := panel.QWidget
 	outer := qt.NewQHBoxLayout(s.root)
 	outer.SetContentsMargins(9, 6, 9, 8)
-	outer.AddStretch()
+	// The frame takes the whole width, with the drop-downs at its right.
 	outer.AddWidget(frame)
 
 	layout := qt.NewQHBoxLayout(frame)
 	layout.SetContentsMargins(6, 4, 6, 4)
+	layout.AddStretch()
 	layout.AddWidget(s.workspaceTitle.QWidget)
 	layout.AddWidget(s.workspace.QWidget)
 	layout.AddSpacing(12)

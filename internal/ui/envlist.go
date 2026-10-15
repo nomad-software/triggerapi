@@ -23,6 +23,11 @@ type envList struct {
 	// path is the file the store is saved to. Nothing is saved if it is empty.
 	path     string
 	updating bool
+	// copied is a copy of the environment last copied with Ctrl+C, or nil.
+	// It is kept in the list, which stays when the workspace changes, so
+	// that it can be pasted into another; it never goes to the system
+	// clipboard, as the values of variables are often secrets.
+	copied *env.Environment
 
 	// confirm asks the user a yes/no question.
 	confirm func(question string) bool
@@ -106,11 +111,16 @@ func newEnvList(store *env.Store, path string) *envList {
 	// F2 does what the edit button does, which is where an environment is
 	// renamed.
 	s.list.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
-		if event.Key() == int(qt.Key_F2) {
+		switch {
+		case event.Key() == int(qt.Key_F2):
 			s.edit()
-			return
+		case event.Matches(qt.QKeySequence__Copy):
+			s.copy()
+		case event.Matches(qt.QKeySequence__Paste):
+			s.paste()
+		default:
+			super(event)
 		}
-		super(event)
 	})
 
 	return s
@@ -174,6 +184,30 @@ func (s *envList) duplicate() {
 	s.sort()
 	s.selected()
 	s.edit()
+}
+
+// copy keeps a copy of the selected environment, to be pasted.
+func (s *envList) copy() {
+	if e, ok := s.store.Current(); ok {
+		copied := env.Environment{Name: e.Name, Variables: slices.Clone(e.Variables)}
+		s.copied = &copied
+	}
+}
+
+// paste adds a copy of the environment that was copied and selects it. If
+// there is already one with its name, " copy" is added to it.
+func (s *envList) paste() {
+	if s.copied == nil {
+		return
+	}
+	pasted := env.Environment{Name: s.copied.Name, Variables: slices.Clone(s.copied.Variables)}
+	for slices.ContainsFunc(s.store.Environments, func(e env.Environment) bool { return e.Name == pasted.Name }) {
+		pasted.Name += " copy"
+	}
+	s.store.Environments = append(s.store.Environments, pasted)
+	s.store.Active = len(s.store.Environments) - 1
+	s.sort()
+	s.selected()
 }
 
 // envImportSource is a kind of file that an environment can be imported

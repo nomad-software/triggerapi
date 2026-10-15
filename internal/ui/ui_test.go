@@ -6718,3 +6718,81 @@ func TestSetSelector(t *testing.T) {
 		}
 	})
 }
+
+func TestCopyPasteAcrossWorkspaces(t *testing.T) {
+	files := testFiles(t)
+	envs := &env.Store{Active: 0, Environments: []env.Environment{{Name: "Local", Variables: []env.Variable{{Key: "token", Value: "secret", Enabled: true}}}}}
+	if err := envs.Save(files.Environments); err != nil {
+		t.Fatal(err)
+	}
+	store := &collection.Store{}
+	hotel := store.AddFolder("Hotel")
+	hotel.Add(collection.NewREST("Book", rest.Request{Method: "POST", URL: "{{host}}/rooms"}))
+	hotel.AddFolder("Inner").Add(collection.NewGRPC("Call", rpc.Request{URL: "c.test:1"}))
+	if err := store.Save(files.Requests); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+		rt, el := w.requests, w.environments
+		tree := rt.tree
+		key := func(widget *qt.QWidget, k qt.Key) {
+			event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(k), qt.ControlModifier)
+			defer event.Delete()
+			qt.QCoreApplication_SendEvent(widget.QObject, event.QEvent)
+		}
+		clipboard := qt.QGuiApplication_Clipboard().Text()
+
+		// Copy a request, a folder and an environment in one workspace.
+		tree.SetCurrentItem(treeItem(tree, "Hotel", "Book"))
+		key(tree.QWidget, qt.Key_C)
+		book := rt.copied
+		tree.SetCurrentItem(treeItem(tree, "Hotel", "Inner"))
+		key(tree.QWidget, qt.Key_C)
+		el.list.SetCurrentRow(0)
+		key(el.list.QWidget, qt.Key_C)
+		if _, ok := rt.copied.(*collection.Folder); !ok || book == nil || el.copied == nil || el.copied.Name != "Local" {
+			t.Fatalf("copied %+v and %+v", rt.copied, el.copied)
+		}
+		if qt.QGuiApplication_Clipboard().Text() != clipboard {
+			t.Error("the system clipboard was used")
+		}
+
+		// Paste them into another.
+		w.workspaces.warn = func(message string) { t.Error(message) }
+		w.workspaces.add()
+		if topCount(tree) != 0 || el.list.Count() != 0 {
+			t.Fatalf("the new workspace is not empty")
+		}
+		key(tree.QWidget, qt.Key_V)
+		if topCount(tree) != 1 || treeItem(tree, "Inner", "Call") == nil {
+			t.Errorf("folder not pasted at the top level")
+		}
+		rt.copied = book
+		tree.SetCurrentItem(treeItem(tree, "Inner"))
+		key(tree.QWidget, qt.Key_V)
+		key(tree.QWidget, qt.Key_V)
+		if treeItem(tree, "Inner", "Book") == nil || treeItem(tree, "Inner", "Book copy") == nil || w.open == nil || w.open.Name != "Book copy" {
+			t.Errorf("requests not pasted into the folder; open %+v", w.open)
+		}
+		key(el.list.QWidget, qt.Key_V)
+		key(el.list.QWidget, qt.Key_V)
+		if el.list.Count() != 2 || el.list.Item(0).Text() != "Local" || el.list.Item(1).Text() != "Local copy" || w.expand("{{token}}") != "secret" {
+			t.Errorf("environments %d, token %q", el.list.Count(), w.expand("{{token}}"))
+		}
+		w.Close()
+	})
+
+	// The workspace pasted into has them saved, and the one copied from is
+	// as it was.
+	saved, err := loadRequests(workspace.Requests(filepath.Dir(filepath.Dir(files.Requests)), "New Workspace"))
+	if err != nil || len(saved.Folders) != 1 || len(saved.Folders[0].Requests) != 3 || saved.Folders[0].Requests[0].Name != "Book" || saved.Folders[0].Requests[0].URL != "{{host}}/rooms" {
+		t.Errorf("saved %+v, %v", saved, err)
+	}
+	original, err := loadRequests(files.Requests)
+	if err != nil || len(original.Folders) != 1 || len(original.Folders[0].Folders[0].Requests) != 1 {
+		t.Errorf("original %+v, %v", original, err)
+	}
+}
