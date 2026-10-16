@@ -88,6 +88,10 @@ func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
 	t.table.SetColumnHidden(colStatus, true)
 	t.table.SetIconSize(qt.NewQSize2(removeIconSize, removeIconSize))
 	t.table.VerticalHeader().SetVisible(false)
+	// The row being worked on is highlighted as a whole.
+	t.table.SetSelectionBehavior(qt.QAbstractItemView__SelectRows)
+	t.table.SetSelectionMode(qt.QAbstractItemView__SingleSelection)
+	t.delegateColumns()
 
 	header := t.table.HorizontalHeader()
 	header.SetSectionResizeMode2(colEnabled, qt.QHeaderView__ResizeToContents)
@@ -126,6 +130,50 @@ func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
 	t.addRow("", "", true)
 
 	return t
+}
+
+// delegateColumns has a click anywhere in the cell of a checkbox switch it,
+// and not only one on the box itself, and has the cell of the remove button,
+// which cannot be selected itself, drawn as selected with the rest of its
+// row.
+func (t *keyValueTable) delegateColumns() {
+	check := qt.NewQStyledItemDelegate2(t.table.QObject)
+	check.OnEditorEvent(func(super func(*qt.QEvent, *qt.QAbstractItemModel, *qt.QStyleOptionViewItem, *qt.QModelIndex) bool, event *qt.QEvent, model *qt.QAbstractItemModel, option *qt.QStyleOptionViewItem, index *qt.QModelIndex) bool {
+		switch event.Type() {
+		case qt.QEvent__MouseButtonPress, qt.QEvent__MouseButtonRelease, qt.QEvent__MouseButtonDblClick:
+		default:
+			// The space bar, as it always has.
+			return super(event, model, option, index)
+		}
+		mouse := qt.UnsafeNewQMouseEvent(event.UnsafePointer())
+		if mouse.Button() != qt.LeftButton || !option.Rect().ContainsWithQPoint(mouse.Position().ToPoint()) {
+			return super(event, model, option, index)
+		}
+		// The release switches it, as a click on the box does. The press
+		// is left to the table, which selects the row with it, and a double
+		// click is taken so that nothing else is done with it.
+		switch event.Type() {
+		case qt.QEvent__MouseButtonPress:
+			return false
+		case qt.QEvent__MouseButtonRelease:
+			if item := t.table.Item(index.Row(), colEnabled); item != nil {
+				item.SetCheckState(checkState(item.CheckState() != qt.Checked))
+			}
+		}
+		return true
+	})
+	t.table.SetItemDelegateForColumn(colEnabled, check.QAbstractItemDelegate)
+
+	remove := qt.NewQStyledItemDelegate2(t.table.QObject)
+	remove.OnPaint(func(super func(*qt.QPainter, *qt.QStyleOptionViewItem, *qt.QModelIndex), painter *qt.QPainter, option *qt.QStyleOptionViewItem, index *qt.QModelIndex) {
+		if t.table.SelectionModel().IsRowSelected(index.Row()) {
+			state := option.State()
+			option.SetState(state | qt.QStyle__State_Selected | qt.QStyle__State_Enabled)
+			defer option.SetState(state)
+		}
+		super(painter, option, index)
+	})
+	t.table.SetItemDelegateForColumn(colRemove, remove.QAbstractItemDelegate)
 }
 
 // editing reports whether a cell is being edited.
@@ -273,7 +321,7 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 	t.table.InsertRow(row)
 
 	check := qt.NewQTableWidgetItem()
-	check.SetFlags(qt.ItemIsEnabled | qt.ItemIsUserCheckable)
+	check.SetFlags(qt.ItemIsEnabled | qt.ItemIsSelectable | qt.ItemIsUserCheckable)
 	check.SetCheckState(checkState(enabled))
 
 	t.table.SetItem(row, colEnabled, check)
@@ -293,10 +341,12 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 	}
 	t.table.SetItem(row, colDescription, description)
 
-	// Nothing is typed or selected in the cell of the status, which is
-	// left enabled so that its icon is not greyed, or in that of the button.
+	// Nothing is typed in the cell of the status, which is left enabled so
+	// that its icon is not greyed, or in that of the button. The status is
+	// highlighted with the rest of its row, and the button is drawn so (see
+	// delegateColumns).
 	status := qt.NewQTableWidgetItem()
-	status.SetFlags(qt.ItemIsEnabled)
+	status.SetFlags(qt.ItemIsEnabled | qt.ItemIsSelectable)
 	t.table.SetItem(row, colStatus, status)
 	blank := qt.NewQTableWidgetItem()
 	blank.SetFlags(qt.NoItemFlags)

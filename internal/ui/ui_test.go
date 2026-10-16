@@ -4790,6 +4790,61 @@ func TestKeyValueRemoveButtons(t *testing.T) {
 	})
 }
 
+func TestKeyValueRowClicks(t *testing.T) {
+	var table *keyValueTable
+	mainthread.Wait(func() {
+		table = newKeyValueTable("Key", "Value")
+		table.setItems([]rest.KeyValue{{Key: "a", Value: "1", Enabled: true}, {Key: "b", Value: "2", Enabled: true}})
+		table.table.Resize(500, 300)
+		table.table.Show()
+	})
+
+	mainthread.Wait(func() {
+		// click clicks a cell at its right edge, away from a checkbox.
+		click := func(row, col int) {
+			rect := table.table.VisualItemRect(table.table.Item(row, col))
+			at := qt.NewQPointF3(float64(rect.Right()-2), float64(rect.Center().Y()))
+			defer at.Delete()
+			for _, kind := range []qt.QEvent__Type{qt.QEvent__MouseButtonPress, qt.QEvent__MouseButtonRelease} {
+				buttons := qt.LeftButton
+				if kind == qt.QEvent__MouseButtonRelease {
+					buttons = qt.NoButton
+				}
+				event := qt.NewQMouseEvent(kind, at, qt.LeftButton, buttons, qt.NoModifier)
+				qt.QCoreApplication_SendEvent(table.table.Viewport().QObject, event.QEvent)
+				event.Delete()
+			}
+		}
+		enabled := func() []bool {
+			var got []bool
+			for _, item := range table.items() {
+				got = append(got, item.Enabled)
+			}
+			return got
+		}
+
+		// A click anywhere in the cell of the checkbox switches it, once.
+		click(1, colEnabled)
+		if got := enabled(); !reflect.DeepEqual(got, []bool{true, false}) {
+			t.Errorf("after one click: %v", got)
+		}
+		click(1, colEnabled)
+		if got := enabled(); !reflect.DeepEqual(got, []bool{true, true}) {
+			t.Errorf("after two clicks: %v", got)
+		}
+
+		// The row clicked in is highlighted as a whole, and only that one.
+		click(0, colValue)
+		if !table.table.SelectionModel().IsRowSelected(0) || table.table.SelectionModel().IsRowSelected(1) {
+			t.Error("row 0 is not the one highlighted")
+		}
+		click(1, colEnabled)
+		if !table.table.SelectionModel().IsRowSelected(1) || table.table.SelectionModel().IsRowSelected(0) {
+			t.Error("row 1 is not the one highlighted")
+		}
+	})
+}
+
 func TestWorkspaces(t *testing.T) {
 	files := testFiles(t)
 	dir := files.Workspaces
