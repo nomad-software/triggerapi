@@ -311,51 +311,88 @@ func (e *endpointTable) refresh() {
 	e.create.SetEnabled(len(e.added()) > 0)
 }
 
-// endpointFolder returns a folder of gRPC requests, one for each of the
-// methods, which are given by their full names, in a folder inside it for
-// each service. A request is named after its method and is for the server
-// at url, with no message and everything else, TLS among it, as it is in a
-// new request.
-func endpointFolder(name, url string, methods []string) *collection.Folder {
+// endpointSource is the table of the endpoints of the server of a request
+// UI, from which requests are made.
+type endpointSource struct {
+	kind  endpointKind
+	table *endpointTable
+	// url returns the address of the server of the request on show, as it
+	// is typed.
+	url func() string
+}
+
+// endpointKind is how requests of a type are made for the endpoints of a
+// server, which are given by their full names, as heading/name, and found
+// again among the requests of a folder.
+type endpointKind struct {
+	// endpoint returns the full name of the endpoint a request is for, or
+	// "" if it is not of the type.
+	endpoint func(r *collection.Request) string
+	// request returns a request for an endpoint of the server at url, with
+	// nothing else of it but what a new request has, named after the
+	// short name of the endpoint.
+	request func(url, full string) *collection.Request
+}
+
+// grpcEndpoints makes gRPC requests of the methods of a server, under
+// headings for their services.
+var grpcEndpoints = endpointKind{
+	endpoint: func(r *collection.Request) string {
+		if r.Type == collection.TypeGRPC {
+			return r.GRPC.Method
+		}
+		return ""
+	},
+	request: func(url, full string) *collection.Request {
+		_, method, _ := strings.Cut(full, "/")
+		return collection.NewGRPC(method, rpc.Request{URL: url, Method: full})
+	},
+}
+
+// folder returns a folder of requests, one for each of the endpoints, in a
+// folder inside it for each heading. A request is named after its endpoint
+// and is for the server at url, with everything else, such as the TLS of a
+// gRPC request, as it is in a new request.
+func (k endpointKind) folder(name, url string, endpoints []string) *collection.Folder {
 	folder := &collection.Folder{Name: name}
-	addEndpoints(folder, url, methods)
+	k.add(folder, url, endpoints)
 	return folder
 }
 
-// endpointsOf returns the methods a folder made by endpointFolder has
-// requests for. They are found by what the requests call, and not by their
-// names or that of the folder: a gRPC request counts if the folder it is in,
-// inside this one, is named after the service of its method.
-func endpointsOf(folder *collection.Folder) map[string]bool {
+// existing returns the endpoints a folder made by folder has requests for.
+// They are found by what the requests call, and not by their names or that
+// of the folder: a request counts if the folder it is in, inside this one,
+// is named after the heading of its endpoint.
+func (k endpointKind) existing(folder *collection.Folder) map[string]bool {
 	found := map[string]bool{}
-	for _, service := range folder.Folders {
-		for _, r := range service.Requests {
-			if r.Type == collection.TypeGRPC && strings.HasPrefix(r.GRPC.Method, service.Name+"/") {
-				found[r.GRPC.Method] = true
+	for _, heading := range folder.Folders {
+		for _, r := range heading.Requests {
+			if full := k.endpoint(r); strings.HasPrefix(full, heading.Name+"/") {
+				found[full] = true
 			}
 		}
 	}
 	return found
 }
 
-// addEndpoints adds a request for each of the methods to a folder as
-// endpointFolder makes them, in the folder there is for its service or a new
-// one. A method the folder has a request for is not given another.
-func addEndpoints(folder *collection.Folder, url string, methods []string) {
-	existing := endpointsOf(folder)
-	for _, full := range methods {
+// add adds a request for each of the endpoints to a folder as folder makes
+// them, in the folder there is for its heading or a new one. An endpoint the
+// folder has a request for is not given another.
+func (k endpointKind) add(folder *collection.Folder, url string, endpoints []string) {
+	existing := k.existing(folder)
+	for _, full := range endpoints {
 		if existing[full] {
 			continue
 		}
 		existing[full] = true
-		parent, method, _ := strings.Cut(full, "/")
+		parent, _, _ := strings.Cut(full, "/")
 
 		index := slices.IndexFunc(folder.Folders, func(f *collection.Folder) bool { return f.Name == parent })
 		if index < 0 {
 			folder.Folders = append(folder.Folders, &collection.Folder{Name: parent})
 			index = len(folder.Folders) - 1
 		}
-		service := folder.Folders[index]
-		service.Requests = append(service.Requests, collection.NewGRPC(method, rpc.Request{URL: url, Method: full}))
+		heading := folder.Folders[index]
+		heading.Requests = append(heading.Requests, k.request(url, full))
 	}
 }

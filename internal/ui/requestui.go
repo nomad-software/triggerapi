@@ -50,6 +50,9 @@ type requestUI struct {
 	// shown is called after a request of the type has been shown, if it is
 	// not nil.
 	shown func()
+	// endpoints is the table of the endpoints of the server, from which
+	// requests of the type are made, or nil if the type has none.
+	endpoints *endpointSource
 }
 
 // panelState is what every requestEditor keeps: what colours its

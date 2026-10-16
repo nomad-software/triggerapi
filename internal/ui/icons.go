@@ -531,6 +531,31 @@ func drawGraph(painter *qt.QPainter) {
 	}
 }
 
+// drawPlug draws a plug with its lead, for MCP, which plugs tools and data
+// into a model.
+func drawPlug(painter *qt.QPainter) {
+	painter.SetPenWithPen(whitePen())
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	path := qt.NewQPainterPath()
+	// The pins.
+	path.MoveTo2(52, 26)
+	path.LineTo2(52, 44)
+	path.MoveTo2(76, 26)
+	path.LineTo2(76, 44)
+	// The body, narrowing to the lead.
+	path.MoveTo2(38, 44)
+	path.LineTo2(90, 44)
+	path.LineTo2(90, 62)
+	path.CubicTo2(90, 76, 78, 84, 64, 84)
+	path.CubicTo2(50, 84, 38, 76, 38, 62)
+	path.CloseSubpath()
+	// The lead.
+	path.MoveTo2(64, 84)
+	path.LineTo2(64, 104)
+	painter.DrawPath(path)
+}
+
 // drawRevolver draws a revolver seen from the side, pointing right: the
 // program is named after its trigger.
 func drawRevolver(painter *qt.QPainter) {

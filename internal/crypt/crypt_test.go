@@ -156,3 +156,34 @@ func TestUnusable(t *testing.T) {
 		t.Errorf("err = %v", keys.Err())
 	}
 }
+
+func TestRecipient(t *testing.T) {
+	public, private := crypttest.Pair(t, t.TempDir(), "id", "")
+	recipient, err := crypt.Recipient(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// What is encrypted for someone is read with their private key, and
+	// not with the keys that encrypted it.
+	encrypted, err := recipient.Encrypt([]byte("for them"))
+	if err != nil || !crypt.Encrypted(encrypted) {
+		t.Fatalf("encrypted %s, %v", encrypted, err)
+	}
+	theirs, err := crypt.Open(public, private, noPassphrase(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, err := theirs.Decrypt(encrypted); err != nil || string(text) != "for them" {
+		t.Errorf("decrypted by them %q, %v", text, err)
+	}
+	if _, err := recipient.Decrypt(encrypted); err == nil {
+		t.Error("a public key decrypted")
+	}
+
+	for _, path := range []string{"", filepath.Join(t.TempDir(), "none.pub"), private} {
+		if _, err := crypt.Recipient(path); err == nil {
+			t.Errorf("%q was taken for a public key", path)
+		}
+	}
+}

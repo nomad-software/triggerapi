@@ -10,8 +10,6 @@ import (
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/crypt"
-	"github.com/nomad-software/triggerapi/internal/openapi"
-	"github.com/nomad-software/triggerapi/internal/postman"
 )
 
 // colName is the column of the request tree, which has the names.
@@ -424,68 +422,6 @@ func (t *requestTree) draw(selected any) {
 	t.applySearch()
 }
 
-// query returns the words being searched for, in lower case. It is nil when
-// there is no search.
-func (t *requestTree) query() []string {
-	if words := strings.Fields(strings.ToLower(t.search.Text())); len(words) > 0 {
-		return words
-	}
-	return nil
-}
-
-// applySearch hides the requests that do not match the search, and the
-// folders and headings with none that do, and opens the folders that are
-// left so that what was found can be seen. A request matches if every word
-// of the search is in its own name; the names of folders are not searched.
-// Items are hidden and not removed, as they are matched to the store by
-// their position. Which folders are open is not kept: the tree is drawn
-// again from the store when the search is cleared.
-func (t *requestTree) applySearch() {
-	words := t.query()
-	if words == nil {
-		return
-	}
-
-	defer func(prev bool) { t.updating = prev }(t.updating)
-	t.updating = true
-
-	// show reports if an item is a request that matches, or holds one.
-	var show func(item *qt.QTreeWidgetItem) bool
-	show = func(item *qt.QTreeWidgetItem) bool {
-		found := false
-		if _, request := t.locate(item); request != nil {
-			name := strings.ToLower(request.Name)
-			found = true
-			for _, word := range words {
-				found = found && strings.Contains(name, word)
-			}
-		} else {
-			for i := range item.ChildCount() {
-				if show(item.Child(i)) {
-					found = true
-				}
-			}
-		}
-
-		item.SetHidden(!found)
-		if found && item.ChildCount() > 0 {
-			item.SetExpanded(true)
-		}
-		return found
-	}
-	for i := range t.tree.TopLevelItemCount() {
-		show(t.tree.TopLevelItem(i))
-	}
-}
-
-// clearSearch empties the search box without drawing the tree again, for
-// when it is about to be drawn anyway.
-func (t *requestTree) clearSearch() {
-	defer func(prev bool) { t.updating = prev }(t.updating)
-	t.updating = true
-	t.search.Clear()
-}
-
 // selection returns the folder or request that is selected, or nil.
 func (t *requestTree) selection() any {
 	if item := t.tree.CurrentItem(); item != nil {
@@ -539,100 +475,6 @@ func (t *requestTree) order() []any {
 		walk(f)
 	}
 	return all
-}
-
-// dropPosition is where something dragged was let go, relative to an item.
-type dropPosition int
-
-const (
-	// dropNowhere is the empty space beneath the items.
-	dropNowhere dropPosition = iota
-	dropOn
-	dropAbove
-	dropBelow
-)
-
-// drop moves the folder or request that was dragged to where it was dropped:
-// on, above or below the target folder or request, or nowhere. It reports if
-// anything was moved.
-//
-// Dropping on a folder puts it inside, at the end. Dropping above or below
-// something puts it beside that, in the same folder, with the one limit that
-// folders always come before requests. Dropping in the empty space, or by a
-// heading, puts a folder at the end of the top level; a request cannot go
-// there, as requests are always in a folder.
-func (t *requestTree) drop(folder *collection.Folder, request *collection.Request, targetFolder *collection.Folder, targetRequest *collection.Request, where dropPosition) bool {
-	after := 0
-	if where == dropBelow {
-		after = 1
-	}
-
-	// to is the folder to move into, which is nil for the top level, and
-	// index the position there among the things of the same kind.
-	var to *collection.Folder
-	index := 0
-
-	switch {
-	case where == dropNowhere || targetFolder == nil:
-		// Nowhere, or by a heading.
-		index = len(t.store.Folders)
-
-	case targetRequest != nil:
-		// Beside a request, in the folder that holds it.
-		to = targetFolder
-		index = len(to.Folders)
-		if request != nil {
-			index = slices.Index(to.Requests, targetRequest) + after
-		}
-
-	case where == dropOn:
-		to = targetFolder
-		index = len(to.Folders)
-		if request != nil {
-			index = len(to.Requests)
-		}
-
-	default:
-		// Beside a folder, in the folder that holds it. A request goes
-		// before the requests there, which is as near as it can be.
-		parent, ok := t.store.ParentOf(targetFolder)
-		if !ok {
-			return false
-		}
-		to = parent
-		if request == nil {
-			siblings := t.store.Folders
-			if to != nil {
-				siblings = to.Folders
-			}
-			index = slices.Index(siblings, targetFolder) + after
-		}
-	}
-
-	var moved any
-	switch {
-	case request != nil:
-		if !t.store.MoveRequest(request, to, index) {
-			return false
-		}
-		moved = request
-	default:
-		if !t.store.MoveFolder(folder, to, index) {
-			return false
-		}
-		moved = folder
-	}
-
-	// What something is dropped into is opened to show it.
-	if to != nil {
-		to.Open = true
-	}
-	// Everything is kept in alphabetical order, so where exactly in a
-	// folder something was dropped makes no difference.
-	t.store.Sort()
-	t.draw(moved)
-	t.save()
-	return true
 }
 
 // folderIcon returns the icon of a folder.
@@ -808,59 +650,6 @@ func (t *requestTree) selectRequest(r *collection.Request) {
 	}
 }
 
-// focusSearch puts the keyboard in the search box, with what was last
-// searched for selected, to be typed over.
-func (t *requestTree) focusSearch() {
-	t.search.SetFocus()
-	t.search.SelectAll()
-}
-
-// browse puts the keyboard in the tree, to move through it with. A search
-// starts it at the first request that was found. Otherwise it starts where
-// the selection is, or at the first folder if nothing is selected. Nothing is
-// opened by it. With the sets shown, it is their list the keyboard goes to.
-func (t *requestTree) browse() {
-	if t.views.CurrentIndex() == viewSets {
-		t.sets.browse()
-		return
-	}
-
-	// first returns the first folder or request on show beneath those
-	// given, which is a request if only is set.
-	var first func(count int, child func(int) *qt.QTreeWidgetItem, only bool) *qt.QTreeWidgetItem
-	first = func(count int, child func(int) *qt.QTreeWidgetItem, only bool) *qt.QTreeWidgetItem {
-		for i := range count {
-			item := child(i)
-			if item.IsHidden() {
-				continue
-			}
-			// A heading is passed over for what is under it.
-			if folder, request := t.locate(item); request != nil || (folder != nil && !only) {
-				return item
-			}
-			if found := first(item.ChildCount(), item.Child, only); found != nil {
-				return found
-			}
-		}
-		return nil
-	}
-
-	start := t.tree.CurrentItem()
-	if t.query() != nil {
-		start = first(t.tree.TopLevelItemCount(), t.tree.TopLevelItem, true)
-	}
-	if start == nil || start.IsHidden() {
-		start = first(t.tree.TopLevelItemCount(), t.tree.TopLevelItem, false)
-	}
-
-	if start != nil {
-		t.updating = true
-		t.tree.SetCurrentItem(start)
-		t.updating = false
-	}
-	t.tree.SetFocus()
-}
-
 // activate opens the selected request, or if a folder is selected opens or
 // closes that.
 func (t *requestTree) activate() {
@@ -1034,46 +823,6 @@ func (t *requestTree) added(what any) {
 	if item := t.tree.CurrentItem(); item != nil {
 		t.tree.EditItem(item)
 	}
-}
-
-// importSource is a kind of file that requests can be imported from.
-type importSource string
-
-const (
-	importOpenAPI importSource = "openapi"
-	importPostman importSource = "postman"
-)
-
-// importOrder is the order the kinds of file are offered in.
-var importOrder = []importSource{importOpenAPI, importPostman}
-
-// importSources describes the kinds of file that can be imported.
-var importSources = map[importSource]importKind[*collection.Folder]{
-	importOpenAPI: {"OpenAPI", "OpenAPI documents (*.json *.yaml *.yml)", "#6ba539", drawDocument, openapi.Import},
-	importPostman: {"Postman", "Postman collections (*.json)", "#ef5b25", drawPlane, postman.Import},
-}
-
-// newImportDialog returns a dialog which asks what kind of file to import.
-func newImportDialog(parent *qt.QWidget) *choiceDialog[importSource] {
-	return newSourceDialog(parent, "Choose what to import requests from.", importOrder, importSources)
-}
-
-// importDocument asks what kind of file to import, and for the file, and
-// imports it.
-func (t *requestTree) importDocument() {
-	importDocument(t.chooseSource, t.chooseFile, t.importFile, t.warn)
-}
-
-// importFile adds a folder of requests made from the file at path, which is
-// of the kind given, to the top level, and selects it. The folders inside it
-// start off closed, as there can be a great many.
-func (t *requestTree) importFile(source importSource, path string) error {
-	folder, err := readImport(importSources[source], path)
-	if err != nil {
-		return err
-	}
-	t.adopt(folder)
-	return nil
 }
 
 // redraw shows what has been changed in the store, sorted into its place,

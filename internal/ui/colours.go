@@ -18,6 +18,7 @@ const (
 	colourGRPC
 	colourWebSocket
 	colourGraphQL
+	colourMCP
 	colourRemove
 	colourAction
 	colourSend
@@ -32,8 +33,8 @@ const (
 
 // colourKinds are the colours, with what each is called in the settings and
 // the colour it is until another is chosen. The workspaces have the colour
-// of the Send button, which is that of Invoke and of Execute beside the curl
-// command too. The action buttons are those beside the tabs of a panel, curl
+// of the Send button, which is that of every button which sends: Invoke,
+// Call, Connect, and Execute beside the curl command. The action buttons are those beside the tabs of a panel, curl
 // and save, and the pin of a request tab. A placeholder that the active
 // environment defines is green, and one that it does not is the colour of an
 // error. Captured and not captured are of the tick and the cross which say
@@ -54,7 +55,8 @@ var colourKinds = []struct {
 	{colourREST, "REST", "#2e9e5b", func(c *settings.Colours) *string { return &c.REST }},
 	{colourGRPC, "gRPC", "#2f7fd1", func(c *settings.Colours) *string { return &c.GRPC }},
 	{colourWebSocket, "WebSocket", "#c8871e", func(c *settings.Colours) *string { return &c.WebSocket }},
-	{colourGraphQL, "GraphQL", "#e10098", func(c *settings.Colours) *string { return &c.GraphQL }},
+	{colourGraphQL, "GraphQL", "#f8357c", func(c *settings.Colours) *string { return &c.GraphQL }},
+	{colourMCP, "MCP", "#526598", func(c *settings.Colours) *string { return &c.MCP }},
 	{colourRemove, "Delete", "#e03131", func(c *settings.Colours) *string { return &c.Remove }},
 	{colourAction, "Action", "#0b4f6c", func(c *settings.Colours) *string { return &c.Action }},
 	{colourSend, "Send", primaryColour, func(c *settings.Colours) *string { return &c.Send }},

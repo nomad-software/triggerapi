@@ -200,3 +200,32 @@ func TestWebSocketGroupAndDraft(t *testing.T) {
 		}
 	})
 }
+
+// Ctrl+Return on a WebSocket request connects if it is not connected, and
+// sends the message once it is.
+func TestWebSocketCtrlReturn(t *testing.T) {
+	srv := wsEchoServer(t)
+	files := testFiles(t)
+
+	var w *Window
+	log := func() string { return mainthread.Wait2(func() string { return w.wsResponse.body.ToPlainText() }) }
+	ctrlReturn := func() { w.pageUI(w.stack.CurrentIndex()).send() }
+
+	mainthread.Wait(func() {
+		w = NewWindow(files.Files)
+		w.Show()
+		defer func(prev collection.Type) { testRequestType = prev }(testRequestType)
+		testRequestType = collection.TypeWebSocket
+		w.newRequest()
+		w.ws.url.SetText(srv.URL)
+		w.ws.message.SetPlainText("ping")
+		ctrlReturn()
+	})
+	waitFor(t, "the connection", func() bool { return mainthread.Wait2(w.ws.send.IsEnabled) })
+	if strings.Contains(log(), "ping") {
+		t.Errorf("the message was sent before it was asked for again: %s", log())
+	}
+
+	mainthread.Wait(ctrlReturn)
+	waitFor(t, "the echo", func() bool { return strings.Count(log(), "ping") == 2 })
+}

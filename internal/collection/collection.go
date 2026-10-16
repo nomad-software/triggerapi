@@ -3,6 +3,7 @@
 package collection
 
 import (
+	"cmp"
 	"encoding/json"
 	"net/http"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/graphql"
 	"github.com/nomad-software/triggerapi/internal/jsonfile"
+	"github.com/nomad-software/triggerapi/internal/mcp"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 	"github.com/nomad-software/triggerapi/internal/ws"
@@ -24,11 +26,12 @@ const (
 	TypeGRPC      Type = "grpc"
 	TypeWebSocket Type = "websocket"
 	TypeGraphQL   Type = "graphql"
+	TypeMCP       Type = "mcp"
 )
 
 // Request is a saved request. Only the field for its type is set: Request for
 // TypeREST, whose fields are stored alongside the name, GRPC for TypeGRPC,
-// WebSocket for TypeWebSocket and GraphQL for TypeGraphQL.
+// WebSocket for TypeWebSocket, GraphQL for TypeGraphQL and MCP for TypeMCP.
 type Request struct {
 	Name string `json:"name"`
 	Type Type   `json:"type"`
@@ -36,6 +39,7 @@ type Request struct {
 	GRPC      *rpc.Request     `json:"grpc,omitempty"`
 	WebSocket *ws.Request      `json:"websocket,omitempty"`
 	GraphQL   *graphql.Request `json:"graphql,omitempty"`
+	MCP       *mcp.Request     `json:"mcp,omitempty"`
 }
 
 // NewREST returns a REST request.
@@ -58,54 +62,48 @@ func NewGraphQL(name string, request graphql.Request) *Request {
 	return &Request{Name: name, Type: TypeGraphQL, GraphQL: &request}
 }
 
+// NewMCP returns an MCP request.
+func NewMCP(name string, request mcp.Request) *Request {
+	return &Request{Name: name, Type: TypeMCP, MCP: &request}
+}
+
 // New returns an empty request of a type, with a name. A REST request is a
 // GET, and a type that is not known is taken for REST, as it is on loading.
 func New(typ Type, name string) *Request {
-	switch typ {
-	case TypeGRPC:
-		return NewGRPC(name, rpc.Request{})
-	case TypeWebSocket:
-		return NewWebSocket(name, ws.Request{})
-	case TypeGraphQL:
-		return NewGraphQL(name, graphql.Request{})
+	r := &Request{Name: name, Type: typ}
+	r.normalise()
+	if r.Type == TypeREST {
+		r.Method = http.MethodGet
 	}
-	return NewREST(name, rest.Request{Method: http.MethodGet})
+	return r
 }
 
 // SetContent makes the request the same as another, but for its name: of the
 // type of the other, with what the other holds. The two then share it.
 func (r *Request) SetContent(from *Request) {
-	r.Type, r.Request, r.GRPC, r.WebSocket, r.GraphQL = from.Type, from.Request, from.GRPC, from.WebSocket, from.GraphQL
+	name := r.Name
+	*r = *from
+	r.Name = name
 }
 
-// normalise makes the request hold exactly the field for its type. Requests
-// saved before there were types are REST requests.
+// normalise makes the request hold exactly the field for its type, which is
+// empty if it had none. Requests saved before there were types, and those of
+// a type that is not known, are REST requests.
 func (r *Request) normalise() {
+	held := *r
+	r.Request, r.GRPC, r.WebSocket, r.GraphQL, r.MCP = nil, nil, nil, nil, nil
 	switch r.Type {
 	case TypeGRPC:
-		r.Request, r.WebSocket, r.GraphQL = nil, nil, nil
-		if r.GRPC == nil {
-			r.GRPC = &rpc.Request{}
-		}
-		return
+		r.GRPC = cmp.Or(held.GRPC, &rpc.Request{})
 	case TypeWebSocket:
-		r.Request, r.GRPC, r.GraphQL = nil, nil, nil
-		if r.WebSocket == nil {
-			r.WebSocket = &ws.Request{}
-		}
-		return
+		r.WebSocket = cmp.Or(held.WebSocket, &ws.Request{})
 	case TypeGraphQL:
-		r.Request, r.GRPC, r.WebSocket = nil, nil, nil
-		if r.GraphQL == nil {
-			r.GraphQL = &graphql.Request{}
-		}
-		return
-	}
-
-	r.Type = TypeREST
-	r.GRPC, r.WebSocket, r.GraphQL = nil, nil, nil
-	if r.Request == nil {
-		r.Request = &rest.Request{}
+		r.GraphQL = cmp.Or(held.GraphQL, &graphql.Request{})
+	case TypeMCP:
+		r.MCP = cmp.Or(held.MCP, &mcp.Request{})
+	default:
+		r.Type = TypeREST
+		r.Request = cmp.Or(held.Request, &rest.Request{})
 	}
 }
 

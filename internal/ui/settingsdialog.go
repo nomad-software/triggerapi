@@ -263,7 +263,7 @@ var colourSections = []struct {
 	kinds []colourKind
 }{
 	{"Sidebar", []colourKind{colourWorkspaces, colourEnvironments, colourRequests, colourSets}},
-	{"Request types", []colourKind{colourREST, colourGRPC, colourWebSocket, colourGraphQL}},
+	{"Request types", []colourKind{colourREST, colourGRPC, colourWebSocket, colourGraphQL, colourMCP}},
 	{"Buttons", []colourKind{colourSend, colourAction, colourRemove}},
 	{"Text", []colourKind{colourFound, colourNotFound, colourError, colourMatch}},
 	{"Capture", []colourKind{colourCaptured, colourNotCaptured}},

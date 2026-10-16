@@ -7,17 +7,21 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 )
 
-// methodCombo is a drop-down of gRPC methods grouped under the name of their
-// service. The list shows the short name of each method beneath a heading for
-// its service, and the closed drop-down shows the full name of the selected
-// method.
+// methodCombo is a drop-down of what can be called on a server, grouped under
+// headings: the methods of a gRPC server under their services, or the tools,
+// resources and prompts of an MCP server. Each is given by its full name, as
+// heading/name. The list shows the short name of each beneath its heading,
+// and the closed drop-down what closed makes of the full name of the one
+// selected, which is the full name itself unless it is set.
 type methodCombo struct {
 	*qt.QComboBox
 
 	model *qt.QStandardItemModel
-	// names holds the full name of the method on each row, as
+	// names holds the full name on each row, as heading/name, such as
 	// package.Service/Method. It is empty for the heading rows.
 	names []string
+	// closed returns what the closed drop-down shows for a full name.
+	closed func(full string) string
 }
 
 func newMethodCombo() *methodCombo {
@@ -34,7 +38,11 @@ func newMethodCombo() *methodCombo {
 	// when the closed drop-down is drawn.
 	c.OnInitStyleOption(func(super func(*qt.QStyleOptionComboBox), option *qt.QStyleOptionComboBox) {
 		super(option)
-		option.SetCurrentText(c.current())
+		if c.closed != nil {
+			option.SetCurrentText(c.closed(c.current()))
+		} else {
+			option.SetCurrentText(c.current())
+		}
 	})
 
 	return c

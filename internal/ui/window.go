@@ -15,6 +15,7 @@ import (
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/crypt"
+	"github.com/nomad-software/triggerapi/internal/mcp"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 	"github.com/nomad-software/triggerapi/internal/settings"
 )
@@ -26,6 +27,7 @@ const (
 	pageGRPC
 	pageWS
 	pageGraphQL
+	pageMCP
 	pageEditor
 )
 
@@ -55,7 +57,7 @@ func aboutText() string {
 	// in a bordered box of smaller text. Qt's rich text draws a border
 	// around a table but not around a paragraph.
 	return "<h3>TriggerAPI " + Version + "</h3>" +
-		"<p>A desktop client for making REST API, GraphQL and gRPC calls and talking to WebSocket servers.</p>" +
+		"<p>A desktop client for making REST API, GraphQL and gRPC calls, calling the tools of MCP servers and talking to WebSocket servers.</p>" +
 		"<p>Copyright © 2026 Gary Willoughby. All rights reserved.</p>" +
 		"<table style=\"margin-top: 24px; border: 1px solid #888888; border-collapse: collapse;\" cellpadding=\"10\" width=\"100%\">" +
 		"<tr><td style=\"font-size: small;\">" +
@@ -139,8 +141,8 @@ type Window struct {
 	// environment selects the workspace and the environment in use, above
 	// the tabs.
 	environment *environmentSelector
-	// stack shows the REST request UI, the gRPC request UI or the
-	// environment editor.
+	// stack shows the UI of a type of request (see uis) or the environment
+	// editor.
 	stack    *qt.QStackedWidget
 	editor   *envEditor
 	request  *requestPanel
@@ -156,13 +158,19 @@ type Window struct {
 	// graphql and graphqlResponse are the GraphQL request UI.
 	graphql         *graphqlPanel
 	graphqlResponse *responsePanel
+	// mcp and mcpResponse are the MCP request UI, and mcpClient the client
+	// of the server of mcpServer (see mcp.Request.Server), or nil.
+	mcp         *mcpPanel
+	mcpResponse *responsePanel
+	mcpClient   *mcp.Client
+	mcpServer   string
 	// uis are the UIs of the types of request, in the order of their
 	// pages. Whatever is the same for every type goes through them.
 	uis []*requestUI
 
 	// open is the saved request shown in the request UI for its type, which
-	// edits are written back to. It is nil when the REST request UI holds an
-	// unsaved request.
+	// edits are written back to. It is nil when the request UI of the type
+	// unsaved holds a request that is not saved.
 	open *collection.Request
 	// shown counts the requests that have been shown, so that results which
 	// arrive after another request has been shown can be told apart and
@@ -170,17 +178,12 @@ type Window struct {
 	shown int
 
 	// schemas are the service definitions of the gRPC servers that have been
-	// asked for them, by target.
-	schemas map[string]*rpc.Schema
-	// reflecting counts the times a service definition has been asked for,
-	// so that only the answer to the latest is used.
-	reflecting int
-	// graphSchemas are the schemas of the GraphQL servers that have been
-	// asked for them, by endpoint, in the schema definition language, and
-	// introspecting counts the times one has been asked for, as reflecting
-	// does.
-	graphSchemas  map[string]string
-	introspecting int
+	// asked for them, by target, graphSchemas the schemas of GraphQL ones,
+	// by endpoint, in the schema definition language, and mcpSchemas what
+	// MCP servers have, by mcp.Request.Server.
+	schemas      serverCache[*rpc.Schema]
+	graphSchemas serverCache[string]
+	mcpSchemas   serverCache[*mcp.Schema]
 
 	// cancel aborts the request in flight. It is nil when idle and must only
 	// be accessed from the main thread.
@@ -191,17 +194,16 @@ type Window struct {
 // must be called on the main thread after the QApplication has been created.
 func NewWindow(files Files) *Window {
 	w := &Window{
-		QMainWindow:  qt.NewQMainWindow2(),
-		client:       &http.Client{},
-		request:      newRequestPanel(),
-		grpc:         newGRPCPanel(),
-		ws:           newWSPanel(),
-		graphql:      newGraphQLPanel(),
-		editor:       newEnvEditor(),
-		tabs:         newRequestTabs(),
-		environment:  newEnvironmentSelector(),
-		schemas:      map[string]*rpc.Schema{},
-		graphSchemas: map[string]string{},
+		QMainWindow: qt.NewQMainWindow2(),
+		client:      &http.Client{},
+		request:     newRequestPanel(),
+		grpc:        newGRPCPanel(),
+		ws:          newWSPanel(),
+		graphql:     newGraphQLPanel(),
+		mcp:         newMCPPanel(),
+		editor:      newEnvEditor(),
+		tabs:        newRequestTabs(),
+		environment: newEnvironmentSelector(),
 	}
 
 	w.SetWindowTitle("TriggerAPI")
@@ -221,21 +223,28 @@ func NewWindow(files Files) *Window {
 	w.grpcResponse = newResponsePanel(w.config.ResponseFont)
 	w.wsResponse = newResponsePanel(w.config.ResponseFont)
 	w.graphqlResponse = newResponsePanel(w.config.ResponseFont)
+	w.mcpResponse = newResponsePanel(w.config.ResponseFont)
 	w.uis = []*requestUI{
 		{typ: collection.TypeREST, page: pageRequest, editor: w.request, response: w.response, send: w.send},
 		{typ: collection.TypeGRPC, page: pageGRPC, editor: w.grpc, response: w.grpcResponse, send: w.invoke,
 			// The methods offered are those of the server.
-			shown: func() { w.reflect(false) }},
+			shown:     func() { w.reflect(false) },
+			endpoints: &endpointSource{grpcEndpoints, w.grpc.endpoints, w.grpc.url.Text}},
 		{typ: collection.TypeWebSocket, page: pageWS, editor: w.ws, response: w.wsResponse, send: w.connectAndSendWS},
 		{typ: collection.TypeGraphQL, page: pageGraphQL, editor: w.graphql, response: w.graphqlResponse, send: w.sendGraphQL,
 			// The schema is that of the server, if it is on show.
 			shown: func() { w.graphql.loadSchema(false) }},
+		{typ: collection.TypeMCP, page: pageMCP, editor: w.mcp, response: w.mcpResponse, send: w.callMCP,
+			// What can be called is what the server has.
+			shown:     func() { w.discoverMCP(false) },
+			endpoints: &endpointSource{mcpEndpoints, w.mcp.endpoints, w.mcp.url.Text}},
 	}
 	// What to capture from a response is set beside the response, though
 	// it is kept by the request.
 	w.response.setCaptureTable(w.request.captures)
 	w.grpcResponse.setCaptureTable(w.grpc.captures)
 	w.graphqlResponse.setCaptureTable(w.graphql.captures)
+	w.mcpResponse.setCaptureTable(w.mcp.captures)
 	// A response is saved to a file named after its request.
 	for _, ui := range w.uis {
 		ui.response.requestName = func() string {
@@ -254,8 +263,10 @@ func NewWindow(files Files) *Window {
 			// The window is going away, so there is nowhere to show this.
 			fmt.Fprintln(os.Stderr, "triggerapi: settings could not be saved:", err)
 		}
-		// An open connection is closed with the window.
+		// An open connection is closed with the window, as is the client of
+		// an MCP server.
 		w.disconnectWS()
+		w.closeMCP()
 		super(event)
 	})
 
@@ -350,6 +361,9 @@ func NewWindow(files Files) *Window {
 	}
 
 	for _, ui := range w.uis {
+		if ui.endpoints != nil {
+			ui.endpoints.table.onCreate = func(endpoints []string) { w.createRequests(ui, endpoints) }
+		}
 		ui.editor.saveButton().OnClicked(w.saveRequest)
 		ui.editor.setCodeFont(w.config.ResponseFont)
 		// Every edit of a saved request is written back to it and saved.
@@ -370,7 +384,6 @@ func NewWindow(files Files) *Window {
 	w.grpc.onTarget = func() { w.reflect(false) }
 	w.grpc.reload.OnClicked(func() { w.reflect(true) })
 	w.grpc.example.OnClicked(w.useExample)
-	w.grpc.endpoints.onCreate = w.createRequests
 	w.grpc.invoke.OnClicked(w.invoke)
 
 	w.ws.connect.OnClicked(w.toggleWS)
@@ -378,6 +391,11 @@ func NewWindow(files Files) *Window {
 
 	w.graphql.send.OnClicked(w.sendGraphQL)
 	w.graphql.onSchema = w.loadGraphQLSchema
+
+	w.mcp.onTarget = func() { w.discoverMCP(false) }
+	w.mcp.reload.OnClicked(func() { w.discoverMCP(true) })
+	w.mcp.example.OnClicked(w.useMCPExample)
+	w.mcp.call.OnClicked(w.callMCP)
 
 	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+Return"), w.QObject).OnActivated(func() {
 		if ui := w.pageUI(w.stack.CurrentIndex()); ui != nil {

@@ -1,11 +1,11 @@
 # TriggerAPI
 
-A desktop client for making REST API, GraphQL and gRPC calls and talking to
-WebSocket servers. It is written
-in Go with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
+A desktop client for making REST API, GraphQL and gRPC calls, calling the
+tools of MCP servers and talking to WebSocket servers. It is written in Go
+with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
 bindings.
 
-![TriggerAPI showing saved requests under GraphQL, gRPC, REST, WebSocket and Mixed headings, the pinned tabs of a request set, a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
+![TriggerAPI showing saved requests under GraphQL, gRPC, MCP, REST, WebSocket and Mixed headings, the pinned tabs of a request set, a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
 
 ## Why TriggerAPI
 
@@ -21,14 +21,15 @@ bindings.
   TriggerAPI's and no service in the middle. See [Encryption](#encryption).
 - **Native.** It is a single compiled program with a Qt interface, not a web
   browser in a window.
-- **REST, GraphQL, gRPC and WebSocket together.** Every kind of request lives
-  in the same folders and uses the same environments, and REST, GraphQL and
-  gRPC requests capture values for each other.
-- **A whole gRPC server as requests, in two clicks.** TriggerAPI asks the
-  server what it has, lists every endpoint, and makes a saved request of each
-  one you tick, in a folder for each service. There are no protobuf files to
-  find and nothing to type. When the server gains endpoints, open one of
-  those requests and add the new ones to the same folders. See
+- **REST, GraphQL, gRPC, MCP and WebSocket together.** Every kind of request
+  lives in the same folders and uses the same environments, and REST,
+  GraphQL, gRPC and MCP requests capture values for each other.
+- **A whole gRPC or MCP server as requests, in two clicks.** TriggerAPI asks
+  the server what it has, lists every endpoint, and makes a saved request of
+  each one you tick, in a folder for each gRPC service, or for the tools,
+  resources and prompts of an MCP server. There are no protobuf files to find
+  and nothing to type. When the server gains endpoints, open one of those
+  requests and add the new ones to the same folders. See
   [Creating requests from a server](#creating-requests-from-a-server).
 - **Nothing left unfilled by accident.** A `{{placeholder}}` the environment
   does not define, or defines as nothing, is red wherever it is used, before
@@ -90,6 +91,22 @@ bindings.
   language, asked for through introspection with the request's headers and
   authorization when the tab is shown; Reload asks again.
 
+**MCP**
+
+- Call the tools, read the resources and get the prompts of a
+  [Model Context Protocol](https://modelcontextprotocol.io) server, over the
+  Streamable HTTP transport, with headers and basic or bearer authorization.
+  See [MCP](#mcp) for why local servers that only speak stdio need a bridge.
+- What the server has is loaded when a request is opened, and offered under
+  Tools, Resources and Prompts headings with what the server says of each.
+  Use Example Arguments fills in arguments from the schema of a tool, and a
+  Format button sets them out.
+- The result is shown as JSON, with the server's name and the protocol
+  version beneath. A tool that reports an error, or a JSON-RPC error, is
+  shown as a failure.
+- The Capabilities tab makes a saved request of each tool, resource and
+  prompt ticked, as the Service Definitions tab of a gRPC request does.
+
 **WebSocket**
 
 - Connect to a WebSocket server (`ws://` or `wss://`, which is assumed when
@@ -108,8 +125,11 @@ bindings.
 
 **Responses**
 
-- The status, time, size and protocol of a response are shown beneath it,
-  with failures in red, and its headers in a tab of their own.
+- How a request went is shown beneath its response: the status, any error,
+  and the time it took, with the size and protocol of an HTTP response, the
+  number of messages of a gRPC call, or the server and protocol version of an
+  MCP call. Failures are in red. The headers of the response, and the
+  trailers of a gRPC call, are in a tab of their own.
 - Capture values from a response into variables of the selected environment,
   such as a token from a login to use in later requests. The Capture tab of
   the response lists the variables to set, each with the path of its value in
@@ -119,8 +139,8 @@ bindings.
   each variable shows whether it was captured.
 - Right-click a value in a JSON response and choose Capture to add the
   variable for it, with its path filled in.
-- JSON bodies, messages and responses are syntax highlighted, and their
-  objects and arrays can be folded.
+- JSON bodies, messages, arguments and responses are syntax highlighted, and
+  their objects and arrays can be folded.
 - Find text in a response with Ctrl+F, or the button beside its tabs: every
   match is marked and counted, and Enter and Shift+Enter go from one to the
   next.
@@ -139,13 +159,14 @@ bindings.
   button: that of the workspace shows the workspaces, that of the environment
   opens and closes the editor of the environment in use (showing the
   environments in the sidebar unless it is showing the requests, and not
-  closing it while the environments are shown), and that of the set shows the sets.
+  closing it while the environments are shown), and that of the set shows
+  the sets.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically, and
   requests can be searched by name, showing only the folders that hold a
-  request found. The top level folders are listed under GraphQL, gRPC, REST,
-  WebSocket and Mixed headings by the requests they hold; this is worked out as they are shown
-  and is not saved.
+  request found. The top level folders are listed under GraphQL, gRPC, MCP,
+  REST, WebSocket and Mixed headings by the requests they hold; this is
+  worked out as they are shown and is not saved.
 - Open a request without the mouse: Ctrl+P goes to the search, Return goes
   on to what was found, the arrow keys move through the folders and requests
   (left closes a folder and right opens one), and Return opens the request.
@@ -156,9 +177,9 @@ bindings.
   the tab (a single click does nothing, so a tab is not unpinned by accident).
   Drag the tabs into another order; the tab that is not pinned is pinned by
   being dragged. The last tab, New, drawn faded, opens a new REST, GraphQL,
-  gRPC or WebSocket request without saving it; Save, shown beside Send, Invoke or
-  Connect only while the request is not saved, adds it to the sidebar, as does
-  the add button of the sidebar.
+  gRPC, MCP or WebSocket request without saving it; Save, shown beside Send,
+  Invoke, Call or Connect only while the request is not saved, adds it to the
+  sidebar, as does the add button of the sidebar.
 - Save the pinned tabs as named sets, on the Sets tab beneath the search of
   the Requests tab. A set holds the pinned tabs, which can be requests from
   any folders; choosing another set replaces the tabs with its own, and
@@ -198,18 +219,24 @@ bindings.
 
 **Settings**
 
-- Choose the font used for request and response bodies and the folder the
-  workspaces are kept in.
-- Set how long a request can take before it is given up on, and whether a
-  REST request follows redirects or shows the response that redirects.
-- Choose the colours of the interface, which are listed in sections: the
-  icons of the sidebar and of each type of request, the buttons, the sets,
-  placeholders, errors, the capture marks, the matches of a search and JSON
-  highlighting.
-- The size and layout of the window are remembered. Folders of requests all
-  start closed; choosing a request's tab opens the folders it is in.
-- Escape closes the environment editor, the search of a response, the curl
-  command and the URL preview.
+File > Settings has three tabs:
+
+- Workspaces: the folder the workspaces are kept in, the SSH keys they are
+  encrypted with (see [Encryption](#encryption)), and exporting and
+  importing them (see [Sharing workspaces](#sharing-workspaces)).
+- Requests: how long a request of any kind can take before it is given up
+  on, and whether a REST or GraphQL request follows redirects or shows the
+  response that redirects.
+- User interface: the font of code (request and response bodies, messages,
+  queries, arguments and the curl command), and the colours of the
+  interface, listed in sections: the icons of the sidebar and of each type of
+  request, the buttons, the sets, placeholders, errors, the capture marks,
+  the matches of a search and JSON highlighting, which GraphQL is coloured
+  with too.
+
+The size and layout of the window are remembered between runs. Folders of
+requests all start closed; choosing a request's tab opens the folders it is
+in.
 
 ## Functions
 
@@ -243,7 +270,7 @@ where the variable is used, as in `id-{{request_id}}`.
 
 | Keys | Does |
 |---|---|
-| Ctrl+Return | Send the REST or GraphQL request or invoke the gRPC method. While one is in flight, cancel it. For a WebSocket request, send the message, connecting first if need be. |
+| Ctrl+Return | Send the REST or GraphQL request, invoke the gRPC method or call the MCP tool, resource or prompt. While one is in flight, cancel it. For a WebSocket request, send the message, connecting first if need be. |
 | Ctrl+W, Ctrl+E, Ctrl+R | Go to the Workspaces, Environments or Requests tab of the sidebar, with the keyboard in its list (Ctrl+R shows the requests, not the sets). |
 | Ctrl+S | Go to the request sets in the sidebar, with the keyboard in their list. |
 | Ctrl+P | Go to the search of the Requests tab, to find a request and open it. |
@@ -369,7 +396,7 @@ go build -ldflags "-s -w" -o triggerapi .
 ```
 
 The `-s -w` flags build without the symbol table and debug information, which
-roughly halves the size of the binary, to about 53 MB.
+roughly halves the size of the binary, to about 64 MB.
 
 The first build compiles the whole Qt binding and takes around five minutes,
 printing a lot of compiler warnings from the Qt headers which can be ignored.
@@ -452,6 +479,41 @@ Which endpoints there are requests for is worked out from the names of the
 service folders and the method each request calls, so the outer folder and
 the requests can be renamed freely.
 
+## MCP
+
+An MCP request talks to a server over the Streamable HTTP transport: enter
+the address of its endpoint, such as `http://localhost:8000/mcp`. The tools,
+resources and prompts it has are loaded into the list beside it; Reload asks
+again.
+
+Since protocol version 2026-07-28 MCP is stateless and sessions are
+deprecated: TriggerAPI asks the server what it has with `server/discover`
+and sends its protocol version with every request. A server from before then
+is still supported: it is given the older `initialize` handshake, and the
+session it hands out is kept for the calls that follow, until a request for
+another server is opened or TriggerAPI is closed, and begun again if the
+server ends it. The protocol version agreed is shown beneath each response.
+
+The stdio transport, in which the client starts the server as a program, is
+not supported on purpose: TriggerAPI never runs anything, so a request
+someone shares with you cannot run a program on your machine. To use a server
+that only speaks stdio, run it behind a bridge yourself, in a terminal, and
+point TriggerAPI at the address of the bridge. For example, with
+[supergateway](https://github.com/supercorp-ai/supergateway):
+
+```sh
+npx -y supergateway --stdio "npx -y @modelcontextprotocol/server-everything" \
+  --outputTransport streamableHttp --port 8000
+```
+
+then use `http://localhost:8000/mcp`. Many servers can also serve Streamable
+HTTP themselves; look for a `--transport` or `--port` option. The older
+HTTP+SSE transport is not supported.
+
+The Capabilities tab works as the Service Definitions tab of a gRPC request
+(see [Creating requests from a server](#creating-requests-from-a-server)),
+with a folder for each of Tools, Resources and Prompts.
+
 ## Running
 
 ```sh
@@ -477,8 +539,9 @@ The settings are kept where the system keeps the configuration of programs:
 | Linux | `~/.config/triggerapi/settings.json` (or under `$XDG_CONFIG_HOME`) |
 | macOS | `~/Library/Application Support/triggerapi/settings.json` |
 
-They hold the window size and layout, the code font, colours, the
-workspaces folder, the encryption keys and the workspace in use.
+They hold the window size and layout, the code font, colours, the time limit
+of requests and whether redirects are followed, the workspaces folder, the
+paths of the encryption keys and the workspace in use.
 
 The workspaces are kept, by default, where the system keeps the data of
 programs:

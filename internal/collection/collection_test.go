@@ -1,6 +1,7 @@
 package collection
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/graphql"
+	"github.com/nomad-software/triggerapi/internal/mcp"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 	"github.com/nomad-software/triggerapi/internal/ws"
@@ -627,5 +629,74 @@ func TestGraphQLRequest(t *testing.T) {
 	}
 	if loaded, err = Load(path); err != nil || loaded.Folders[0].Requests[0].GraphQL == nil {
 		t.Errorf("empty graphql request: %+v, %v", loaded.Folders[0].Requests[0], err)
+	}
+}
+
+func TestMCPRequest(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "requests.json")
+	s := &Store{}
+	s.AddFolder("Tools").Add(NewMCP("Echo", mcp.Request{URL: "{{host}}/mcp", Kind: mcp.KindTool, Name: "echo", Arguments: `{"text": "a"}`, Captures: []capture.Rule{{Variable: "said", Path: "structuredContent.said"}}}))
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	// No transport is written for Streamable HTTP, which is all there is.
+	if !strings.Contains(string(data), `"type": "mcp"`) || !strings.Contains(string(data), `"mcp": {`) || strings.Contains(string(data), "transport") {
+		t.Errorf("written as %s", data)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := loaded.Folders[0].Requests[0]
+	if r.Type != TypeMCP || r.MCP == nil || r.Request != nil || r.GraphQL != nil || r.MCP.Name != "echo" || r.MCP.Kind != mcp.KindTool || len(r.MCP.Captures) != 1 {
+		t.Errorf("loaded %+v %+v", r, r.MCP)
+	}
+	if c := r.Clone(); c.MCP == r.MCP || c.MCP.Arguments != r.MCP.Arguments {
+		t.Errorf("clone %+v", c.MCP)
+	}
+	if n := New(TypeMCP, "n"); n.Type != TypeMCP || n.MCP == nil || n.Request != nil {
+		t.Errorf("new %+v", n)
+	}
+	if n := New("unknown", "n"); n.Type != TypeREST || n.Request == nil || n.Method != http.MethodGet {
+		t.Errorf("new of an unknown type %+v", n)
+	}
+	other := New(TypeREST, "other")
+	other.SetContent(r)
+	if other.Name != "other" || other.Type != TypeMCP || other.MCP != r.MCP || other.Request != nil {
+		t.Errorf("content %+v", other)
+	}
+
+	// One with nothing of its own is given an empty request.
+	if err := os.WriteFile(path, []byte(`{"folders":[{"name":"a","requests":[{"name":"m","type":"mcp"}]}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if loaded, err = Load(path); err != nil || loaded.Folders[0].Requests[0].MCP == nil {
+		t.Errorf("empty mcp request: %+v, %v", loaded.Folders[0].Requests[0], err)
+	}
+}
+
+func TestFindAndRemoveSets(t *testing.T) {
+	s := &Store{}
+	r := s.AddFolder("A").Add(NewREST("get", rest.Request{Method: http.MethodGet}))
+	first := s.AddSet("Work", []*Request{r})
+	second := s.AddSet("Work", nil)
+	other := s.AddSet("Play", nil)
+
+	// The first of a name is found.
+	if s.FindSet("Work") != first || s.FindSet("Play") != other || s.FindSet("work") != nil || s.FindSet("None") != nil {
+		t.Error("the wrong sets were found")
+	}
+
+	// Removing one leaves the others, and the requests it held.
+	s.RemoveSet(first)
+	if !slices.Equal(s.Sets, []*Set{second, other}) || s.FindSet("Work") != second || len(s.Folders[0].Requests) != 1 {
+		t.Errorf("after removing: %+v", s.Sets)
+	}
+	// Removing one that is not there changes nothing.
+	s.RemoveSet(first)
+	if len(s.Sets) != 2 {
+		t.Errorf("after removing again: %+v", s.Sets)
 	}
 }

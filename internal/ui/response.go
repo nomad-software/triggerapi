@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/graphql"
+	"github.com/nomad-software/triggerapi/internal/mcp"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 )
@@ -536,6 +538,41 @@ func (p *responsePanel) showRPC(res *rpc.Response) {
 		field{fieldError, res.Status, true},
 		field{label: "Time", value: formatDuration(res.Duration)},
 		field{label: "Messages", value: strconv.Itoa(len(res.Messages))},
+		field{label: "Protocol", value: res.Protocol},
+	)
+}
+
+// showMCP shows the result of a call to an MCP server as JSON, or the error
+// the server answered with. Values are captured from the result. The bar
+// beneath says how it went, as a failure if the server answered with an
+// error or the tool reported one.
+func (p *responsePanel) showMCP(res *mcp.Response) {
+	status, problem, failed := "OK", "", false
+	shown := res.Result
+	if res.Error != nil {
+		status = fmt.Sprintf("%d %s", res.Error.Code, mcp.CodeName(res.Error.Code))
+		problem, failed = res.Error.Message, true
+		shown, _ = json.Marshal(res.Error)
+	} else if message, toolFailed := res.ToolError(); toolFailed {
+		status, problem, failed = "Tool error", message, true
+	}
+
+	var text bytes.Buffer
+	if json.Indent(&text, shown, "", "  ") != nil {
+		text.Reset()
+		text.Write(shown)
+	}
+	p.setBody(text.String(), true)
+	if res.Error == nil {
+		p.captureDoc = p.body.ToPlainText()
+	}
+	p.setContent([]byte(p.body.ToPlainText()), "response.json")
+	p.setHeaders(headerRows(res.Headers, ""))
+	p.setFields(
+		field{fieldCode, status, failed},
+		field{fieldError, problem, true},
+		field{label: "Time", value: formatDuration(res.Duration)},
+		field{label: "Server", value: res.Server},
 		field{label: "Protocol", value: res.Protocol},
 	)
 }

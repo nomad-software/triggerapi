@@ -261,3 +261,24 @@ func TestEnvironmentClone(t *testing.T) {
 		t.Error("the clone shares its variables with the original")
 	}
 }
+
+func TestFindPlaceholders(t *testing.T) {
+	// The offsets are of bytes. A placeholder holds anything but braces,
+	// with spaces around it allowed, even nothing.
+	for text, want := range map[string][][]int{
+		"":                   nil,
+		"no placeholders":    nil,
+		"{{host}}/users":     {{0, 8}},
+		"a{{x}}b{{y_2}}":     {{1, 6}, {7, 14}},
+		"{{ spaced }}":       {{0, 12}},
+		"{{unclosed} {{ok}}": {{12, 18}},
+		"{ {x} }":            nil,
+		"{{}}":               {{0, 4}},
+		"{{café}}":           {{0, 9}},
+		"{{{triple}}}":       {{1, 11}},
+	} {
+		if got := FindPlaceholders(text); !reflect.DeepEqual(got, want) {
+			t.Errorf("FindPlaceholders(%q) = %v, want %v", text, got, want)
+		}
+	}
+}

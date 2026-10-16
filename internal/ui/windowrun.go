@@ -17,8 +17,9 @@ import (
 	"github.com/nomad-software/triggerapi/internal/rpc"
 )
 
-// How the window sends a request and shows what comes back, and loads the
-// service definitions of gRPC servers and the schemas of GraphQL ones.
+// How the window sends a request and shows what comes back, loads the
+// service definitions of gRPC servers and the schemas of GraphQL ones, and
+// makes requests of the endpoints of a server.
 
 // options returns how requests are sent, as the settings say.
 func (w *Window) options() rest.Options {
@@ -47,7 +48,8 @@ type outcome struct {
 	show func()
 }
 
-// run does the work of the Send or Invoke button in the background, or
+// run does the work of a button which sends a request (Send, Invoke, Call or
+// Execute) in the background, or
 // cancels the work already in flight. The work returns what to do with its
 // result, which is done on the main thread.
 func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(context.Context) (outcome, error)) {
@@ -184,44 +186,24 @@ func (w *Window) sendGraphQL() {
 // and shows it in its Schema tab. One loaded before is used again unless
 // force is set.
 func (w *Window) loadGraphQLSchema(force bool) {
-	w.introspecting++
-	introspecting := w.introspecting
-
+	w.graphql.setSchema("")
 	req := w.graphql.request().Expand(w.expand)
 	target := strings.TrimSpace(req.URL)
 	if target == "" {
 		// There is no server to ask yet.
-		w.graphql.setSchema("")
+		w.graphSchemas.drop()
 		return
 	}
-	if sdl, ok := w.graphSchemas[target]; ok && !force {
+
+	w.graphSchemas.load(target, force, func(ctx context.Context) (string, error) {
+		return graphql.Introspect(ctx, w.client, req)
+	}, func(sdl string, err error) {
+		if err != nil {
+			w.graphql.setSchemaError(err)
+			return
+		}
 		w.graphql.setSchema(sdl)
-		return
-	}
-
-	w.graphql.setSchema("")
-
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), reflectTimeout)
-		defer cancel()
-
-		sdl, err := graphql.Introspect(ctx, w.client, req)
-
-		mainthread.Start(func() {
-			if err == nil {
-				w.graphSchemas[target] = sdl
-			}
-			// A later request for a schema has replaced this one.
-			if introspecting != w.introspecting {
-				return
-			}
-			if err != nil {
-				w.graphql.setSchemaError(err)
-				return
-			}
-			w.graphql.setSchema(sdl)
-		})
-	}()
+	})
 }
 
 // invoke starts the gRPC request, or cancels the request in flight.
@@ -232,7 +214,7 @@ func (w *Window) invoke() {
 	// The service definition is loaded by the call if it has not been yet.
 	var schema *rpc.Schema
 	if target, err := req.Target(); err == nil {
-		schema = w.schemas[target]
+		schema, _ = w.schemas.get(target)
 	}
 
 	w.run(w.grpc.invoke, w.grpcResponse, func(ctx context.Context) (outcome, error) {
@@ -260,40 +242,47 @@ func (w *Window) invoke() {
 }
 
 // endpointCollection returns the folder of requests made from endpoints that
-// the gRPC request on show is in, or nil if it is in none. That is the
-// folder which holds the folder the request is in, when that one is named
-// after a service of the server. What the outer folder is called makes no
-// difference.
-func (w *Window) endpointCollection() *collection.Folder {
-	if w.open == nil || w.open.Type != collection.TypeGRPC {
+// the request on show is in, if it is of the type of a request UI which has
+// endpoints, or nil if it is in none. That is the folder which holds the
+// folder the request is in, when that one is named after a heading of the
+// endpoints of the server, such as a service of a gRPC one. What the outer
+// folder is called makes no difference.
+func (w *Window) endpointCollection(ui *requestUI) *collection.Folder {
+	if w.open == nil || w.open.Type != ui.typ || ui.endpoints == nil {
 		return nil
 	}
-	service := w.requests.store.FolderOf(w.open)
-	if service == nil || !w.grpc.endpoints.hasService(service.Name) {
+	heading := w.requests.store.FolderOf(w.open)
+	if heading == nil || !ui.endpoints.table.hasService(heading.Name) {
 		return nil
 	}
-	outer, _ := w.requests.store.ParentOf(service)
+	outer, _ := w.requests.store.ParentOf(heading)
 	return outer
 }
 
 // syncEndpoints has the endpoints which the collection of the request on
-// show has requests for ticked in the Service Definitions tab.
+// show has requests for ticked in the table of endpoints of its type.
 func (w *Window) syncEndpoints() {
-	if outer := w.endpointCollection(); outer != nil {
-		w.grpc.endpoints.setExisting(endpointsOf(outer), true)
-		return
+	for _, ui := range w.uis {
+		if ui.endpoints == nil {
+			continue
+		}
+		if outer := w.endpointCollection(ui); outer != nil {
+			ui.endpoints.table.setExisting(ui.endpoints.kind.existing(outer), true)
+		} else {
+			ui.endpoints.table.setExisting(nil, false)
+		}
 	}
-	w.grpc.endpoints.setExisting(nil, false)
 }
 
-// createRequests makes a gRPC request for each of the methods, for the
-// server of the request on show, and shows them in the sidebar. They are
-// added to the collection that request is in, and to no other. If it is in
-// none they are a new folder at the top level, named after the server.
-func (w *Window) createRequests(methods []string) {
-	url := w.grpc.url.Text()
-	if outer := w.endpointCollection(); outer != nil {
-		addEndpoints(outer, url, methods)
+// createRequests makes a request of the type of a request UI for each of the
+// endpoints, for the server of the request on show, and shows them in the
+// sidebar. They are added to the collection that request is in, and to no
+// other. If it is in none they are a new folder at the top level, named
+// after the server.
+func (w *Window) createRequests(ui *requestUI, endpoints []string) {
+	url := ui.endpoints.url()
+	if outer := w.endpointCollection(ui); outer != nil {
+		ui.endpoints.kind.add(outer, url, endpoints)
 		w.requests.extended(w.open)
 		w.sidebar.SetCurrentIndex(tabRequests)
 		return
@@ -304,7 +293,7 @@ func (w *Window) createRequests(methods []string) {
 		name = "New Folder"
 	}
 
-	w.requests.adopt(endpointFolder(name, url, methods))
+	w.requests.adopt(ui.endpoints.kind.folder(name, url, endpoints))
 	w.sidebar.SetCurrentIndex(tabRequests)
 }
 
@@ -312,47 +301,25 @@ func (w *Window) createRequests(methods []string) {
 // for, to offer its methods. One loaded before is used again unless force is
 // set.
 func (w *Window) reflect(force bool) {
-	w.reflecting++
-	reflecting := w.reflecting
-
+	w.grpc.status.set("")
 	req := w.grpc.request().Expand(w.expand)
 	target, err := req.Target()
 	if err != nil {
 		// There is no server to ask yet.
-		w.grpc.status.set("")
+		w.schemas.drop()
 		return
 	}
 
-	if schema, ok := w.schemas[target]; ok && !force {
+	w.schemas.load(target, force, func(ctx context.Context) (*rpc.Schema, error) {
+		return rpc.Reflect(ctx, req)
+	}, func(schema *rpc.Schema, err error) {
+		if err != nil {
+			w.grpc.setSchemaError(err)
+			return
+		}
 		w.grpc.setSchema(schema)
 		w.syncEndpoints()
-		return
-	}
-
-	w.grpc.status.set("")
-
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), reflectTimeout)
-		defer cancel()
-
-		schema, err := rpc.Reflect(ctx, req)
-
-		mainthread.Start(func() {
-			if err == nil {
-				w.schemas[target] = schema
-			}
-			// A later request for a definition has replaced this one.
-			if reflecting != w.reflecting {
-				return
-			}
-			if err != nil {
-				w.grpc.setSchemaError(err)
-				return
-			}
-			w.grpc.setSchema(schema)
-			w.syncEndpoints()
-		})
-	}()
+	})
 }
 
 // useExample replaces the message of the gRPC request with an example for
@@ -361,7 +328,7 @@ func (w *Window) useExample() {
 	req := w.grpc.request().Expand(w.expand)
 
 	target, _ := req.Target()
-	schema, ok := w.schemas[target]
+	schema, ok := w.schemas.get(target)
 	if !ok {
 		w.grpc.status.set("An example needs the service definition, which has not been loaded. Enter the server address and press Reload.")
 		return
