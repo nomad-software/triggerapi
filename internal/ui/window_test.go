@@ -102,13 +102,40 @@ func TestMenuBar(t *testing.T) {
 	}
 }
 
-func TestAboutText(t *testing.T) {
-	text := mainthread.Wait2(aboutText)
-	for _, want := range []string{"TriggerAPI v0.0.1", "Copyright © 2026 Gary Willoughby", "Qt version 6.", "LGPLv3", "https://www.gnu.org/licenses/lgpl-3.0.html", "The Qt Company Ltd"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("about text does not mention %q", want)
+func TestAboutBox(t *testing.T) {
+	for _, c := range []struct {
+		text  string
+		wants []string
+	}{
+		{mainthread.Wait2(aboutText), []string{"<h2>TriggerAPI</h2>", "Copyright © 2026 Gary Willoughby", "MCP"}},
+		// The notice the LGPL asks for, and the libraries it is built with.
+		{mainthread.Wait2(licenceText), []string{"Qt version 6.", "LGPLv3", "https://www.gnu.org/licenses/lgpl-3.0.html", "The Qt Company Ltd", "miqt", "MCP Go SDK", "age"}},
+	} {
+		for _, want := range c.wants {
+			if !strings.Contains(c.text, want) {
+				t.Errorf("the about box does not mention %q", want)
+			}
+		}
+		// Nothing is given a colour of its own, which is left to the theme.
+		if strings.Contains(c.text, "border") || strings.Contains(c.text, "#") {
+			t.Errorf("the about box sets colours: %s", c.text)
 		}
 	}
+
+	mainthread.Wait(func() {
+		d := newAboutDialog(nil)
+		defer d.DeleteLater()
+		d.Show()
+		if d.Width() < aboutWidth {
+			t.Errorf("the about box is %d wide", d.Width())
+		}
+		// The notices are in a frame of the style, not one drawn by a style
+		// sheet.
+		if d.notices.FrameShape() != qt.QFrame__StyledPanel || d.notices.StyleSheet() != "" || d.StyleSheet() != "" {
+			t.Error("the notices are not in a frame of the style")
+		}
+		d.Close()
+	})
 }
 
 func TestRequestTypeDialog(t *testing.T) {

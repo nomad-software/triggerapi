@@ -47,36 +47,6 @@ var askRequestType = func(parent *qt.QWidget) (collection.Type, bool) {
 	return newRequestTypeDialog(parent).ask()
 }
 
-// Version is the version of the program, shown in the about box.
-const Version = "v0.0.1"
-
-// aboutText returns the contents of the about box, which carries the notice
-// the LGPL asks of programs that use Qt.
-func aboutText() string {
-	// The licence notices are set apart from the description of the program
-	// in a bordered box of smaller text. Qt's rich text draws a border
-	// around a table but not around a paragraph.
-	return "<h3>TriggerAPI " + Version + "</h3>" +
-		"<p>A desktop client for making REST API, GraphQL and gRPC calls, calling the tools of MCP servers and talking to WebSocket servers.</p>" +
-		"<p>Copyright © 2026 Gary Willoughby. All rights reserved.</p>" +
-		"<table style=\"margin-top: 24px; border: 1px solid #888888; border-collapse: collapse;\" cellpadding=\"10\" width=\"100%\">" +
-		"<tr><td style=\"font-size: small;\">" +
-		"<p><b>Third party licences</b></p>" +
-		"<p>This program uses Qt version " + qt.QLibraryInfo_Version().ToString() + ".</p>" +
-		"<p>Qt is a C++ toolkit for cross-platform application development, used here under the " +
-		"terms of the <a href=\"https://www.gnu.org/licenses/lgpl-3.0.html\">GNU Lesser General " +
-		"Public License version 3</a> (LGPLv3). Qt is dynamically linked, so it can be replaced " +
-		"with a different or modified build of the library.</p>" +
-		"<p>Qt and its source code are available from <a href=\"https://www.qt.io\">www.qt.io</a>. " +
-		"See <a href=\"https://www.qt.io/licensing\">www.qt.io/licensing</a> for an overview of Qt " +
-		"licensing.</p>" +
-		"<p>Copyright (C) The Qt Company Ltd. and other contributors. Qt and the Qt logo are " +
-		"trademarks of The Qt Company Ltd.</p>" +
-		"<p>The Go bindings for Qt are provided by <a href=\"https://github.com/mappu/miqt\">miqt</a>, " +
-		"used under the MIT licence.</p>" +
-		"</td></tr></table>"
-}
-
 // Files are the places the program's data is kept in.
 type Files struct {
 	// Settings is the path of the JSON file of the settings.
@@ -540,9 +510,7 @@ func (w *Window) newMenuBar() {
 	w.about = help.AddActionWithText("&About")
 	w.about.SetShortcut(qt.NewQKeySequence2("Ctrl+I"))
 	w.about.SetMenuRole(qt.QAction__AboutRole)
-	w.about.OnTriggered(func() {
-		qt.QMessageBox_About(w.QWidget, "About TriggerAPI", aboutText())
-	})
+	w.about.OnTriggered(func() { showAbout(w.QWidget) })
 }
 
 // saveRequest saves the request being composed in the tab that holds no

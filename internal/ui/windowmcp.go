@@ -22,7 +22,7 @@ func (w *Window) mcpClientFor(r mcp.Request) *mcp.Client {
 		return w.mcpClient
 	}
 	w.closeMCP()
-	w.mcpClient, w.mcpServer = mcp.NewClient(w.client, r, Version), server
+	w.mcpClient, w.mcpServer = mcp.NewClient(w.client, r), server
 	return w.mcpClient
 }
 

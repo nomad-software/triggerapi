@@ -32,8 +32,6 @@ import (
 type Client struct {
 	client  *http.Client
 	request Request
-	// version is that of the program, which the server is told.
-	version string
 
 	mu   sync.Mutex
 	conn *sdk.ClientSession
@@ -43,8 +41,8 @@ type Client struct {
 // placeholders replaced. It does not connect until it is used. The HTTP
 // requests are made with client, with the headers and authorization of the
 // request.
-func NewClient(client *http.Client, r Request, version string) *Client {
-	return &Client{client: client, request: r, version: version}
+func NewClient(client *http.Client, r Request) *Client {
+	return &Client{client: client, request: r}
 }
 
 // connected returns the connection to the server, connecting first if
@@ -61,7 +59,8 @@ func (c *Client) connected(ctx context.Context) (*sdk.ClientSession, error) {
 		return nil, err
 	}
 
-	client := sdk.NewClient(&sdk.Implementation{Name: "TriggerAPI", Version: c.version}, nil)
+	// The server is told the name of the program, and no version.
+	client := sdk.NewClient(&sdk.Implementation{Name: "TriggerAPI"}, nil)
 	httpClient := *c.client
 	httpClient.Transport = &headers{base: c.client.Transport, request: c.request}
 	transport := &sdk.StreamableClientTransport{

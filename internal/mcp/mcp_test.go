@@ -15,7 +15,7 @@ import (
 
 func testClient(t *testing.T, r Request) *Client {
 	t.Helper()
-	c := NewClient(&http.Client{}, r, "v0")
+	c := NewClient(&http.Client{}, r)
 	t.Cleanup(func() { c.Close() })
 	return c
 }
