@@ -20,7 +20,8 @@ bindings.
   encrypting it for the other person's public key. There is no key of
   TriggerAPI's and no service in the middle. See [Encryption](#encryption).
 - **Native.** It is a single compiled program with a Qt interface, not a web
-  browser in a window.
+  browser in a window, so it starts quickly and needs nothing else installed
+  but Qt.
 - **REST, GraphQL, gRPC, MCP and WebSocket together.** Every kind of request
   lives in the same folders and uses the same environments, and REST,
   GraphQL, gRPC and MCP requests capture values for each other.
@@ -32,8 +33,19 @@ bindings.
   requests and add the new ones to the same folders. See
   [Creating requests from a server](#creating-requests-from-a-server).
 - **Nothing left unfilled by accident.** A `{{placeholder}}` the environment
-  does not define, or defines as nothing, is red wherever it is used, before
-  the request is sent.
+  does not define, or defines as nothing, is red wherever it is used, in the
+  cells of tables and the password of basic authorization too, before the
+  request is sent.
+- **Safe to share.** No request can make TriggerAPI start a program of its
+  choosing. MCP servers are reached over HTTP only, never started as
+  programs, so a workspace someone gives you does nothing until you send its
+  requests yourself. See [MCP](#mcp).
+- **Up to date with MCP.** It speaks the stateless protocol of MCP 2026-07-28,
+  and still works with servers from before it, which use sessions.
+- **The small things.** Right-click a value in a response to capture it into
+  a variable. Keep sets of pinned tabs for each piece of work. JSON and
+  GraphQL are coloured and foldable everywhere they are shown, and requests
+  can be found and opened without touching the mouse.
 - **Easy to move to.** Postman collections and environments, and OpenAPI and
   Swagger documents, are imported as folders of requests.
 - **Free software.** It is licensed under the GPL, so it can be used, studied,
