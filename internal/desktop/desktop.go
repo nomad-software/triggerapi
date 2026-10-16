@@ -50,8 +50,12 @@ func Dir() (string, error) {
 
 // Entry returns the desktop entry for a program started by the file at exec.
 // The class is what the program's windows are known by under X11, the name
-// of the program file, so that its windows are matched to the entry.
-func Entry(exec, class string) string {
+// of the program file, so that its windows are matched to the entry. The
+// icon is the path of its image file: a path and not the name of an icon of
+// the theme, which a desktop may not find in a folder it has a stale cache
+// of (as GNOME on Ubuntu 22.04 does), leaving the windows matched to the
+// entry with no icon at all.
+func Entry(exec, class, icon string) string {
 	var b strings.Builder
 	b.WriteString("[Desktop Entry]\n")
 	b.WriteString("Type=Application\n")
@@ -59,7 +63,7 @@ func Entry(exec, class string) string {
 	b.WriteString("Comment=Make REST API, gRPC and WebSocket requests\n")
 	b.WriteString("Exec=" + escape(quote(exec)) + "\n")
 	b.WriteString("TryExec=" + escape(exec) + "\n")
-	b.WriteString("Icon=" + Name + "\n")
+	b.WriteString("Icon=" + escape(icon) + "\n")
 	b.WriteString("Categories=Development;Network;\n")
 	b.WriteString("Terminal=false\n")
 	b.WriteString("StartupWMClass=" + escape(class) + "\n")
@@ -94,7 +98,7 @@ func Write(data, exec, class string, icon []byte) error {
 	image := filepath.Join(data, "icons", "hicolor", "256x256", "apps", Name+".png")
 	return errors.Join(
 		writeFile(image, icon),
-		writeFile(entry, []byte(Entry(exec, class))),
+		writeFile(entry, []byte(Entry(exec, class, image))),
 	)
 }
 

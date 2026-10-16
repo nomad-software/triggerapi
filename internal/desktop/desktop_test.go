@@ -9,14 +9,14 @@ import (
 )
 
 func TestEntry(t *testing.T) {
-	entry := Entry("/home/me/bin/triggerapi", "triggerapi")
+	entry := Entry("/home/me/bin/triggerapi", "triggerapi", "/home/me/.local/share/icons/hicolor/256x256/apps/triggerapi.png")
 	for _, line := range []string{
 		"[Desktop Entry]",
 		"Type=Application",
 		"Name=TriggerAPI",
 		"Exec=/home/me/bin/triggerapi",
 		"TryExec=/home/me/bin/triggerapi",
-		"Icon=triggerapi",
+		"Icon=/home/me/.local/share/icons/hicolor/256x256/apps/triggerapi.png",
 		"StartupWMClass=triggerapi",
 	} {
 		if !strings.Contains(entry, line+"\n") {
@@ -37,7 +37,7 @@ func TestExecQuoting(t *testing.T) {
 		"/tmp/100%/x":                          "/tmp/100%%/x",
 		`/tmp/back\slash`:                      `"/tmp/back\\\\slash"`,
 	} {
-		entry := Entry(path, "x")
+		entry := Entry(path, "x", "/x.png")
 		if !strings.Contains(entry, "\nExec="+want+"\n") {
 			t.Errorf("Exec for %q: want %q in\n%s", path, want, entry)
 		}

@@ -28,14 +28,16 @@ func TestInstallDesktopEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	self, _ := os.Executable()
-	for _, line := range []string{`Exec="/home/me/Apps/My TriggerAPI.AppImage"`, "Icon=triggerapi", "StartupWMClass=" + filepath.Base(self)} {
+	// The icon is named by its path, not looked for in the theme.
+	image := filepath.Join(data, "icons", "hicolor", "256x256", "apps", "triggerapi.png")
+	for _, line := range []string{`Exec="/home/me/Apps/My TriggerAPI.AppImage"`, "Icon=" + image, "StartupWMClass=" + filepath.Base(self)} {
 		if !strings.Contains(string(entry), line+"\n") {
 			t.Errorf("no %q in\n%s", line, entry)
 		}
 	}
 
 	// The icon is the program's, at 256 pixels.
-	icon, err := os.ReadFile(filepath.Join(data, "icons", "hicolor", "256x256", "apps", "triggerapi.png"))
+	icon, err := os.ReadFile(image)
 	if err != nil {
 		t.Fatal(err)
 	}
