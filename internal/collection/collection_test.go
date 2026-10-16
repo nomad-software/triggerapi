@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nomad-software/triggerapi/internal/capture"
+	"github.com/nomad-software/triggerapi/internal/graphql"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 	"github.com/nomad-software/triggerapi/internal/ws"
@@ -583,5 +585,47 @@ func TestSetContent(t *testing.T) {
 	r.SetContent(NewWebSocket("Other", ws.Request{URL: "d"}))
 	if r.Name != "Kept" || r.Type != TypeWebSocket || r.GRPC != nil || r.WebSocket.URL != "d" {
 		t.Errorf("after a WebSocket request: %+v", r)
+	}
+}
+
+func TestGraphQLRequest(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "requests.json")
+	s := &Store{}
+	f := s.AddFolder("Graphs")
+	f.Add(NewGraphQL("Me", graphql.Request{URL: "{{host}}/graphql", Query: "{ me { id } }", Variables: `{"a": 1}`, Captures: []capture.Rule{{Variable: "id", Path: "data.me.id"}}}))
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), `"type": "graphql"`) || !strings.Contains(string(data), `"graphql": {`) {
+		t.Errorf("written as %s", data)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := loaded.Folders[0].Requests[0]
+	if r.Type != TypeGraphQL || r.GraphQL == nil || r.Request != nil || r.GRPC != nil || r.WebSocket != nil || r.GraphQL.Query != "{ me { id } }" || r.GraphQL.Variables != `{"a": 1}` || len(r.GraphQL.Captures) != 1 {
+		t.Errorf("loaded %+v %+v", r, r.GraphQL)
+	}
+	if c := r.Clone(); c.GraphQL == r.GraphQL || c.GraphQL.Query != r.GraphQL.Query {
+		t.Errorf("clone %+v", c.GraphQL)
+	}
+	if n := New(TypeGraphQL, "n"); n.Type != TypeGraphQL || n.GraphQL == nil {
+		t.Errorf("new %+v", n)
+	}
+	other := New(TypeREST, "other")
+	other.SetContent(r)
+	if other.Name != "other" || other.Type != TypeGraphQL || other.GraphQL != r.GraphQL || other.Request != nil {
+		t.Errorf("content %+v", other)
+	}
+
+	// One with nothing of its own is given an empty request.
+	if err := os.WriteFile(path, []byte(`{"folders":[{"name":"a","requests":[{"name":"g","type":"graphql"}]}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if loaded, err = Load(path); err != nil || loaded.Folders[0].Requests[0].GraphQL == nil {
+		t.Errorf("empty graphql request: %+v, %v", loaded.Folders[0].Requests[0], err)
 	}
 }

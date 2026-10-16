@@ -19,6 +19,7 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/capture"
+	"github.com/nomad-software/triggerapi/internal/graphql"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 )
@@ -110,7 +111,7 @@ func newResponsePanel(bodyFont string) *responsePanel {
 	p.highlighter = qt.NewQSyntaxHighlighter2(p.body.Document())
 	p.highlighter.OnHighlightBlock(func(text string) {
 		if isJSON() {
-			p.formats.apply(p.highlighter, text)
+			p.formats.apply(p.highlighter, jsonTokens(text))
 		}
 		// The matches of a search are marked over the colours of JSON.
 		if p.find != nil {
@@ -503,6 +504,21 @@ func (p *responsePanel) show(res *rest.Response) {
 		field{label: "Size", value: formatSize(len(res.Body))},
 		field{label: "Protocol", value: res.Proto},
 	)
+}
+
+// showGraphQL shows the response to a GraphQL request as that to a REST
+// request, with the errors it reports as the Error, as they can come with
+// any status.
+func (p *responsePanel) showGraphQL(res *rest.Response) {
+	p.show(res)
+	if message := graphql.Errors(res.Body); message != "" {
+		fields := slices.Clone(p.fields)
+		at := 0
+		if len(fields) > 0 && fields[0].label == fieldCode {
+			at = 1
+		}
+		p.setFields(slices.Insert(fields, at, field{fieldError, message, true})...)
+	}
 }
 
 // showRPC shows the result of a gRPC call. Only its messages go in the

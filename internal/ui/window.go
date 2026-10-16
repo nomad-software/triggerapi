@@ -25,6 +25,7 @@ const (
 	pageRequest = iota
 	pageGRPC
 	pageWS
+	pageGraphQL
 	pageEditor
 )
 
@@ -54,7 +55,7 @@ func aboutText() string {
 	// in a bordered box of smaller text. Qt's rich text draws a border
 	// around a table but not around a paragraph.
 	return "<h3>TriggerAPI " + Version + "</h3>" +
-		"<p>A desktop client for making REST API and gRPC calls.</p>" +
+		"<p>A desktop client for making REST API, GraphQL and gRPC calls and talking to WebSocket servers.</p>" +
 		"<p>Copyright © 2026 Gary Willoughby. All rights reserved.</p>" +
 		"<table style=\"margin-top: 24px; border: 1px solid #888888; border-collapse: collapse;\" cellpadding=\"10\" width=\"100%\">" +
 		"<tr><td style=\"font-size: small;\">" +
@@ -152,6 +153,9 @@ type Window struct {
 	ws         *wsPanel
 	wsResponse *responsePanel
 	socket     *wsSession
+	// graphql and graphqlResponse are the GraphQL request UI.
+	graphql         *graphqlPanel
+	graphqlResponse *responsePanel
 	// uis are the UIs of the types of request, in the order of their
 	// pages. Whatever is the same for every type goes through them.
 	uis []*requestUI
@@ -171,6 +175,12 @@ type Window struct {
 	// reflecting counts the times a service definition has been asked for,
 	// so that only the answer to the latest is used.
 	reflecting int
+	// graphSchemas are the schemas of the GraphQL servers that have been
+	// asked for them, by endpoint, in the schema definition language, and
+	// introspecting counts the times one has been asked for, as reflecting
+	// does.
+	graphSchemas  map[string]string
+	introspecting int
 
 	// cancel aborts the request in flight. It is nil when idle and must only
 	// be accessed from the main thread.
@@ -181,15 +191,17 @@ type Window struct {
 // must be called on the main thread after the QApplication has been created.
 func NewWindow(files Files) *Window {
 	w := &Window{
-		QMainWindow: qt.NewQMainWindow2(),
-		client:      &http.Client{},
-		request:     newRequestPanel(),
-		grpc:        newGRPCPanel(),
-		ws:          newWSPanel(),
-		editor:      newEnvEditor(),
-		tabs:        newRequestTabs(),
-		environment: newEnvironmentSelector(),
-		schemas:     map[string]*rpc.Schema{},
+		QMainWindow:  qt.NewQMainWindow2(),
+		client:       &http.Client{},
+		request:      newRequestPanel(),
+		grpc:         newGRPCPanel(),
+		ws:           newWSPanel(),
+		graphql:      newGraphQLPanel(),
+		editor:       newEnvEditor(),
+		tabs:         newRequestTabs(),
+		environment:  newEnvironmentSelector(),
+		schemas:      map[string]*rpc.Schema{},
+		graphSchemas: map[string]string{},
 	}
 
 	w.SetWindowTitle("TriggerAPI")
@@ -208,17 +220,22 @@ func NewWindow(files Files) *Window {
 	w.response = newResponsePanel(w.config.ResponseFont)
 	w.grpcResponse = newResponsePanel(w.config.ResponseFont)
 	w.wsResponse = newResponsePanel(w.config.ResponseFont)
+	w.graphqlResponse = newResponsePanel(w.config.ResponseFont)
 	w.uis = []*requestUI{
 		{typ: collection.TypeREST, page: pageRequest, editor: w.request, response: w.response, send: w.send},
 		{typ: collection.TypeGRPC, page: pageGRPC, editor: w.grpc, response: w.grpcResponse, send: w.invoke,
 			// The methods offered are those of the server.
 			shown: func() { w.reflect(false) }},
 		{typ: collection.TypeWebSocket, page: pageWS, editor: w.ws, response: w.wsResponse, send: w.connectAndSendWS},
+		{typ: collection.TypeGraphQL, page: pageGraphQL, editor: w.graphql, response: w.graphqlResponse, send: w.sendGraphQL,
+			// The schema is that of the server, if it is on show.
+			shown: func() { w.graphql.loadSchema(false) }},
 	}
 	// What to capture from a response is set beside the response, though
 	// it is kept by the request.
 	w.response.setCaptureTable(w.request.captures)
 	w.grpcResponse.setCaptureTable(w.grpc.captures)
+	w.graphqlResponse.setCaptureTable(w.graphql.captures)
 	// A response is saved to a file named after its request.
 	for _, ui := range w.uis {
 		ui.response.requestName = func() string {
@@ -358,6 +375,9 @@ func NewWindow(files Files) *Window {
 
 	w.ws.connect.OnClicked(w.toggleWS)
 	w.ws.send.OnClicked(w.sendWS)
+
+	w.graphql.send.OnClicked(w.sendGraphQL)
+	w.graphql.onSchema = w.loadGraphQLSchema
 
 	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+Return"), w.QObject).OnActivated(func() {
 		if ui := w.pageUI(w.stack.CurrentIndex()); ui != nil {

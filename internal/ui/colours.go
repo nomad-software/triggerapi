@@ -17,6 +17,7 @@ const (
 	colourREST
 	colourGRPC
 	colourWebSocket
+	colourGraphQL
 	colourRemove
 	colourAction
 	colourSend
@@ -53,6 +54,7 @@ var colourKinds = []struct {
 	{colourREST, "REST", "#2e9e5b", func(c *settings.Colours) *string { return &c.REST }},
 	{colourGRPC, "gRPC", "#2f7fd1", func(c *settings.Colours) *string { return &c.GRPC }},
 	{colourWebSocket, "WebSocket", "#c8871e", func(c *settings.Colours) *string { return &c.WebSocket }},
+	{colourGraphQL, "GraphQL", "#e10098", func(c *settings.Colours) *string { return &c.GraphQL }},
 	{colourRemove, "Delete", "#e03131", func(c *settings.Colours) *string { return &c.Remove }},
 	{colourAction, "Action", "#0b4f6c", func(c *settings.Colours) *string { return &c.Action }},
 	{colourSend, "Send", primaryColour, func(c *settings.Colours) *string { return &c.Send }},

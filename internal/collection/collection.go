@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/nomad-software/triggerapi/internal/crypt"
+	"github.com/nomad-software/triggerapi/internal/graphql"
 	"github.com/nomad-software/triggerapi/internal/jsonfile"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
@@ -22,17 +23,19 @@ const (
 	TypeREST      Type = "rest"
 	TypeGRPC      Type = "grpc"
 	TypeWebSocket Type = "websocket"
+	TypeGraphQL   Type = "graphql"
 )
 
 // Request is a saved request. Only the field for its type is set: Request for
-// TypeREST, whose fields are stored alongside the name, GRPC for TypeGRPC and
-// WebSocket for TypeWebSocket.
+// TypeREST, whose fields are stored alongside the name, GRPC for TypeGRPC,
+// WebSocket for TypeWebSocket and GraphQL for TypeGraphQL.
 type Request struct {
 	Name string `json:"name"`
 	Type Type   `json:"type"`
 	*rest.Request
-	GRPC      *rpc.Request `json:"grpc,omitempty"`
-	WebSocket *ws.Request  `json:"websocket,omitempty"`
+	GRPC      *rpc.Request     `json:"grpc,omitempty"`
+	WebSocket *ws.Request      `json:"websocket,omitempty"`
+	GraphQL   *graphql.Request `json:"graphql,omitempty"`
 }
 
 // NewREST returns a REST request.
@@ -50,6 +53,11 @@ func NewWebSocket(name string, request ws.Request) *Request {
 	return &Request{Name: name, Type: TypeWebSocket, WebSocket: &request}
 }
 
+// NewGraphQL returns a GraphQL request.
+func NewGraphQL(name string, request graphql.Request) *Request {
+	return &Request{Name: name, Type: TypeGraphQL, GraphQL: &request}
+}
+
 // New returns an empty request of a type, with a name. A REST request is a
 // GET, and a type that is not known is taken for REST, as it is on loading.
 func New(typ Type, name string) *Request {
@@ -58,6 +66,8 @@ func New(typ Type, name string) *Request {
 		return NewGRPC(name, rpc.Request{})
 	case TypeWebSocket:
 		return NewWebSocket(name, ws.Request{})
+	case TypeGraphQL:
+		return NewGraphQL(name, graphql.Request{})
 	}
 	return NewREST(name, rest.Request{Method: http.MethodGet})
 }
@@ -65,7 +75,7 @@ func New(typ Type, name string) *Request {
 // SetContent makes the request the same as another, but for its name: of the
 // type of the other, with what the other holds. The two then share it.
 func (r *Request) SetContent(from *Request) {
-	r.Type, r.Request, r.GRPC, r.WebSocket = from.Type, from.Request, from.GRPC, from.WebSocket
+	r.Type, r.Request, r.GRPC, r.WebSocket, r.GraphQL = from.Type, from.Request, from.GRPC, from.WebSocket, from.GraphQL
 }
 
 // normalise makes the request hold exactly the field for its type. Requests
@@ -73,21 +83,27 @@ func (r *Request) SetContent(from *Request) {
 func (r *Request) normalise() {
 	switch r.Type {
 	case TypeGRPC:
-		r.Request, r.WebSocket = nil, nil
+		r.Request, r.WebSocket, r.GraphQL = nil, nil, nil
 		if r.GRPC == nil {
 			r.GRPC = &rpc.Request{}
 		}
 		return
 	case TypeWebSocket:
-		r.Request, r.GRPC = nil, nil
+		r.Request, r.GRPC, r.GraphQL = nil, nil, nil
 		if r.WebSocket == nil {
 			r.WebSocket = &ws.Request{}
+		}
+		return
+	case TypeGraphQL:
+		r.Request, r.GRPC, r.WebSocket = nil, nil, nil
+		if r.GraphQL == nil {
+			r.GraphQL = &graphql.Request{}
 		}
 		return
 	}
 
 	r.Type = TypeREST
-	r.GRPC, r.WebSocket = nil, nil
+	r.GRPC, r.WebSocket, r.GraphQL = nil, nil, nil
 	if r.Request == nil {
 		r.Request = &rest.Request{}
 	}

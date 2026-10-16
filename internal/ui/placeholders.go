@@ -114,11 +114,35 @@ func (h *placeholderHighlighter) format(r placeholderRange) *qt.QTextCharFormat 
 // true the text is coloured as JSON as well, beneath the placeholders. A
 // document can only have one highlighter, so both are done here.
 func (h *placeholderHighlighter) document(doc *qt.QTextDocument, isJSON func() bool) {
+	h.code(doc, func(text string, _ *qt.QSyntaxHighlighter) []jsonToken {
+		if isJSON() {
+			return jsonTokens(text)
+		}
+		return nil
+	})
+}
+
+// graphql colours a text document as GraphQL, in the colours of JSON, and
+// its placeholders. The state of a line is whether it ends inside a block
+// string, which the next carries on with.
+func (h *placeholderHighlighter) graphql(doc *qt.QTextDocument) {
+	h.code(doc, func(text string, highlighter *qt.QSyntaxHighlighter) []jsonToken {
+		tokens, inBlock := graphqlTokens(text, highlighter.PreviousBlockState() == 1)
+		if inBlock {
+			highlighter.SetCurrentBlockState(1)
+		} else {
+			highlighter.SetCurrentBlockState(0)
+		}
+		return tokens
+	})
+}
+
+// code colours the tokens tokenize finds in each line of a text document in
+// the colours of JSON, and the placeholders over them.
+func (h *placeholderHighlighter) code(doc *qt.QTextDocument, tokenize func(string, *qt.QSyntaxHighlighter) []jsonToken) {
 	highlighter := qt.NewQSyntaxHighlighter2(doc)
 	highlighter.OnHighlightBlock(func(text string) {
-		if isJSON() {
-			h.json.apply(highlighter, text)
-		}
+		h.json.apply(highlighter, tokenize(text, highlighter))
 		for _, r := range placeholderRanges(text, h.expand) {
 			highlighter.SetFormat(r.start, r.length, h.format(r))
 		}

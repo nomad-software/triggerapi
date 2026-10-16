@@ -19,6 +19,7 @@ var requestTypes = []struct {
 	{collection.TypeREST, "REST", colourREST, drawBraces},
 	{collection.TypeGRPC, "gRPC", colourGRPC, drawArrows},
 	{collection.TypeWebSocket, "WebSocket", colourWebSocket, drawPulse},
+	{collection.TypeGraphQL, "GraphQL", colourGraphQL, drawGraph},
 }
 
 // typeLabels are the names the request types are shown by.

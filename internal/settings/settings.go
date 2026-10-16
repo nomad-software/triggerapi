@@ -96,6 +96,8 @@ type Colours struct {
 	GRPC string `json:"grpc,omitempty"`
 	// WebSocket is the colour of WebSocket requests.
 	WebSocket string `json:"websocket,omitempty"`
+	// GraphQL is the colour of GraphQL requests.
+	GraphQL string `json:"graphql,omitempty"`
 	// Remove is the colour of the buttons which remove something.
 	Remove string `json:"remove,omitempty"`
 	// Action is the colour of the buttons beside the tabs of a panel, which
@@ -125,7 +127,7 @@ type Colours struct {
 // valid returns the colours with any that are not of the form #rrggbb
 // emptied.
 func (c Colours) valid() Colours {
-	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.WebSocket, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Captured, &c.NotCaptured, &c.Match, &c.Sets)
+	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.WebSocket, &c.GraphQL, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Captured, &c.NotCaptured, &c.Match, &c.Sets)
 	return c
 }
 

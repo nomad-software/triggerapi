@@ -12,12 +12,13 @@ import (
 
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/graphql"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 )
 
 // How the window sends a request and shows what comes back, and loads the
-// service definitions of gRPC servers.
+// service definitions of gRPC servers and the schemas of GraphQL ones.
 
 // options returns how requests are sent, as the settings say.
 func (w *Window) options() rest.Options {
@@ -125,7 +126,7 @@ func (w *Window) send() {
 
 	w.run(w.request.send, w.response, func(ctx context.Context) (outcome, error) {
 		res, err := rest.Send(ctx, w.client, req)
-		return w.restOutcome(res, request.Captures), err
+		return w.restOutcome(res, request.Captures, w.response, w.response.show), err
 	})
 }
 
@@ -139,14 +140,15 @@ func (w *Window) executeCurl() {
 
 	w.run(w.request.execute, w.response, func(ctx context.Context) (outcome, error) {
 		res, err := rest.RunCurl(ctx, req)
-		return w.restOutcome(res, request.Captures), err
+		return w.restOutcome(res, request.Captures, w.response, w.response.show), err
 	})
 }
 
-// restOutcome returns what to do with the response to a REST request, which
-// is nil if there was an error instead. Values are captured from a response
-// with a status that is a success.
-func (w *Window) restOutcome(res *rest.Response, captures []capture.Rule) outcome {
+// restOutcome returns what to do with the response to a request sent over
+// HTTP, which is nil if there was an error instead: show shows it in the
+// response panel. Values are captured from a response with a status that is
+// a success.
+func (w *Window) restOutcome(res *rest.Response, captures []capture.Rule, response *responsePanel, show func(*rest.Response)) outcome {
 	var captured []captureResult
 	return outcome{
 		capture: func() {
@@ -155,10 +157,71 @@ func (w *Window) restOutcome(res *rest.Response, captures []capture.Rule) outcom
 			}
 		},
 		show: func() {
-			w.response.show(res)
-			w.response.showCaptured(captured)
+			show(res)
+			response.showCaptured(captured)
 		},
 	}
+}
+
+// sendGraphQL starts the GraphQL request, or cancels the request in flight.
+// It is sent as a REST request, with the same options.
+func (w *Window) sendGraphQL() {
+	request := w.graphql.request()
+	req, err := request.Expand(w.expander()).HTTP()
+	req.Options = w.options()
+
+	w.run(w.graphql.send, w.graphqlResponse, func(ctx context.Context) (outcome, error) {
+		if err != nil {
+			return outcome{}, err
+		}
+		res, err := rest.Send(ctx, w.client, req)
+		return w.restOutcome(res, request.Captures, w.graphqlResponse, w.graphqlResponse.showGraphQL), err
+	})
+}
+
+// loadGraphQLSchema loads the schema of the server the GraphQL request is
+// for in the background, with the headers and authorization of the request,
+// and shows it in its Schema tab. One loaded before is used again unless
+// force is set.
+func (w *Window) loadGraphQLSchema(force bool) {
+	w.introspecting++
+	introspecting := w.introspecting
+
+	req := w.graphql.request().Expand(w.expand)
+	target := strings.TrimSpace(req.URL)
+	if target == "" {
+		// There is no server to ask yet.
+		w.graphql.setSchema("")
+		return
+	}
+	if sdl, ok := w.graphSchemas[target]; ok && !force {
+		w.graphql.setSchema(sdl)
+		return
+	}
+
+	w.graphql.setSchema("")
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), reflectTimeout)
+		defer cancel()
+
+		sdl, err := graphql.Introspect(ctx, w.client, req)
+
+		mainthread.Start(func() {
+			if err == nil {
+				w.graphSchemas[target] = sdl
+			}
+			// A later request for a schema has replaced this one.
+			if introspecting != w.introspecting {
+				return
+			}
+			if err != nil {
+				w.graphql.setSchemaError(err)
+				return
+			}
+			w.graphql.setSchema(sdl)
+		})
+	}()
 }
 
 // invoke starts the gRPC request, or cancels the request in flight.
@@ -256,7 +319,7 @@ func (w *Window) reflect(force bool) {
 	target, err := req.Target()
 	if err != nil {
 		// There is no server to ask yet.
-		w.grpc.setStatus("")
+		w.grpc.status.set("")
 		return
 	}
 
@@ -266,7 +329,7 @@ func (w *Window) reflect(force bool) {
 		return
 	}
 
-	w.grpc.setStatus("")
+	w.grpc.status.set("")
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), reflectTimeout)
@@ -300,13 +363,13 @@ func (w *Window) useExample() {
 	target, _ := req.Target()
 	schema, ok := w.schemas[target]
 	if !ok {
-		w.grpc.setStatus("An example needs the service definition, which has not been loaded. Enter the server address and press Reload.")
+		w.grpc.status.set("An example needs the service definition, which has not been loaded. Enter the server address and press Reload.")
 		return
 	}
 
 	example, err := schema.Example(req.Method)
 	if err != nil {
-		w.grpc.setStatus("An example could not be made: " + err.Error())
+		w.grpc.status.set("An example could not be made: " + err.Error())
 		return
 	}
 	w.grpc.message.SetPlainText(example)

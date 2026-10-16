@@ -14,6 +14,7 @@ import (
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/env"
+	"github.com/nomad-software/triggerapi/internal/graphql"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 	"github.com/nomad-software/triggerapi/internal/settings"
@@ -81,6 +82,7 @@ func TestScreenshot(t *testing.T) {
 	health.Add(collection.NewREST("Ping", rest.Request{Method: http.MethodGet, URL: "{{host}}/ping"}))
 	store.AddFolder("Payments").Add(collection.NewREST("Refund", rest.Request{Method: http.MethodPost, URL: "{{host}}/refunds"}))
 	store.AddFolder("Live").Add(collection.NewWebSocket("Room feed", ws.Request{URL: "{{host}}/feed"}))
+	store.AddFolder("Catalogue").Add(collection.NewGraphQL("Search rooms", graphql.Request{URL: "{{host}}/graphql"}))
 	hotel := store.AddFolder("Hotel")
 	guests := hotel.AddFolder("Guests")
 	guests.Add(collection.NewREST("Find guest", rest.Request{Method: http.MethodGet, URL: "{{host}}/guests"}))

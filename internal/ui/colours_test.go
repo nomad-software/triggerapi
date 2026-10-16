@@ -33,6 +33,7 @@ func TestColourSettingFields(t *testing.T) {
 		colourREST:         "REST",
 		colourGRPC:         "GRPC",
 		colourWebSocket:    "WebSocket",
+		colourGraphQL:      "GraphQL",
 		colourRemove:       "Remove",
 		colourAction:       "Action",
 		colourSend:         "Send",

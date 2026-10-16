@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"math"
+
 	qt "github.com/mappu/miqt/qt6"
 )
 
@@ -488,6 +490,45 @@ func drawPulse(painter *qt.QPainter) {
 	path.LineTo2(82, 66)
 	path.LineTo2(102, 66)
 	painter.DrawPath(path)
+}
+
+// drawGraph draws a graph: six nodes around a hexagon, each joined to its
+// neighbours, with a triangle across it, for GraphQL, which queries a graph.
+func drawGraph(painter *qt.QPainter) {
+	pen := whitePen()
+	pen.SetWidth(6)
+	painter.SetPenWithPen(pen)
+	painter.SetBrushWithStyle(qt.NoBrush)
+
+	// The nodes, from the top round to the right.
+	var nodes [6][2]float64
+	for i := range nodes {
+		angle := math.Pi/3*float64(i) - math.Pi/2
+		nodes[i] = [2]float64{64 + 36*math.Cos(angle), 66 + 36*math.Sin(angle)}
+	}
+
+	path := qt.NewQPainterPath()
+	path.MoveTo2(nodes[5][0], nodes[5][1])
+	for _, n := range nodes {
+		path.LineTo2(n[0], n[1])
+	}
+	path.MoveTo2(nodes[0][0], nodes[0][1])
+	path.LineTo2(nodes[2][0], nodes[2][1])
+	path.LineTo2(nodes[4][0], nodes[4][1])
+	path.CloseSubpath()
+	painter.DrawPath(path)
+
+	white := qt.NewQColor6("#ffffff")
+	defer white.Delete()
+	brush := qt.NewQBrush3(white)
+	defer brush.Delete()
+	painter.SetPenWithStyle(qt.NoPen)
+	painter.SetBrush(brush)
+	for _, n := range nodes {
+		center := qt.NewQPointF3(n[0], n[1])
+		painter.DrawEllipse3(center, 8, 8)
+		center.Delete()
+	}
 }
 
 // drawRevolver draws a revolver seen from the side, pointing right: the

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/graphql"
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
@@ -157,6 +158,8 @@ func (a *auth) UnmarshalJSON(data []byte) error {
 // none of its own. Postman's {{variables}} are kept as they are, to be
 // defined in an environment. Scripts, saved responses and descriptions are
 // left out, as are requests with a method that is not one of rest.Methods.
+// A request whose body is GraphQL becomes a GraphQL request, whatever its
+// method.
 func Import(data []byte) (*collection.Folder, error) {
 	doc := &exported{}
 	if err := json.Unmarshal(data, doc); err != nil {
@@ -193,13 +196,25 @@ func fill(folder *collection.Folder, items []item, inherited *auth) int {
 		switch {
 		case it.Request != nil:
 			request := convert(it.Request, authorization)
+			name := strings.TrimSpace(it.Name)
+
+			// A GraphQL request is one of that type, whatever its method.
+			if b := it.Request.Body; b != nil && b.Mode == "graphql" && b.GraphQL != nil {
+				query := asGraphQL(request, b)
+				if name == "" {
+					name = "GraphQL " + query.URL
+				}
+				folder.Add(collection.NewGraphQL(name, query))
+				count++
+				continue
+			}
+
 			// A request with a method that is not offered cannot be
 			// shown or sent as it is, so it is left out.
 			if !slices.Contains(rest.Methods, request.Method) {
 				continue
 			}
 
-			name := strings.TrimSpace(it.Name)
 			if name == "" {
 				name = request.Method + " " + request.URL
 			}
@@ -309,21 +324,20 @@ func setBody(request *rest.Request, b *body) {
 				request.Form = append(request.Form, rest.KeyValue{Key: field.Key, Value: field.text(), Enabled: !field.Disabled})
 			}
 		}
+	}
+}
 
-	case "graphql":
-		if b.GraphQL == nil {
-			return
-		}
-		// A GraphQL request is sent as JSON holding the query.
-		payload := map[string]any{"query": b.GraphQL.Query}
-		var variables any
-		if json.Unmarshal([]byte(b.GraphQL.Variables), &variables) == nil && variables != nil {
-			payload["variables"] = variables
-		}
-		if data, err := json.MarshalIndent(payload, "", "  "); err == nil {
-			request.BodyType = rest.BodyJSON
-			request.Body = string(data)
-		}
+// asGraphQL makes a GraphQL request of a request whose body is in Postman's
+// GraphQL mode: its address, with the query parameters that are switched
+// on, its headers and authorization, and the query and variables of the
+// body.
+func asGraphQL(request rest.Request, b *body) graphql.Request {
+	return graphql.Request{
+		URL:       rest.JoinURL(request.URL, request.Params),
+		Headers:   request.Headers,
+		Auth:      request.Auth,
+		Query:     strings.ReplaceAll(b.GraphQL.Query, "\r\n", "\n"),
+		Variables: strings.ReplaceAll(b.GraphQL.Variables, "\r\n", "\n"),
 	}
 }
 

@@ -1,11 +1,11 @@
 # TriggerAPI
 
-A desktop client for making REST API and gRPC calls and talking to
+A desktop client for making REST API, GraphQL and gRPC calls and talking to
 WebSocket servers. It is written
 in Go with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
 bindings.
 
-![TriggerAPI showing saved requests under gRPC, REST, WebSocket and Mixed headings, the pinned tabs of a request set, a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
+![TriggerAPI showing saved requests under GraphQL, gRPC, REST, WebSocket and Mixed headings, the pinned tabs of a request set, a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
 
 ## Why TriggerAPI
 
@@ -21,9 +21,9 @@ bindings.
   TriggerAPI's and no service in the middle. See [Encryption](#encryption).
 - **Native.** It is a single compiled program with a Qt interface, not a web
   browser in a window.
-- **REST, gRPC and WebSocket together.** Every kind of request lives in the
-  same folders and uses the same environments, and REST and gRPC requests
-  capture values for each other.
+- **REST, GraphQL, gRPC and WebSocket together.** Every kind of request lives
+  in the same folders and uses the same environments, and REST, GraphQL and
+  gRPC requests capture values for each other.
 - **A whole gRPC server as requests, in two clicks.** TriggerAPI asks the
   server what it has, lists every endpoint, and makes a saved request of each
   one you tick, in a folder for each service. There are no protobuf files to
@@ -73,6 +73,22 @@ bindings.
   requests from those that are ticked, and Update Requests adds more to a
   folder made that way. See
   [Creating requests from a server](#creating-requests-from-a-server).
+
+**GraphQL**
+
+- Send a query or mutation to a GraphQL endpoint, with its variables as a
+  JSON object, headers, and basic or bearer authorization. It is sent as a
+  POST of JSON, with the time limit and redirect setting of a REST request.
+- Placeholders can go anywhere in the query and the variables, including
+  where a value goes without quotes, as in `{"id": {{id}}}`. A Format button
+  sets out the variables.
+- The query and the schema are syntax highlighted in the colours of JSON, and
+  the variables as JSON, and all three can be folded.
+- The errors a GraphQL response reports are shown beneath it as its error,
+  whatever its HTTP status.
+- The Schema tab shows the schema of the server, in the schema definition
+  language, asked for through introspection with the request's headers and
+  authorization when the tab is shown; Reload asks again.
 
 **WebSocket**
 
@@ -127,8 +143,8 @@ bindings.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically, and
   requests can be searched by name, showing only the folders that hold a
-  request found. The top level folders are listed under gRPC, REST, WebSocket
-  and Mixed headings by the requests they hold; this is worked out as they are shown
+  request found. The top level folders are listed under GraphQL, gRPC, REST,
+  WebSocket and Mixed headings by the requests they hold; this is worked out as they are shown
   and is not saved.
 - Open a request without the mouse: Ctrl+P goes to the search, Return goes
   on to what was found, the arrow keys move through the folders and requests
@@ -139,8 +155,8 @@ bindings.
   into a bin while the pointer is over the tab; double-click the bin to unpin
   the tab (a single click does nothing, so a tab is not unpinned by accident).
   Drag the tabs into another order; the tab that is not pinned is pinned by
-  being dragged. The last tab, New, drawn faded, opens a new REST, gRPC or
-  WebSocket request without saving it; Save, shown beside Send, Invoke or
+  being dragged. The last tab, New, drawn faded, opens a new REST, GraphQL,
+  gRPC or WebSocket request without saving it; Save, shown beside Send, Invoke or
   Connect only while the request is not saved, adds it to the sidebar, as does
   the add button of the sidebar.
 - Save the pinned tabs as named sets, on the Sets tab beneath the search of
@@ -164,6 +180,7 @@ bindings.
 - Import an OpenAPI 3 or Swagger 2 document, as JSON or YAML, or a Postman
   collection, to create a folder of requests. Only requests with one of the
   methods above are imported; others, such as TRACE or PURGE, are left out.
+  A Postman request with a GraphQL body is imported as a GraphQL request.
 
 **Environments**
 
@@ -226,7 +243,7 @@ where the variable is used, as in `id-{{request_id}}`.
 
 | Keys | Does |
 |---|---|
-| Ctrl+Return | Send the REST request or invoke the gRPC method. While one is in flight, cancel it. For a WebSocket request, send the message, connecting first if need be. |
+| Ctrl+Return | Send the REST or GraphQL request or invoke the gRPC method. While one is in flight, cancel it. For a WebSocket request, send the message, connecting first if need be. |
 | Ctrl+W, Ctrl+E, Ctrl+R | Go to the Workspaces, Environments or Requests tab of the sidebar, with the keyboard in its list (Ctrl+R shows the requests, not the sets). |
 | Ctrl+S | Go to the request sets in the sidebar, with the keyboard in their list. |
 | Ctrl+P | Go to the search of the Requests tab, to find a request and open it. |

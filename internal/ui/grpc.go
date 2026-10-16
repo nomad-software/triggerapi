@@ -23,7 +23,7 @@ type grpcPanel struct {
 	method *methodCombo
 	reload *qt.QPushButton
 	// status reports a failure to load the service definition.
-	status *qt.QLabel
+	status statusLine
 
 	message *qt.QPlainTextEdit
 	// messageFold folds the objects and arrays of the message.
@@ -84,12 +84,7 @@ func newGRPCPanel() *grpcPanel {
 	top.AddWidget(p.invoke.QWidget)
 	top.AddWidget(p.save.QWidget)
 
-	p.status = qt.NewQLabel2()
-	p.status.SetTextFormat(qt.PlainText)
-	p.status.SetWordWrap(true)
-	p.status.SetTextInteractionFlags(qt.TextSelectableByMouse)
-	p.status.SetVisible(false)
-	p.styleStatus()
+	p.status = newStatusLine()
 
 	fixed := qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont)
 
@@ -98,9 +93,8 @@ func newGRPCPanel() *grpcPanel {
 	p.message.SetPlaceholderText("The request message as JSON")
 	p.message.OnTextChanged(p.changed)
 	// The message is always JSON.
-	isJSON := func() bool { return true }
-	p.highlight.document(p.message.Document(), isJSON)
-	p.messageFold = newFolder(p.message, isJSON)
+	p.highlight.document(p.message.Document(), always)
+	p.messageFold = newFolder(p.message, always)
 
 	p.example = qt.NewQPushButton3("Use Example Message")
 
@@ -208,14 +202,7 @@ func (p *grpcPanel) load(r rpc.Request) {
 	p.auth.load(r.Auth)
 
 	p.endpoints.setMethods(nil)
-	p.setStatus("")
-}
-
-// setStatus shows what went wrong with the service definition, in the colour
-// of errors, or hides the message if text is empty.
-func (p *grpcPanel) setStatus(text string) {
-	p.status.SetText(text)
-	p.status.SetVisible(text != "")
+	p.status.set("")
 }
 
 // recolour shows Invoke, the placeholders and the status line in the colours
@@ -224,12 +211,7 @@ func (p *grpcPanel) recolour() {
 	makePrimary(p.invoke)
 	p.highlight.setColours()
 	p.refreshPlaceholders()
-	p.styleStatus()
-}
-
-// styleStatus gives the status line the colour of errors in the settings.
-func (p *grpcPanel) styleStatus() {
-	p.status.SetStyleSheet("color: " + themeColour(colourError))
+	p.status.recolour()
 }
 
 // setSchema offers the methods of the server to choose from. The method of
@@ -250,7 +232,7 @@ func (p *grpcPanel) setSchema(schema *rpc.Schema) {
 	p.updating = false
 
 	// Only a failure to load the definition is reported.
-	p.setStatus("")
+	p.status.set("")
 
 	if p.method.current() != current {
 		p.changed()
@@ -260,5 +242,5 @@ func (p *grpcPanel) setSchema(schema *rpc.Schema) {
 // setSchemaError reports that the service definition could not be loaded.
 func (p *grpcPanel) setSchemaError(err error) {
 	p.endpoints.setMethods(nil)
-	p.setStatus("The service definition could not be loaded: " + err.Error())
+	p.status.set("The service definition could not be loaded: " + err.Error())
 }

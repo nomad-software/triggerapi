@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/graphql"
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
@@ -168,7 +169,6 @@ func TestImportBodies(t *testing.T) {
 		{"xml by language", `{"url": "x", "body": {"mode": "raw", "raw": "<a/>", "options": {"raw": {"language": "xml"}}}}`, rest.BodyXML, "<a/>"},
 		{"text", `{"url": "x", "body": {"mode": "raw", "raw": "hello"}}`, rest.BodyText, "hello"},
 		{"text by header", `{"url": "x", "header": [{"key": "Content-Type", "value": "text/plain"}], "body": {"mode": "raw", "raw": "{not json}"}}`, rest.BodyText, "{not json}"},
-		{"graphql", `{"url": "x", "body": {"mode": "graphql", "graphql": {"query": "{ me }", "variables": "{\"a\": 1}"}}}`, rest.BodyJSON, "{\n  \"query\": \"{ me }\",\n  \"variables\": {\n    \"a\": 1\n  }\n}"},
 		{"file", `{"url": "x", "body": {"mode": "file", "file": {"src": "a.bin"}}}`, "", ""},
 		{"none", `{"url": "x"}`, "", ""},
 	}
@@ -259,5 +259,38 @@ func TestImportUnsupportedMethods(t *testing.T) {
 	_, err = Import([]byte(`{` + schema + `, "item": [{"name": "Purge", "request": {"method": "PURGE", "url": "a.test"}}]}`))
 	if err == nil {
 		t.Error("a collection of only unsupported methods was imported")
+	}
+}
+
+func TestImportGraphQL(t *testing.T) {
+	root, err := Import([]byte(`{"info": {"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"}, "item": [
+		{"name": "Me", "request": {"method": "POST", "url": {"raw": "{{host}}/graphql?v=1", "query": [{"key": "v", "value": "1"}, {"key": "off", "value": "x", "disabled": true}]},
+			"header": [{"key": "X-A", "value": "b"}],
+			"auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
+			"body": {"mode": "graphql", "graphql": {"query": "query {\r\n  me { id }\r\n}", "variables": "{\"a\": 1}"}}}},
+		{"request": {"method": "GET", "url": "api.test/graphql", "body": {"mode": "graphql", "graphql": {"query": "{ a }"}}}}
+	]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(root.Requests) != 2 {
+		t.Fatalf("requests = %+v", root.Requests)
+	}
+
+	me := root.Requests[0]
+	want := graphql.Request{
+		URL:       "{{host}}/graphql?v=1",
+		Headers:   []rest.KeyValue{{Key: "X-A", Value: "b", Enabled: true}},
+		Auth:      rest.Auth{Type: rest.AuthBearer, Token: "{{token}}"},
+		Query:     "query {\n  me { id }\n}",
+		Variables: `{"a": 1}`,
+	}
+	if me.Name != "Me" || me.Type != collection.TypeGraphQL || me.Request != nil || !reflect.DeepEqual(*me.GraphQL, want) {
+		t.Errorf("me = %+v %+v", me, me.GraphQL)
+	}
+
+	// One with no name is named after its address.
+	if r := root.Requests[1]; r.Type != collection.TypeGraphQL || r.Name != "GraphQL api.test/graphql" || r.GraphQL.Query != "{ a }" {
+		t.Errorf("unnamed = %+v %+v", r, r.GraphQL)
 	}
 }

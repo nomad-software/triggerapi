@@ -19,7 +19,7 @@ var groupLabels = func() map[collection.Type]string {
 }()
 
 // groupOrder is the order the headings are listed in.
-var groupOrder = []collection.Type{collection.TypeGRPC, collection.TypeREST, collection.TypeWebSocket, mixedGroup}
+var groupOrder = []collection.Type{collection.TypeGraphQL, collection.TypeGRPC, collection.TypeREST, collection.TypeWebSocket, mixedGroup}
 
 // groupOf returns the heading a top level folder is listed under: the type
 // of its requests, at any depth, if they are all of one type, mixedGroup if

@@ -85,7 +85,7 @@ func jsonColours(custom settings.JSONColours) map[tokenKind]string {
 }
 
 // jsonToken is the position of a token in a line, in the UTF-16 code units
-// Qt counts in.
+// Qt counts in. GraphQL is coloured with the same kinds (graphqlTokens).
 type jsonToken struct {
 	start, length int
 	kind          tokenKind
@@ -96,37 +96,15 @@ type jsonToken struct {
 // valid JSON is coloured as far as it can be made sense of.
 func jsonTokens(line string) []jsonToken {
 	runes := []rune(line)
-
-	// offsets holds the position in UTF-16 code units of each rune, and of
-	// the end of the line.
-	offsets := make([]int, len(runes)+1)
-	for i, r := range runes {
-		offsets[i+1] = offsets[i] + utf16.RuneLen(r)
-	}
-
 	var tokens []jsonToken
-	add := func(from, to int, kind tokenKind) {
-		tokens = append(tokens, jsonToken{offsets[from], offsets[to] - offsets[from], kind})
-	}
+	add := tokenAdder(runes, &tokens)
 
 	for i := 0; i < len(runes); {
 		switch r := runes[i]; {
 		case r == '"':
-			end := i + 1
-			for end < len(runes) && runes[end] != '"' {
-				if runes[end] == '\\' {
-					end++
-				}
-				end++
-			}
-			end = min(end+1, len(runes))
-
+			end := stringEnd(runes, i)
 			// A string followed by a colon is the key of a member.
-			next := end
-			for next < len(runes) && (runes[next] == ' ' || runes[next] == '\t') {
-				next++
-			}
-			if next < len(runes) && runes[next] == ':' {
+			if colonAfter(runes, end) {
 				add(i, end, tokenKey)
 			} else {
 				add(i, end, tokenString)
@@ -134,14 +112,7 @@ func jsonTokens(line string) []jsonToken {
 			i = end
 
 		case r == '-' || (r >= '0' && r <= '9'):
-			end := i + 1
-			for end < len(runes) && isNumberRune(runes[end]) {
-				end++
-			}
-			if r != '-' || end > i+1 {
-				add(i, end, tokenNumber)
-			}
-			i = end
+			i = addNumber(runes, i, add)
 
 		case r >= 'a' && r <= 'z':
 			end := i + 1
@@ -160,6 +131,55 @@ func jsonTokens(line string) []jsonToken {
 	}
 
 	return tokens
+}
+
+// tokenAdder returns a function which adds the token between two runes of a
+// line to tokens, at its position in UTF-16 code units.
+func tokenAdder(runes []rune, tokens *[]jsonToken) func(from, to int, kind tokenKind) {
+	// offsets holds the position in UTF-16 code units of each rune, and of
+	// the end of the line.
+	offsets := make([]int, len(runes)+1)
+	for i, r := range runes {
+		offsets[i+1] = offsets[i] + utf16.RuneLen(r)
+	}
+	return func(from, to int, kind tokenKind) {
+		*tokens = append(*tokens, jsonToken{offsets[from], offsets[to] - offsets[from], kind})
+	}
+}
+
+// stringEnd returns where the string that starts at a quote ends, after its
+// closing quote, or at the end of the line if it is not closed on it.
+func stringEnd(runes []rune, start int) int {
+	end := start + 1
+	for end < len(runes) && runes[end] != '"' {
+		if runes[end] == '\\' {
+			end++
+		}
+		end++
+	}
+	return min(end+1, len(runes))
+}
+
+// colonAfter reports if the next thing after a place in a line, but for
+// spaces and tabs, is a colon.
+func colonAfter(runes []rune, at int) bool {
+	for at < len(runes) && (runes[at] == ' ' || runes[at] == '\t') {
+		at++
+	}
+	return at < len(runes) && runes[at] == ':'
+}
+
+// addNumber adds the number that starts with a digit or a minus sign, if it
+// is one (a minus sign alone is not), and returns where it ends.
+func addNumber(runes []rune, start int, add func(from, to int, kind tokenKind)) int {
+	end := start + 1
+	for end < len(runes) && isNumberRune(runes[end]) {
+		end++
+	}
+	if runes[start] != '-' || end > start+1 {
+		add(start, end, tokenNumber)
+	}
+	return end
 }
 
 func isNumberRune(r rune) bool {
@@ -225,9 +245,9 @@ func (f jsonFormats) setColours(colours map[tokenKind]string) {
 	}
 }
 
-// apply colours the tokens in a block of text being highlighted.
-func (f jsonFormats) apply(highlighter *qt.QSyntaxHighlighter, text string) {
-	for _, token := range jsonTokens(text) {
+// apply colours the tokens of a block of text being highlighted.
+func (f jsonFormats) apply(highlighter *qt.QSyntaxHighlighter, tokens []jsonToken) {
+	for _, token := range tokens {
 		highlighter.SetFormat(token.start, token.length, f[token.kind])
 	}
 }

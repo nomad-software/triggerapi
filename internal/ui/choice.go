@@ -11,6 +11,10 @@ type choice[K comparable] struct {
 	icon  *qt.QIcon
 }
 
+// choiceMinWidth is the narrowest a choiceDialog is, so that one offering
+// one or two things is not squeezed around them.
+const choiceMinWidth = 460
+
 // choiceDialog asks the user to pick one of a few things, offering each as
 // an icon with its name beneath.
 type choiceDialog[K comparable] struct {
@@ -28,7 +32,10 @@ func newChoiceDialog[K comparable](parent *qt.QWidget, title, prompt string, cho
 	}
 	d.SetWindowTitle(title)
 
+	// The choices are in the middle of the row, which a dialog of only a
+	// few is wider than.
 	row := qt.NewQHBoxLayout2()
+	row.AddStretch()
 	for _, c := range choices {
 		button := qt.NewQToolButton2()
 		button.SetToolButtonStyle(qt.ToolButtonTextUnderIcon)
@@ -45,6 +52,7 @@ func newChoiceDialog[K comparable](parent *qt.QWidget, title, prompt string, cho
 		d.buttons[c.key] = button
 		row.AddWidget(button.QWidget)
 	}
+	row.AddStretch()
 
 	cancel := qt.NewQPushButton3("Cancel")
 	cancel.OnClicked(d.Reject)
@@ -55,8 +63,10 @@ func newChoiceDialog[K comparable](parent *qt.QWidget, title, prompt string, cho
 	bottom.AddStretch()
 
 	layout := qt.NewQVBoxLayout(d.QWidget)
-	// Leave room around the edge of the window and between its parts.
-	layout.SetContentsMargins(112, 24, 112, 24)
+	// Leave room around the edge of the window and between its parts, and
+	// make a dialog of few choices as wide as one of the request types.
+	layout.SetContentsMargins(24, 24, 24, 24)
+	d.SetMinimumWidth(choiceMinWidth)
 	layout.SetSpacing(18)
 	label := qt.NewQLabel3(prompt)
 	label.SetAlignment(qt.AlignCenter)
