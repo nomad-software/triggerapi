@@ -66,6 +66,9 @@ type requestTree struct {
 	warn func(message string)
 	// onOpen is called when a request is selected.
 	onOpen func(*collection.Request)
+	// onSelect is called when the user selects anything in the tree, or
+	// goes between the requests and the sets.
+	onSelect func()
 	// browsing is set while a key moves the selection, which does not open
 	// what it moves to.
 	browsing bool
@@ -102,7 +105,12 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	t.drawViewIcons()
 	t.views.SetDrawBase(false)
 	t.views.SetExpanding(false)
-	t.views.OnCurrentChanged(t.showView)
+	t.views.OnCurrentChanged(func(view int) {
+		t.showView(view)
+		if t.onSelect != nil {
+			t.onSelect()
+		}
+	})
 
 	t.search.SetPlaceholderText("Search requests")
 	t.search.SetClearButtonEnabled(true)
@@ -245,7 +253,13 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	t.tree.OnItemCollapsed(func(item *qt.QTreeWidgetItem) { t.setCollapsed(item, true) })
 
 	t.tree.OnCurrentItemChanged(func(*qt.QTreeWidgetItem, *qt.QTreeWidgetItem) {
-		if !t.updating && !t.browsing {
+		if t.updating {
+			return
+		}
+		if t.onSelect != nil {
+			t.onSelect()
+		}
+		if !t.browsing {
 			t.open()
 		}
 	})
@@ -360,16 +374,6 @@ func (t *requestTree) showView(view int) {
 		return
 	}
 	t.pages.SetCurrentIndex(view)
-}
-
-// focusList puts the keyboard in the tree, or the list of sets if they are
-// shown.
-func (t *requestTree) focusList() {
-	if t.views.CurrentIndex() == viewSets {
-		t.sets.list.SetFocus()
-	} else {
-		t.tree.SetFocus()
-	}
 }
 
 // draw fills the tree from the store, with each folder open or closed as the

@@ -119,9 +119,11 @@ bindings.
   between them.
 - The workspace and the environment in use are shown above the request, in
   drop-downs which switch to another, and after them a Request Set drop-down
-  which chooses a set of tabs, or None for no set. The title of each is a
-  button: Workspace shows the workspaces, Environment edits the environment in
-  use, and Request Set shows the sets.
+  which chooses a set of tabs, or None for no set. Before each is an icon
+  button: that of the workspace shows the workspaces, that of the environment
+  opens and closes the editor of the environment in use (showing the
+  environments in the sidebar unless it is showing the requests, and not
+  closing it while the environments are shown), and that of the set shows the sets.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically, and
   requests can be searched by name, showing only the folders that hold a
@@ -225,7 +227,8 @@ where the variable is used, as in `id-{{request_id}}`.
 | Keys | Does |
 |---|---|
 | Ctrl+Return | Send the REST request or invoke the gRPC method. While one is in flight, cancel it. For a WebSocket request, send the message, connecting first if need be. |
-| Ctrl+1, Ctrl+2, Ctrl+3 | Go to the Workspaces, Environments or Requests tab of the sidebar, with the keyboard in its list. |
+| Ctrl+W, Ctrl+E, Ctrl+R | Go to the Workspaces, Environments or Requests tab of the sidebar, with the keyboard in its list (Ctrl+R shows the requests, not the sets). |
+| Ctrl+S | Go to the request sets in the sidebar, with the keyboard in their list. |
 | Ctrl+P | Go to the search of the Requests tab, to find a request and open it. |
 | Ctrl+F | Find text in the response. |
 | Escape | Close the environment editor, or else the search of the response, the curl command or the URL preview. |

@@ -15,11 +15,14 @@ const (
 // it is squeezed to when the window has no room for its longest name.
 const selectorMinWidth = 80
 
+// selectorIconSize is the size of the icons of the titles of the drop-downs.
+const selectorIconSize = 20
+
 // environmentSelector selects the workspace and the environment in use, and
 // the set of requests whose tabs are open. It is on a line of its own above
 // the tabs of the requests and not in any of them, as all are the same for
-// them all. The title of each drop-down is a flat button, which goes to where
-// what it selects is kept; the window says where.
+// them all. The title of each drop-down is an icon button, which goes to
+// where what it selects is kept; the window says where.
 type environmentSelector struct {
 	root        *qt.QWidget
 	workspace   *qt.QComboBox
@@ -53,22 +56,19 @@ func newEnvironmentSelector() *environmentSelector {
 		set:         qt.NewQComboBox2(),
 	}
 
-	title := func(text string) *qt.QToolButton {
-		button := qt.NewQToolButton2()
-		button.SetText(text)
-		button.SetAutoRaise(true)
+	// The titles are icons, in the colours of the tabs of the sidebar they
+	// go to, small enough to keep the line as tall as the drop-downs.
+	title := func(colour colourKind, glyph func(*qt.QPainter), tip string) *qt.QToolButton {
+		button := newIconButton(colour, glyph, tip)
+		size := qt.NewQSize2(selectorIconSize, selectorIconSize)
+		button.SetIconSize(size)
+		size.Delete()
 		button.SetFocusPolicy(qt.NoFocus)
-		// Bold through the font and not a style sheet, which would draw the
-		// text in the colour of a light theme whatever the theme is.
-		font := qt.NewQFont5(button.Font())
-		font.SetBold(true)
-		button.SetFont(font)
-		font.Delete()
 		return button
 	}
-	s.workspaceTitle = title("Workspace:")
-	s.environmentTitle = title("Environment:")
-	s.setTitle = title("Request Set:")
+	s.workspaceTitle = title(colourWorkspaces, drawMonitor, "Workspaces")
+	s.environmentTitle = title(colourEnvironments, drawGlobe, "Edit environment")
+	s.setTitle = title(colourSets, drawSets, "Request sets")
 
 	// Each is as wide as its longest name, which a combo box otherwise is
 	// only for the names it has when first shown, where the window has the

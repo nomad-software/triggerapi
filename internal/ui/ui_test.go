@@ -2154,13 +2154,58 @@ func TestWorkspaceSelector(t *testing.T) {
 		w.editor.name.SetText("Local")
 		w.closeEditor()
 
-		// With one, it opens it in the editor.
+		// With one, it opens it in the editor, leaving the sidebar on the
+		// requests if it is showing them, and otherwise showing the
+		// environments.
+		for _, from := range []int{tabRequests, tabWorkspaces} {
+			w.sidebar.SetCurrentIndex(from)
+			selector.environmentTitle.Click()
+			want := tabEnvironments
+			if from == tabRequests {
+				want = tabRequests
+			}
+			if w.stack.CurrentIndex() != pageEditor || w.editor.name.Text() != "Local" || w.sidebar.CurrentIndex() != want {
+				t.Errorf("from tab %d: page = %d, editing %q, sidebar tab %d", from, w.stack.CurrentIndex(), w.editor.name.Text(), w.sidebar.CurrentIndex())
+			}
+			w.closeEditor()
+		}
+
+		// Going to another tab of the sidebar closes the editor, and going
+		// to that of the environments does not.
+		selector.environmentTitle.Click()
+		w.sidebar.SetCurrentIndex(tabEnvironments)
+		if w.stack.CurrentIndex() != pageEditor {
+			t.Errorf("page = %d after going to the environments", w.stack.CurrentIndex())
+		}
+		w.sidebar.SetCurrentIndex(tabWorkspaces)
+		if w.stack.CurrentIndex() != w.requestPage() {
+			t.Errorf("page = %d after going to the workspaces", w.stack.CurrentIndex())
+		}
+
+		// The button closes the editor it opened, unless the sidebar shows
+		// the environments.
+		w.sidebar.SetCurrentIndex(tabEnvironments)
+		selector.environmentTitle.Click()
+		selector.environmentTitle.Click()
+		if w.stack.CurrentIndex() != pageEditor {
+			t.Errorf("page = %d after the button was clicked again with the environments shown", w.stack.CurrentIndex())
+		}
 		w.sidebar.SetCurrentIndex(tabRequests)
 		selector.environmentTitle.Click()
-		if w.stack.CurrentIndex() != pageEditor || w.editor.name.Text() != "Local" || w.sidebar.CurrentIndex() != tabEnvironments {
-			t.Errorf("page = %d, editing %q", w.stack.CurrentIndex(), w.editor.name.Text())
+		selector.environmentTitle.Click()
+		if w.stack.CurrentIndex() != w.requestPage() {
+			t.Errorf("page = %d after the button was clicked again", w.stack.CurrentIndex())
 		}
-		w.closeEditor()
+
+		// Going between the requests and the sets closes it.
+		w.sidebar.SetCurrentIndex(tabRequests)
+		for _, view := range []int{viewSets, viewRequests} {
+			selector.environmentTitle.Click()
+			w.requests.views.SetCurrentIndex(view)
+			if w.stack.CurrentIndex() != w.requestPage() {
+				t.Errorf("page = %d after going to view %d", w.stack.CurrentIndex(), view)
+			}
+		}
 
 		// That of the workspaces shows them, and that of the sets shows
 		// the sets.
@@ -6334,12 +6379,17 @@ func TestFocusSidebar(t *testing.T) {
 			tabEnvironments: w.environments.list.QWidget,
 			tabRequests:     w.requests.tree.QWidget,
 		}
+		// The requests are shown even from the sets.
+		w.requests.showView(viewSets)
 		for _, tab := range []int{tabWorkspaces, tabEnvironments, tabRequests} {
 			w.focusSidebar(tab)
 			focused := w.FocusWidget()
 			if w.sidebar.CurrentIndex() != tab || focused == nil || focused.UnsafePointer() != lists[tab].UnsafePointer() {
 				t.Errorf("tab %d: shown %d, and its list does not have the keyboard", tab, w.sidebar.CurrentIndex())
 			}
+		}
+		if w.requests.views.CurrentIndex() != viewRequests {
+			t.Error("the sets are still shown")
 		}
 		if w.workspaces.current() != workspace.Default {
 			t.Errorf("the workspace in use changed to %q", w.workspaces.current())
@@ -6795,4 +6845,43 @@ func TestCopyPasteAcrossWorkspaces(t *testing.T) {
 	if err != nil || len(original.Folders) != 1 || len(original.Folders[0].Folders[0].Requests) != 1 {
 		t.Errorf("original %+v, %v", original, err)
 	}
+}
+
+func TestSelectingRequestsClosesEditor(t *testing.T) {
+	files := testFiles(t)
+	store := &collection.Store{}
+	one := store.AddFolder("One")
+	a := collection.NewREST("A", rest.Request{Method: "GET", URL: "a.test"})
+	one.Add(a)
+	store.Sets = append(store.Sets, &collection.Set{Name: "Set", Requests: []*collection.Request{a}})
+	if err := store.Save(files.Requests); err != nil {
+		t.Fatal(err)
+	}
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		w.Show()
+		w.environments.add()
+		w.closeEditor()
+		w.sidebar.SetCurrentIndex(tabRequests)
+
+		// Each of these, done with the editor open from the requests, closes
+		// it.
+		for what, select_ := range map[string]func(){
+			"selecting a folder": func() { w.requests.tree.SetCurrentItem(topFolder(w.requests.tree, 0)) },
+			"choosing a set":     func() { w.requests.sets.chooseAt(0) },
+		} {
+			w.requests.tree.SetCurrentItem(nil)
+			w.requests.sets.chooseAt(-1)
+			w.environment.environmentTitle.Click()
+			if w.stack.CurrentIndex() != pageEditor || w.sidebar.CurrentIndex() != tabRequests {
+				t.Errorf("before %s: page %d, sidebar tab %d", what, w.stack.CurrentIndex(), w.sidebar.CurrentIndex())
+			}
+			select_()
+			if w.stack.CurrentIndex() != w.requestPage() {
+				t.Errorf("page = %d after %s", w.stack.CurrentIndex(), what)
+			}
+		}
+		w.Close()
+	})
 }

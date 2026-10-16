@@ -317,6 +317,9 @@ func NewWindow(files Files) *Window {
 	w.requests.sets.pinned = w.tabs.pinned
 	w.tabs.onNew = w.newRequest
 	w.requests.sets.onChoose = w.chooseSet
+	// Anything selected in the requests closes the environment editor, as
+	// another tab of the sidebar does.
+	w.requests.onSelect = w.closeEditor
 	w.requests.create = func() (*collection.Request, bool) {
 		switch typ, ok := askRequestType(w.QWidget); {
 		case !ok:
@@ -398,6 +401,13 @@ func NewWindow(files Files) *Window {
 	w.sidebar.SetTabToolTip(tabRequests, "Requests")
 	// The requests are what is wanted first.
 	w.sidebar.SetCurrentIndex(tabRequests)
+	// The environment editor belongs to the Environments tab, and is closed
+	// for what the request UI shows when another is chosen.
+	w.sidebar.OnCurrentChanged(func(tab int) {
+		if tab != tabEnvironments && w.stack.CurrentIndex() == pageEditor {
+			w.closeEditor()
+		}
+	})
 
 	w.split = qt.NewQSplitter3(qt.Horizontal)
 	w.split.AddWidget(w.sidebar.QWidget)
@@ -445,10 +455,12 @@ func NewWindow(files Files) *Window {
 
 	qt.NewQShortcut3(qt.QKeySequence__Find, w.QObject).OnActivated(w.find)
 	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+P"), w.QObject).OnActivated(w.quickOpen)
-	// Ctrl+1 to Ctrl+3 go to the tabs of the sidebar, in order.
-	for tab := range w.sidebar.Count() {
-		qt.NewQShortcut2(qt.NewQKeySequence2(fmt.Sprintf("Ctrl+%d", tab+1)), w.QObject).OnActivated(func() { w.focusSidebar(tab) })
+	// Ctrl+W, Ctrl+E and Ctrl+R go to the tabs of the sidebar.
+	for tab, key := range sidebarKeys {
+		qt.NewQShortcut2(qt.NewQKeySequence2(key), w.QObject).OnActivated(func() { w.focusSidebar(tab) })
 	}
+	// Ctrl+S goes to the sets, in the Requests tab.
+	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+S"), w.QObject).OnActivated(w.showSets)
 
 	// Selecting a workspace or an environment above the tabs selects it in
 	// the sidebar, which is what makes it the one in use. The button beside
@@ -532,6 +544,7 @@ func (w *Window) newRequest() {
 // Choosing no set, by deselecting the one chosen, takes the tabs away and
 // leaves one empty tab.
 func (w *Window) chooseSet(set *collection.Set) {
+	w.closeEditor()
 	w.stash(w.tabs.current())
 	var requests []*collection.Request
 	if set != nil {
@@ -681,6 +694,13 @@ func (w *Window) quickOpen() {
 	w.requests.focusSearch()
 }
 
+// sidebarKeys are the shortcuts which go to the tabs of the sidebar.
+var sidebarKeys = map[int]string{
+	tabWorkspaces:   "Ctrl+W",
+	tabEnvironments: "Ctrl+E",
+	tabRequests:     "Ctrl+R",
+}
+
 // focusSidebar shows a tab of the sidebar with the keyboard in its list, to
 // move through it and act on what is selected without the mouse. The
 // selection is left as it is.
@@ -692,7 +712,9 @@ func (w *Window) focusSidebar(tab int) {
 	case tabEnvironments:
 		w.environments.list.SetFocus()
 	case tabRequests:
-		w.requests.focusList()
+		// The requests, not the sets, as Ctrl+S goes to those.
+		w.requests.showView(viewRequests)
+		w.requests.tree.SetFocus()
 	}
 }
 
@@ -763,14 +785,22 @@ func (w *Window) load(r *collection.Request) {
 	}
 }
 
-// editEnvironment opens the environment in use in the editor, or shows the
-// environments in the sidebar if none is in use.
+// editEnvironment opens the environment in use in the editor, showing the
+// environments in the sidebar unless it is showing the requests, or shows the
+// environments in the sidebar if none is in use. If the editor is open, it
+// closes it, unless the sidebar is showing the environments, where it belongs.
 func (w *Window) editEnvironment() {
+	if w.stack.CurrentIndex() == pageEditor && w.sidebar.CurrentIndex() != tabEnvironments {
+		w.closeEditor()
+		return
+	}
 	if w.environments.store.Active < 0 {
 		w.focusSidebar(tabEnvironments)
 		return
 	}
-	w.sidebar.SetCurrentIndex(tabEnvironments)
+	if w.sidebar.CurrentIndex() != tabRequests {
+		w.sidebar.SetCurrentIndex(tabEnvironments)
+	}
 	w.environments.edit()
 }
 
