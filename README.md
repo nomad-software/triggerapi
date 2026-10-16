@@ -623,6 +623,27 @@ requests, and is made again with:
 make screenshot
 ```
 
+### A sample MCP server
+
+`test/mcpserver` is a small MCP server to try MCP requests against by hand.
+Start it with:
+
+```sh
+make mcp-server
+```
+
+and give an MCP request the address `http://localhost:8000/mcp`. It has the
+tools `add`, `echo`, `headers` (which lists the headers the call came with,
+to check headers, authorization and placeholders), `time` and `fail` (which
+always reports an error), the resources `sample://readme` and
+`sample://config`, and the prompt `review`. It logs every call it is given.
+
+| Option | Does |
+|---|---|
+| `ARGS="-token secret"` | Refuse requests without `Authorization: Bearer secret` |
+| `ARGS="-legacy"` | Behave as a server from before protocol version 2026-07-28, with sessions |
+| `ARGS="-addr localhost:9000"` | Listen elsewhere |
+
 ## License
 
 TriggerAPI is free software, licensed under the

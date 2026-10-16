@@ -98,6 +98,7 @@ make run                  # build, then ./triggerapi
 make vet                  # go vet ./...
 make test                 # go test ./...
 make screenshot           # redraw docs/screenshot.png (TestScreenshot in internal/ui/screenshot_test.go)
+make mcp-server           # sample MCP server (test/mcpserver) at http://localhost:8000/mcp, to try MCP requests by hand; ARGS="-token secret" / "-legacy"
 go test ./path/to/pkg -run TestName   # single test
 ```
 
