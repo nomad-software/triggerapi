@@ -148,6 +148,29 @@ func (e *Entry) Matches(words []string) bool {
 	return true
 }
 
+// Text returns the body of the response as it is shown: an HTTP body, with
+// JSON indented, the messages of a gRPC call, the result of an MCP call or
+// its error, the messages of a WebSocket connection, or the error there was
+// instead of a response. It is empty if the body was not kept.
+func (e *Entry) Text() string {
+	switch {
+	case e.Error != "":
+		return e.Error
+	case e.HTTP != nil:
+		return e.HTTP.Text()
+	case e.GRPC != nil:
+		return strings.Join(e.GRPC.Messages, "\n\n")
+	case e.MCP != nil:
+		if e.MCP.Result == nil && e.MCP.Error == nil {
+			return ""
+		}
+		return e.MCP.Text()
+	case e.WebSocket != nil:
+		return ws.Log(e.WebSocket.Messages)
+	}
+	return ""
+}
+
 // size returns the size of the body of the response, in bytes.
 func (e *Entry) size() int {
 	switch {

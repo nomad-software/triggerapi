@@ -282,3 +282,25 @@ func TestHistoryKeyboard(t *testing.T) {
 		}
 	})
 }
+
+func TestHistoryHeadingsShaded(t *testing.T) {
+	mainthread.Wait(func() {
+		h := newHistoryList(testHistory(time.Now(), "a", "b"), "")
+		h.root.Resize(400, 300)
+		h.root.Show()
+		defer h.root.Hide()
+
+		heading := h.tree.TopLevelItem(0)
+		// The heading is drawn as other text is, on a shaded background,
+		// which its entries are not.
+		if heading.Foreground(colHistoryCheck).Style() != qt.NoBrush {
+			t.Error("the heading has a colour of its own")
+		}
+		if rowColour(h.tree, heading) == rowColour(h.tree, heading.Child(0)) {
+			t.Error("the heading is not shaded")
+		}
+		if rowColour(h.tree, heading.Child(0)) != rowColour(h.tree, heading.Child(1)) {
+			t.Error("an entry is shaded")
+		}
+	})
+}

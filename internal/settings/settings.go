@@ -55,6 +55,10 @@ type Settings struct {
 	// is DefaultHistoryLimit if it is zero.
 	NoHistory    bool `json:"noHistory,omitempty"`
 	HistoryLimit int  `json:"historyLimit,omitempty"`
+	// DiffCommand is the command the responses of entries of the history
+	// are compared with: a program and its arguments, as words of a shell,
+	// to which the paths of the files to compare are added.
+	DiffCommand string `json:"diffCommand,omitempty"`
 
 	// WorkspacesDir is the folder the workspaces are kept in, each in a
 	// folder of its own. A relative path is relative to the directory the

@@ -142,3 +142,14 @@ func TestCloseNormally(t *testing.T) {
 		t.Errorf("closed with %d", code)
 	}
 }
+
+func TestLog(t *testing.T) {
+	at := time.Date(2026, 10, 17, 9, 30, 5, 123e6, time.UTC)
+	got := Log([]Message{{Sent: true, Text: "hi", At: at}, {Text: "hello", At: at.Add(time.Second)}})
+	if want := "→ Sent 09:30:05.123\nhi\n\n← Received 09:30:06.123\nhello"; got != want {
+		t.Errorf("log = %q, want %q", got, want)
+	}
+	if Log(nil) != "" {
+		t.Error("no messages have a log")
+	}
+}

@@ -33,10 +33,11 @@ const (
 )
 
 // colourKinds are the colours, with what each is called in the settings and
-// the colour it is until another is chosen. The workspaces have the colour
-// of the Send button, which is that of every button which sends: Invoke,
-// Call, Connect, and Execute beside the curl command. The action buttons are those beside the tabs of a panel, curl
-// and save, and the pin of a request tab. A placeholder that the active
+// the colour it is until another is chosen. Each has a default of its own,
+// which no other follows, so that changing one changes nothing else. Send
+// is the colour of every button which sends: Invoke, Call, Connect, and
+// Execute beside the curl command. The action buttons are those beside the tabs of a panel,
+// curl and save, and the pin of a request tab. A placeholder that the active
 // environment defines is green, and one that it does not is the colour of an
 // error. Captured and not captured are of the tick and the cross which say
 // how capturing from a response went, and the last is what marks each place
@@ -51,25 +52,25 @@ var colourKinds = []struct {
 	// user has chosen.
 	setting func(*settings.Colours) *string
 }{
-	{colourWorkspaces, "Workspaces", primaryColour, func(c *settings.Colours) *string { return &c.Workspaces }},
-	{colourEnvironments, "Environments", "#8e6fd8", func(c *settings.Colours) *string { return &c.Environments }},
+	{colourWorkspaces, "Workspaces", "#ba7d1c", func(c *settings.Colours) *string { return &c.Workspaces }},
+	{colourEnvironments, "Environments", "#2f7fd1", func(c *settings.Colours) *string { return &c.Environments }},
 	{colourRequests, "Requests", "#17807c", func(c *settings.Colours) *string { return &c.Requests }},
 	{colourREST, "REST", "#2e9e5b", func(c *settings.Colours) *string { return &c.REST }},
 	{colourGRPC, "gRPC", "#2f7fd1", func(c *settings.Colours) *string { return &c.GRPC }},
-	{colourWebSocket, "WebSocket", "#c8871e", func(c *settings.Colours) *string { return &c.WebSocket }},
-	{colourGraphQL, "GraphQL", "#f8357c", func(c *settings.Colours) *string { return &c.GraphQL }},
+	{colourWebSocket, "WebSocket", "#ba7d1c", func(c *settings.Colours) *string { return &c.WebSocket }},
+	{colourGraphQL, "GraphQL", "#ff4989", func(c *settings.Colours) *string { return &c.GraphQL }},
 	{colourMCP, "MCP", "#526598", func(c *settings.Colours) *string { return &c.MCP }},
 	{colourRemove, "Delete", "#e03131", func(c *settings.Colours) *string { return &c.Remove }},
-	{colourAction, "Action", "#0b4f6c", func(c *settings.Colours) *string { return &c.Action }},
-	{colourSend, "Send", primaryColour, func(c *settings.Colours) *string { return &c.Send }},
+	{colourAction, "Action", "#526598", func(c *settings.Colours) *string { return &c.Action }},
+	{colourSend, "Send", "#ba7d1c", func(c *settings.Colours) *string { return &c.Send }},
 	{colourFound, "Placeholders found", "#2e9e5b", func(c *settings.Colours) *string { return &c.Found }},
-	{colourNotFound, "Placeholders not found", failureColour, func(c *settings.Colours) *string { return &c.NotFound }},
-	{colourError, "Errors", failureColour, func(c *settings.Colours) *string { return &c.Error }},
+	{colourNotFound, "Placeholders not found", "#ef5350", func(c *settings.Colours) *string { return &c.NotFound }},
+	{colourError, "Errors", "#ef5350", func(c *settings.Colours) *string { return &c.Error }},
 	{colourCaptured, "Captured", "#2e9e5b", func(c *settings.Colours) *string { return &c.Captured }},
-	{colourNotCaptured, "Not captured", failureColour, func(c *settings.Colours) *string { return &c.NotCaptured }},
+	{colourNotCaptured, "Not captured", "#ef5350", func(c *settings.Colours) *string { return &c.NotCaptured }},
 	{colourMatch, "Search matches", "#ffd43b", func(c *settings.Colours) *string { return &c.Match }},
-	{colourSets, "Sets", "#b8508c", func(c *settings.Colours) *string { return &c.Sets }},
-	{colourHistory, "History", "#6f8f2f", func(c *settings.Colours) *string { return &c.History }},
+	{colourSets, "Sets", "#ff4989", func(c *settings.Colours) *string { return &c.Sets }},
+	{colourHistory, "History", "#2e9e5b", func(c *settings.Colours) *string { return &c.History }},
 }
 
 // customColours are the colours the user has chosen. See setColours.
@@ -83,7 +84,9 @@ func customIconColour(custom *settings.Colours, kind colourKind) *string {
 			return k.setting(custom)
 		}
 	}
-	return &custom.Action
+	// A kind that is not listed has a colour of its own, which no setting
+	// holds.
+	return new(string)
 }
 
 // colourLabel returns what a kind is called in the settings.
@@ -103,7 +106,7 @@ func defaultColour(kind colourKind) string {
 			return k.fallback
 		}
 	}
-	return primaryColour
+	return ""
 }
 
 // themeColour returns the colour of a kind: the one the user has chosen, or

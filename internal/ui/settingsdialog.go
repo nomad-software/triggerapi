@@ -11,8 +11,8 @@ import (
 )
 
 // settingsDialog edits the settings the user can choose, on a tab for each
-// sort: Workspaces (settingsTabWorkspaces), Requests (settingsTabRequests)
-// and User interface (settingsTabInterface).
+// sort: Workspaces (settingsTabWorkspaces), Requests (settingsTabRequests),
+// History (settingsTabHistory) and User interface (settingsTabInterface).
 type settingsDialog struct {
 	*qt.QDialog
 
@@ -26,7 +26,10 @@ type settingsDialog struct {
 	// workspace, and historyLimit how many are.
 	history      *qt.QCheckBox
 	historyLimit *qt.QSpinBox
-	workspaces   *qt.QLineEdit
+	// diffCommand is the command the responses of the history are compared
+	// with.
+	diffCommand *qt.QLineEdit
+	workspaces  *qt.QLineEdit
 	// publicKey and privateKey are the paths of the files of the SSH keys
 	// the saved files are encrypted with.
 	publicKey  *qt.QLineEdit
@@ -59,6 +62,7 @@ type settingsDialog struct {
 const (
 	settingsTabWorkspaces = iota
 	settingsTabRequests
+	settingsTabHistory
 	settingsTabInterface
 )
 
@@ -79,8 +83,9 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 		font:         qt.NewQFontComboBox2(),
 		timeout:      qt.NewQSpinBox2(),
 		redirects:    qt.NewQCheckBox3("Follow redirects"),
-		history:      qt.NewQCheckBox3("Keep the requests sent in the history of the workspace"),
+		history:      qt.NewQCheckBox3("Enabled"),
 		historyLimit: qt.NewQSpinBox2(),
+		diffCommand:  qt.NewQLineEdit2(),
 		workspaces:   qt.NewQLineEdit2(),
 		publicKey:    qt.NewQLineEdit2(),
 		privateKey:   qt.NewQLineEdit2(),
@@ -111,6 +116,8 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	d.historyLimit.SetValue(current.History())
 	d.historyLimit.SetEnabled(d.history.IsChecked())
 	d.history.OnToggled(d.historyLimit.SetEnabled)
+	d.diffCommand.SetText(current.DiffCommand)
+	d.diffCommand.SetPlaceholderText("Such as meld, kdiff3 or code --diff --wait")
 
 	d.workspaces.SetText(orDefault(current.WorkspacesDir, defaults.Workspaces))
 
@@ -181,17 +188,30 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	requestsForm.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
 	requestsForm.AddRow3("Timeout", d.timeout.QWidget)
 	requestsForm.AddRow3("", d.redirects.QWidget)
-	historyHeading := sectionHeading("History")
-	historyHeading.SetContentsMargins(0, 12, 0, 0)
+
 	historyNote := qt.NewQLabel3("Each workspace keeps the requests sent from it, newest first, with their responses, " +
 		"encrypted like its requests, and written when the workspace is left or TriggerAPI closes. " +
 		"The oldest are dropped beyond this number, and a response body larger than 1 MB is not kept.")
 	historyNote.SetWordWrap(true)
 	historyNote.SetEnabled(false)
-	requestsForm.AddRowWithWidget(historyHeading.QWidget)
-	requestsForm.AddRow3("", d.history.QWidget)
-	requestsForm.AddRow3("Keep", d.historyLimit.QWidget)
-	requestsForm.AddRowWithWidget(historyNote.QWidget)
+	diffHeading := sectionHeading("Comparing responses")
+	diffHeading.SetContentsMargins(0, 12, 0, 0)
+	diffNote := qt.NewQLabel3("The responses of the entries ticked in the history are compared with this command. " +
+		"Each is written to a file of its own, oldest first, and the paths of the files are added to the end of the command, " +
+		"which is run as it is written, not by a shell; quote a word with spaces in it. " +
+		"The files are deleted when TriggerAPI closes.")
+	diffNote.SetWordWrap(true)
+	diffNote.SetEnabled(false)
+
+	historyPage := qt.NewQWidget2()
+	historyForm := qt.NewQFormLayout(historyPage)
+	historyForm.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
+	historyForm.AddRow3("", d.history.QWidget)
+	historyForm.AddRow3("Keep", d.historyLimit.QWidget)
+	historyForm.AddRowWithWidget(historyNote.QWidget)
+	historyForm.AddRowWithWidget(diffHeading.QWidget)
+	historyForm.AddRow3("Diff tool", d.diffCommand.QWidget)
+	historyForm.AddRowWithWidget(diffNote.QWidget)
 
 	colours := qt.NewQWidget2()
 	coloursLayout := qt.NewQVBoxLayout(colours)
@@ -221,6 +241,7 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	// The order matches the tab constants.
 	d.tabs.AddTab(plainPage(general), "Workspaces")
 	d.tabs.AddTab(plainPage(requests), "Requests")
+	d.tabs.AddTab(plainPage(historyPage), "History")
 	d.tabs.AddTab(plainPage(colours), "User interface")
 
 	d.buttons.OnAccepted(d.Accept)
@@ -468,6 +489,7 @@ func (d *settingsDialog) settings(base settings.Settings) settings.Settings {
 	}
 	base.Timeout = d.timeout.Value()
 	base.NoRedirects = !d.redirects.IsChecked()
+	base.DiffCommand = strings.TrimSpace(d.diffCommand.Text())
 	base.NoHistory = !d.history.IsChecked()
 	base.HistoryLimit = d.historyLimit.Value()
 	if base.HistoryLimit == settings.DefaultHistoryLimit {

@@ -181,6 +181,14 @@ bindings.
   every entry of that day, or unticks them if they all are. The remove button
   beneath removes the ticked entries, or the selected one if none is ticked.
   The history can be searched by name and address.
+- Compare the responses of two or more ticked entries with a diff tool of
+  your choosing, such as `meld` or `kdiff3`, with the compare button beside
+  the remove button. The tool is set under History in File > Settings as a
+  command, to which the files to compare are added, oldest first: each holds
+  the body of a response as it is shown, or the error there was instead. The
+  command is run as it is written, not by a shell, so quote a word with
+  spaces in it. The files are written to a temporary folder that only you
+  can read, and deleted when TriggerAPI closes.
 - The settings say how many requests are kept (50 to begin with, and up to
   1000), or that none are. A response body larger than 1 MB is not kept,
   and the oldest entries are dropped to keep the bodies within 32 MB.
@@ -258,15 +266,16 @@ bindings.
 
 **Settings**
 
-File > Settings has three tabs:
+File > Settings has four tabs:
 
 - Workspaces: the folder the workspaces are kept in, the SSH keys they are
   encrypted with (see [Encryption](#encryption)), and exporting and
   importing them (see [Sharing workspaces](#sharing-workspaces)).
 - Requests: how long a request of any kind can take before it is given up
-  on, whether a REST or GraphQL request follows redirects or shows the
-  response that redirects, and whether the requests sent are kept in the
-  history, and how many.
+  on, and whether a REST or GraphQL request follows redirects or shows the
+  response that redirects.
+- History: whether the requests sent are kept in the history, how many, and
+  the diff tool responses are compared with.
 - User interface: the font of code (request and response bodies, messages,
   queries, arguments and the curl command), and the colours of the
   interface, listed in sections: the icons of the sidebar and of each type of

@@ -6,10 +6,6 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 )
 
-// primaryColour is the colour, until another is chosen in the settings, of
-// the buttons that are the main action of their page, such as Send.
-const primaryColour = "#e8590c"
-
 // primaryStyle returns the style sheet which makes a button stand out as the
 // main action of its page, in the colour of the settings (colourSend). A
 // style sheet replaces the native look of the button entirely, so the
@@ -46,6 +42,24 @@ QPushButton:disabled { background-color: #8a9aab; }
 // again when the colour changes.
 func makePrimary(button *qt.QPushButton) {
 	button.SetStyleSheet(primaryStyle())
+}
+
+// shadeHeadings has the rows of a tree which are headings, as headingAt
+// reports of an index, drawn on a background of the colour of text at 3%
+// opacity, the whole width of the tree.
+func shadeHeadings(tree *qt.QTreeWidget, headingAt func(index *qt.QModelIndex) bool) {
+	tree.OnDrawRow(func(super func(*qt.QPainter, *qt.QStyleOptionViewItem, *qt.QModelIndex), painter *qt.QPainter, options *qt.QStyleOptionViewItem, index *qt.QModelIndex) {
+		if headingAt(index) {
+			colour := qt.NewQColor10(tree.Palette().ColorWithCr(qt.QPalette__Text))
+			defer colour.Delete()
+			colour.SetAlphaF(0.03)
+			rect := tree.VisualRect(index)
+			row := qt.NewQRect4(0, rect.Top(), tree.Viewport().Width(), rect.Height())
+			defer row.Delete()
+			painter.FillRect6(row, colour)
+		}
+		super(painter, options, index)
+	})
 }
 
 // fadedTextColour returns the colour of text that is to stand out less than

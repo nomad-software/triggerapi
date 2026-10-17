@@ -50,6 +50,13 @@ func isFailure(p *responsePanel) bool {
 	return strings.Contains(p.result.Text(), themeColour(colourError))
 }
 
+// rowColour returns the colour of the background of the row of an item of
+// a tree, which must be shown, near its right edge, where no text reaches.
+func rowColour(tree *qt.QTreeWidget, item *qt.QTreeWidgetItem) uint {
+	rect := tree.VisualItemRect(item)
+	return tree.Viewport().Grab().ToImage().Pixel(tree.Viewport().Width()-3, rect.Center().Y())
+}
+
 // itemType returns the type whose icon an item of the request tree has, or
 // an empty type if it has the icon of a folder.
 func itemType(item *qt.QTreeWidgetItem) collection.Type {

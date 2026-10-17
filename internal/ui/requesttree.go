@@ -150,6 +150,10 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	t.tree.SetRootIsDecorated(false)
 	// Names are only edited through the Rename button.
 	t.tree.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
+	// The headings are shaded, across the whole tree.
+	shadeHeadings(t.tree, func(index *qt.QModelIndex) bool {
+		return !index.Parent().IsValid() && index.Row() < len(t.top) && t.top[index.Row()].group != ""
+	})
 
 	// The buttons are icons along the bottom, each saying what it does in
 	// its tooltip. They are the colour of the icon of the tab, but for the one

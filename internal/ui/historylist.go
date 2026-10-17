@@ -40,6 +40,9 @@ type historyList struct {
 	root   *qt.QWidget
 	search *qt.QLineEdit
 	tree   *qt.QTreeWidget
+	// diff compares the responses of the ticked entries, and is enabled
+	// while at least two are.
+	diff *qt.QToolButton
 
 	store *history.Store
 	// path is the file the store is saved to. Nothing is saved if it is
@@ -72,6 +75,10 @@ type historyList struct {
 	onOpen  func(e *history.Entry)
 	onGoTo  func(e *history.Entry)
 	onError func(error)
+	// onDiff compares the responses of entries, and warn tells the user
+	// why it could not.
+	onDiff func(entries []*history.Entry) error
+	warn   func(message string)
 	// keys returns the keys the file is encrypted with, which are nil if
 	// it is not to be.
 	keys func() *crypt.Keys
@@ -85,6 +92,9 @@ func newHistoryList(store *history.Store, path string) *historyList {
 		limit:  func() int { return 0 },
 		now:    time.Now,
 		ticked: map[*history.Entry]bool{},
+	}
+	h.warn = func(message string) {
+		qt.QMessageBox_Warning(h.root, "TriggerAPI", message)
 	}
 
 	h.search.SetPlaceholderText("Search history")
@@ -102,6 +112,8 @@ func newHistoryList(store *history.Store, path string) *historyList {
 	h.tree.SetItemsExpandable(false)
 	h.tree.SetExpandsOnDoubleClick(false)
 	h.tree.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
+	// The headings of the days are shaded, across the whole tree.
+	shadeHeadings(h.tree, func(index *qt.QModelIndex) bool { return !index.Parent().IsValid() })
 	// The title has the width that is left, and is cut short to fit it.
 	header := h.tree.Header()
 	header.SetStretchLastSection(false)
@@ -120,13 +132,15 @@ func newHistoryList(store *history.Store, path string) *historyList {
 	// The buttons are icons along the bottom, each saying what it does in
 	// its tooltip, in the colour of the tab but for those which remove.
 	// There is none to open an entry, as selecting it does that.
+	h.diff = newIconButton(colourHistory, drawDiff, "Compare the responses of the ticked entries with the diff tool of the settings")
+	h.diff.OnClicked(h.compare)
 	remove := newIconButton(colourRemove, drawBin, "Remove the ticked entries from the history, or the selected one if none is ticked")
 	remove.OnClicked(h.remove)
 
 	layout := qt.NewQVBoxLayout(h.root)
 	layout.AddWidget(h.search.QWidget)
 	layout.AddWidget2(h.tree.QWidget, 1)
-	layout.AddLayout(newButtonRow(remove).QLayout)
+	layout.AddLayout(newButtonRow(h.diff, remove).QLayout)
 
 	// Clicking where there is no entry clears the selection. A heading
 	// cannot be selected: a click on it ticks its day, as one on the box of
@@ -253,6 +267,37 @@ func (h *historyList) draw(selected *history.Entry) {
 			h.tree.SetCurrentItem(item)
 		}
 	}
+	h.refresh()
+}
+
+// refresh enables the button which compares responses while at least two
+// entries are ticked.
+func (h *historyList) refresh() {
+	h.diff.SetEnabled(len(h.ticked) >= 2)
+}
+
+// tickedEntries returns the ticked entries, newest first.
+func (h *historyList) tickedEntries() []*history.Entry {
+	var entries []*history.Entry
+	for _, e := range h.store.Entries {
+		if h.ticked[e] {
+			entries = append(entries, e)
+		}
+	}
+	return entries
+}
+
+// compare has the responses of the ticked entries compared, warning of a
+// failure.
+func (h *historyList) compare() {
+	entries := h.tickedEntries()
+	if len(entries) < 2 || h.onDiff == nil {
+		return
+	}
+	if err := h.onDiff(entries); err != nil {
+		message := err.Error()
+		h.warn(strings.ToUpper(message[:1]) + message[1:] + ".")
+	}
 }
 
 // dayOf returns the start of the day of a time, where the user is.
@@ -360,6 +405,7 @@ func (h *historyList) toggle(item *qt.QTreeWidgetItem) {
 			}
 		}
 	}
+	h.refresh()
 }
 
 // open reports the selected entry, if there is one.

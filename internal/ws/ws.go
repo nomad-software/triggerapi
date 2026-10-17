@@ -108,6 +108,23 @@ type Message struct {
 	At     time.Time `json:"at"`
 }
 
+// Log returns the messages that have gone over a connection as text, oldest
+// first, each under a line saying which way it went and when.
+func Log(messages []Message) string {
+	var log strings.Builder
+	for i, m := range messages {
+		if i > 0 {
+			log.WriteString("\n\n")
+		}
+		way := "← Received"
+		if m.Sent {
+			way = "→ Sent"
+		}
+		fmt.Fprintf(&log, "%s %s\n%s", way, m.At.Format("15:04:05.000"), m.Text)
+	}
+	return log.String()
+}
+
 // Conn is an open connection.
 type Conn struct {
 	conn *websocket.Conn

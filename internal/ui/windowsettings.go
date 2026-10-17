@@ -78,7 +78,7 @@ func (w *Window) applySettings(s settings.Settings) error {
 	w.request.updateCurl()
 
 	// A history which is to keep fewer requests drops the oldest at once.
-	w.config.NoHistory, w.config.HistoryLimit = s.NoHistory, s.HistoryLimit
+	w.config.NoHistory, w.config.HistoryLimit, w.config.DiffCommand = s.NoHistory, s.HistoryLimit, s.DiffCommand
 	w.history.keep()
 
 	w.config.JSONColours = s.JSONColours

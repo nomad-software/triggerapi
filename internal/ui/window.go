@@ -157,6 +157,10 @@ type Window struct {
 	graphSchemas serverCache[string]
 	mcpSchemas   serverCache[*mcp.Schema]
 
+	// diffDirs are the folders of the files the responses of the history
+	// were compared in, which are deleted when the window closes.
+	diffDirs []string
+
 	// cancel aborts the request in flight. It is nil when idle and must only
 	// be accessed from the main thread.
 	cancel context.CancelFunc
@@ -241,6 +245,7 @@ func NewWindow(files Files) *Window {
 		w.disconnectWS()
 		w.closeMCP()
 		w.history.flush()
+		w.removeDiffFiles()
 		super(event)
 	})
 
@@ -317,6 +322,7 @@ func NewWindow(files Files) *Window {
 	w.history.limit = func() int { return w.config.History() }
 	w.history.onOpen = w.openEntry
 	w.history.onGoTo = w.goToEntry
+	w.history.onDiff = w.diffEntries
 	w.tabs.onSelect = func(from, to *requestTab) {
 		w.stash(from)
 		w.showTab(to, true)

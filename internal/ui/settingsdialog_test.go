@@ -62,24 +62,35 @@ func TestHistorySettingsDialog(t *testing.T) {
 		d := newSettingsDialog(nil, current, Files{})
 		defer d.DeleteLater()
 
-		// The history is on the Requests tab, kept and at its default to
-		// begin with, which is not recorded.
-		if page := d.tabs.Widget(settingsTabRequests); !page.IsAncestorOf(d.history.QWidget) || !page.IsAncestorOf(d.historyLimit.QWidget) {
-			t.Error("the history is not on the Requests tab")
+		// The history has a tab of its own, before the User interface one,
+		// and is kept and at its default to begin with, which is not
+		// recorded.
+		page := d.tabs.Widget(settingsTabHistory)
+		if d.tabs.TabText(settingsTabHistory) != "History" || settingsTabHistory != settingsTabInterface-1 {
+			t.Errorf("tab %d is %q", settingsTabHistory, d.tabs.TabText(settingsTabHistory))
+		}
+		for _, widget := range []*qt.QWidget{d.history.QWidget, d.historyLimit.QWidget, d.diffCommand.QWidget} {
+			if !page.IsAncestorOf(widget) {
+				t.Error("something is missing from the History tab")
+			}
+		}
+		if d.tabs.Widget(settingsTabRequests).IsAncestorOf(d.history.QWidget) {
+			t.Error("the history is still on the Requests tab")
 		}
 		if !d.history.IsChecked() || d.historyLimit.Value() != settings.DefaultHistoryLimit || !d.historyLimit.IsEnabled() {
 			t.Errorf("at first: kept %v, limit %d", d.history.IsChecked(), d.historyLimit.Value())
 		}
-		if got := d.settings(current); got.NoHistory || got.HistoryLimit != 0 {
+		if got := d.settings(current); got.NoHistory || got.HistoryLimit != 0 || got.DiffCommand != "" {
 			t.Errorf("unchanged: %+v", got)
 		}
+		d.diffCommand.SetText("  meld --newtab ")
 
 		d.historyLimit.SetValue(25)
 		d.history.SetChecked(false)
 		if d.historyLimit.IsEnabled() {
 			t.Error("the limit can be changed with no history kept")
 		}
-		if got := d.settings(current); !got.NoHistory || got.HistoryLimit != 25 {
+		if got := d.settings(current); !got.NoHistory || got.HistoryLimit != 25 || got.DiffCommand != "meld --newtab" {
 			t.Errorf("changed: %+v", got)
 		}
 	})
@@ -349,7 +360,7 @@ func TestColourSettings(t *testing.T) {
 		}
 
 		d := newSettingsDialog(w.QWidget, w.config, files.Files)
-		if d.tabs.Count() != 3 || d.tabs.TabText(settingsTabRequests) != "Requests" || d.tabs.TabText(settingsTabWorkspaces) != "Workspaces" || d.tabs.TabText(settingsTabInterface) != "User interface" {
+		if d.tabs.Count() != 4 || d.tabs.TabText(settingsTabRequests) != "Requests" || d.tabs.TabText(settingsTabWorkspaces) != "Workspaces" || d.tabs.TabText(settingsTabHistory) != "History" || d.tabs.TabText(settingsTabInterface) != "User interface" {
 			t.Errorf("the dialog has %d tabs", d.tabs.Count())
 		}
 		custom := map[colourKind]string{

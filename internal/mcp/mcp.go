@@ -11,6 +11,7 @@
 package mcp
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -168,6 +169,20 @@ func (r *Response) ToolError() (string, bool) {
 func (r *Response) OK() bool {
 	_, failed := r.ToolError()
 	return r.Error == nil && !failed
+}
+
+// Text returns the result as indented JSON, or the error the server
+// answered with.
+func (r *Response) Text() string {
+	shown := r.Result
+	if r.Error != nil {
+		shown, _ = json.Marshal(r.Error)
+	}
+	var text bytes.Buffer
+	if json.Indent(&text, shown, "", "  ") != nil {
+		return string(shown)
+	}
+	return text.String()
 }
 
 // Outcome returns how the call went: OK, Tool error for a tool which

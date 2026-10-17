@@ -447,6 +447,29 @@ func drawClock(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
+// drawDiff draws two pages side by side, whose lines differ, for comparing
+// two things.
+func drawDiff(painter *qt.QPainter) {
+	outline(painter)
+	painter.DrawRoundedRect2(22, 28, 36, 72, 5, 5)
+	painter.DrawRoundedRect2(70, 28, 36, 72, 5, 5)
+
+	path := qt.NewQPainterPath()
+	defer path.Delete()
+	// The lines of each page, the same but for the middle one.
+	for _, y := range []float64{46, 64, 82} {
+		path.MoveTo2(32, y)
+		path.LineTo2(48, y)
+		path.MoveTo2(80, y)
+		if y == 64 {
+			path.LineTo2(88, y)
+		} else {
+			path.LineTo2(96, y)
+		}
+	}
+	painter.DrawPath(path)
+}
+
 // whitePen returns a pen for drawing the lines of a symbol.
 func whitePen() *qt.QPen {
 	pen := qt.NewQPen3(qt.NewQColor6("#ffffff"))

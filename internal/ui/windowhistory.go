@@ -2,6 +2,8 @@ package ui
 
 import (
 	"errors"
+	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -74,6 +76,37 @@ func (w *Window) replayEntry(e *history.Entry) func() {
 			r.noteOmitted(e.Omitted)
 		}
 	}
+}
+
+// diffEntries compares the responses of entries of the history with the
+// diff tool of the settings, oldest first. The files it is given are kept
+// until the window closes, as some tools return before they are read.
+func (w *Window) diffEntries(entries []*history.Entry) error {
+	command := strings.TrimSpace(w.config.DiffCommand)
+	if command == "" {
+		return errNoDiffCommand
+	}
+	if len(entries) < 2 {
+		return errors.New("tick at least two entries to compare their responses")
+	}
+	dir, paths, err := writeDiffFiles(entries)
+	if err != nil {
+		return fmt.Errorf("the responses could not be written to compare: %w", err)
+	}
+	if err := startDiff(command, paths); err != nil {
+		os.RemoveAll(dir)
+		return err
+	}
+	w.diffDirs = append(w.diffDirs, dir)
+	return nil
+}
+
+// removeDiffFiles deletes the files the responses were compared in.
+func (w *Window) removeDiffFiles() {
+	for _, dir := range w.diffDirs {
+		os.RemoveAll(dir)
+	}
+	w.diffDirs = nil
 }
 
 // goToEntry opens the saved request an entry of the history was sent from,

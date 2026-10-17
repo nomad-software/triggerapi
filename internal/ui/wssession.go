@@ -242,21 +242,10 @@ func (w *Window) showWSLog(s *wsSession) {
 // first, each under a line saying which way it went and when, and keeps them
 // to be saved to a file.
 func (w *Window) showWSMessages(messages []ws.Message) {
-	var log strings.Builder
-	for i, m := range messages {
-		if i > 0 {
-			log.WriteString("\n\n")
-		}
-		way := "← Received"
-		if m.Sent {
-			way = "→ Sent"
-		}
-		fmt.Fprintf(&log, "%s %s\n%s", way, m.At.Format("15:04:05.000"), m.Text)
-	}
-
+	log := ws.Log(messages)
 	r := w.wsResponse
-	r.setBody(log.String(), false)
-	r.setContent([]byte(log.String()), "messages.txt")
+	r.setBody(log, false)
+	r.setContent([]byte(log), "messages.txt")
 	// The newest message is the one wanted.
 	bar := r.body.VerticalScrollBar()
 	bar.SetValue(bar.Maximum())

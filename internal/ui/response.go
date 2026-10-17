@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -548,17 +547,7 @@ func (p *responsePanel) showRPC(res *rpc.Response) {
 // error or the tool reported one.
 func (p *responsePanel) showMCP(res *mcp.Response) {
 	status, problem, failed := res.Outcome()
-	shown := res.Result
-	if res.Error != nil {
-		shown, _ = json.Marshal(res.Error)
-	}
-
-	var text bytes.Buffer
-	if json.Indent(&text, shown, "", "  ") != nil {
-		text.Reset()
-		text.Write(shown)
-	}
-	p.setBody(text.String(), true)
+	p.setBody(res.Text(), true)
 	if res.Error == nil {
 		p.captureDoc = p.body.ToPlainText()
 	}
@@ -609,10 +598,6 @@ func (p *responsePanel) setHeaders(rows [][2]string) {
 	}
 	p.tabs.SetTabText(tabResponseHeaders, fmt.Sprintf("Headers (%d)", len(rows)))
 }
-
-// failureColour is the colour errors are shown in, until another is chosen
-// in the settings (colourError).
-const failureColour = "#ef5350"
 
 func formatDuration(d time.Duration) string {
 	if d < time.Second {

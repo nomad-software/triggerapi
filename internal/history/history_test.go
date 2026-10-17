@@ -266,3 +266,25 @@ func TestCounts(t *testing.T) {
 		t.Errorf("counts = %d, %d", sent, received)
 	}
 }
+
+func TestText(t *testing.T) {
+	at := time.Date(2026, 10, 17, 9, 30, 0, 0, time.UTC)
+	for _, test := range []struct {
+		entry *Entry
+		text  string
+	}{
+		{&Entry{Error: "refused"}, "refused"},
+		{&Entry{HTTP: &rest.Response{Headers: http.Header{"Content-Type": {"application/json"}}, Body: []byte(`{"a":1}`)}}, "{\n  \"a\": 1\n}"},
+		{&Entry{HTTP: &rest.Response{Body: []byte("plain")}}, "plain"},
+		{&Entry{GRPC: &rpc.Response{Messages: []string{"{}", "[]"}}}, "{}\n\n[]"},
+		{&Entry{MCP: &mcp.Response{Result: json.RawMessage(`{"b":2}`)}}, "{\n  \"b\": 2\n}"},
+		{&Entry{MCP: &mcp.Response{Error: &jsonrpc.Error{Code: -1, Message: "no"}}}, "{\n  \"code\": -1,\n  \"message\": \"no\"\n}"},
+		{&Entry{MCP: &mcp.Response{}}, ""},
+		{&Entry{WebSocket: &WebSocket{Messages: []ws.Message{{Text: "x", At: at}}}}, "← Received 09:30:00.000\nx"},
+		{&Entry{}, ""},
+	} {
+		if got := test.entry.Text(); got != test.text {
+			t.Errorf("text = %q, want %q", got, test.text)
+		}
+	}
+}

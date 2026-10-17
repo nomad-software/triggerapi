@@ -149,11 +149,11 @@ func TestHistorySettings(t *testing.T) {
 	}
 
 	s := Load(path)
-	s.NoHistory, s.HistoryLimit = true, 50
+	s.NoHistory, s.HistoryLimit, s.DiffCommand = true, 75, "meld"
 	if err := s.Save(path); err != nil {
 		t.Fatal(err)
 	}
-	if got := Load(path); !got.NoHistory || got.History() != 50 {
+	if got := Load(path); !got.NoHistory || got.History() != 75 || got.DiffCommand != "meld" {
 		t.Errorf("saved: %+v", got)
 	}
 
