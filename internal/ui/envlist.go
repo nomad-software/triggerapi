@@ -65,9 +65,7 @@ func newEnvList(store *env.Store, path string) *envList {
 	s.chooseFile = func(source envImportSource) (string, bool) {
 		return chooseImportFile(s.root, envImportSources[source])
 	}
-	s.warn = func(message string) {
-		qt.QMessageBox_Warning(s.root, "TriggerAPI", message)
-	}
+	s.warn = warnDialog(s.root)
 
 	// The buttons are icons along the bottom, each saying what it does in
 	// its tooltip. They are the colour of the icon of the tab, but for the one

@@ -779,6 +779,7 @@ func (w *Window) show(r *collection.Request) {
 	for _, ui := range w.uis {
 		ui.editor.saveButton().SetVisible(r == nil)
 	}
+	w.request.unsaved = r == nil
 	if r == nil {
 		// An empty REST request, to be composed.
 		w.load(collection.New(collection.TypeREST, ""))

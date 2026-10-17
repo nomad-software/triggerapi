@@ -111,6 +111,12 @@ type requestPanel struct {
 	commanded rest.Request
 
 	panelState
+	// unsaved is set while the request on show is not saved, when a curl
+	// command pasted into the URL field becomes the request (pasteCurl).
+	unsaved bool
+	// warnPaste tells the user why a curl command could not be pasted.
+	warnPaste func(message string)
+
 	// syncing is set while the URL and the params table are brought into
 	// step, to stop one updating the other in a loop.
 	syncing bool
@@ -129,6 +135,8 @@ func newRequestPanel() *requestPanel {
 	p.url = newWrapEdit()
 	p.url.SetPlaceholderText("Enter URL, e.g. https://api.example.com/users or {{host}}/users")
 	p.url.onChange = func(string) { p.urlChanged() }
+	p.url.onPaste = p.pasteCurl
+	p.warnPaste = warnBeneath(p.url.QWidget)
 
 	p.highlight.document(p.url.Document(), func() bool { return false })
 

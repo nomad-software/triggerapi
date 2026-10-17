@@ -108,9 +108,7 @@ func newHistoryList(store *history.Store, path string) *historyList {
 		ticked: map[*history.Entry]bool{},
 		closed: map[time.Time]bool{},
 	}
-	h.warn = func(message string) {
-		qt.QMessageBox_Warning(h.root, "TriggerAPI", message)
-	}
+	h.warn = warnDialog(h.root)
 
 	h.search.SetPlaceholderText("Search history")
 	h.search.SetClearButtonEnabled(true)

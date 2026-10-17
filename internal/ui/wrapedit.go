@@ -25,6 +25,9 @@ type wrapEdit struct {
 	// onReturn is called when Return is pressed in the field, after what
 	// was typed is committed.
 	onReturn func()
+	// onPaste is given text pasted or dropped into the field, and reports
+	// if it has taken it, which is then not put in the field.
+	onPaste func(text string) bool
 
 	// typing is set while a key is handled, so that a change it makes
 	// waits for commit; pending is set while one is waiting.
@@ -64,6 +67,12 @@ func newWrapEdit() *wrapEdit {
 			super(event)
 			e.typing = false
 		}
+	})
+	e.OnInsertFromMimeData(func(super func(*qt.QMimeData), source *qt.QMimeData) {
+		if e.onPaste != nil && !e.IsReadOnly() && source.HasText() && e.onPaste(source.Text()) {
+			return
+		}
+		super(source)
 	})
 	e.OnFocusOutEvent(func(super func(*qt.QFocusEvent), event *qt.QFocusEvent) {
 		e.commit()

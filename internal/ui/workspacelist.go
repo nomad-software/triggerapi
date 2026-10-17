@@ -48,9 +48,7 @@ func newWorkspaceList(dir func() string) *workspaceList {
 	s.confirm = func(question string) bool {
 		return qt.QMessageBox_Question(s.root, "TriggerAPI", question) == qt.QMessageBox__Yes
 	}
-	s.warn = func(message string) {
-		qt.QMessageBox_Warning(s.root, "TriggerAPI", message)
-	}
+	s.warn = warnDialog(s.root)
 
 	// Names are only edited through the rename button.
 	s.list.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)

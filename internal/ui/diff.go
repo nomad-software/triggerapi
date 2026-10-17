@@ -11,6 +11,7 @@ import (
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/history"
+	"github.com/nomad-software/triggerapi/internal/shell"
 )
 
 // Comparing the responses of entries of the history with the diff tool the
@@ -19,53 +20,6 @@ import (
 
 // errNoDiffCommand is the error of comparing with no diff tool in the settings.
 var errNoDiffCommand = errors.New("there is no diff tool to compare them with: set its command under History in File > Settings")
-
-// splitCommand splits a command into the program and its arguments, as a
-// shell splits words: at spaces, keeping together what is in single or
-// double quotes or follows a backslash. Nothing else of a shell is done.
-func splitCommand(command string) ([]string, error) {
-	var words []string
-	var word strings.Builder
-	inWord := false
-	var quote rune
-	escaped := false
-	for _, r := range command {
-		switch {
-		case escaped:
-			word.WriteRune(r)
-			escaped = false
-		case quote != 0 && r == quote:
-			quote = 0
-		case quote == '\'':
-			word.WriteRune(r)
-		case r == '\\':
-			escaped, inWord = true, true
-		case quote == '"':
-			word.WriteRune(r)
-		case r == '"' || r == '\'':
-			quote, inWord = r, true
-		case r == ' ' || r == '\t' || r == '\n':
-			if inWord {
-				words = append(words, word.String())
-				word.Reset()
-				inWord = false
-			}
-		default:
-			word.WriteRune(r)
-			inWord = true
-		}
-	}
-	switch {
-	case quote != 0:
-		return nil, fmt.Errorf("the diff command has a %c that is not closed", quote)
-	case escaped:
-		return nil, errors.New("the diff command ends with a backslash")
-	}
-	if inWord {
-		words = append(words, word.String())
-	}
-	return words, nil
-}
 
 // diffExtension returns the extension of the file the response of an entry
 // is compared in, which a diff tool may colour it by.
@@ -122,9 +76,9 @@ func untitledName(r *collection.Request) string {
 // startDiff starts the diff command with the paths of the files to compare
 // after its own arguments, without waiting for it to finish.
 func startDiff(command string, paths []string) error {
-	words, err := splitCommand(command)
+	words, err := shell.Split(command)
 	if err != nil {
-		return err
+		return fmt.Errorf("the diff command cannot be read, as %w", err)
 	}
 	if len(words) == 0 {
 		return errNoDiffCommand

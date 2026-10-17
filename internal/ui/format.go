@@ -23,12 +23,7 @@ func newFormatButton(edit *qt.QPlainTextEdit) *formatButton {
 	f.button = newIconButton(colourAction, drawBraces, "Format the JSON, with each value on a line of its own")
 	f.button.OnClicked(f.format)
 
-	// A problem is shown beneath the button, and goes away by itself.
-	f.warn = func(message string) {
-		below := qt.NewQPoint2(0, f.button.Height())
-		defer below.Delete()
-		qt.QToolTip_ShowText2(f.button.MapToGlobalWithQPoint(below), message, f.button.QWidget)
-	}
+	f.warn = warnBeneath(f.button.QWidget)
 	return f
 }
 

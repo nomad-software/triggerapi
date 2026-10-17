@@ -17,30 +17,6 @@ import (
 	"github.com/nomad-software/triggerapi/internal/rpc"
 )
 
-func TestSplitCommand(t *testing.T) {
-	for command, want := range map[string][]string{
-		"meld":                           {"meld"},
-		"  code --diff   --wait ":        {"code", "--diff", "--wait"},
-		`"/opt/My Tools/diff" -a`:        {"/opt/My Tools/diff", "-a"},
-		`'it''s' x`:                      {"its", "x"},
-		`a\ b "c \"d\"" 'e\f'`:           {"a b", `c "d"`, `e\f`},
-		`tool ""`:                        {"tool", ""},
-		"":                               nil,
-		"one\ttwo\nthree":                {"one", "two", "three"},
-		`kdiff3 --L1 "old one" --L2 new`: {"kdiff3", "--L1", "old one", "--L2", "new"},
-	} {
-		got, err := splitCommand(command)
-		if err != nil || !slices.Equal(got, want) {
-			t.Errorf("splitCommand(%q) = %q, %v, want %q", command, got, err, want)
-		}
-	}
-	for _, command := range []string{`meld "a`, `meld 'a`, `meld a\`} {
-		if _, err := splitCommand(command); err == nil {
-			t.Errorf("splitCommand(%q) has no error", command)
-		}
-	}
-}
-
 func TestWriteDiffFiles(t *testing.T) {
 	at := time.Date(2026, 10, 17, 9, 30, 0, 0, time.Local)
 	newer := &history.Entry{

@@ -140,9 +140,7 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	t.chooseFile = func(source importSource) (string, bool) {
 		return chooseImportFile(t.root, importSources[source])
 	}
-	t.warn = func(message string) {
-		qt.QMessageBox_Warning(t.root, "TriggerAPI", message)
-	}
+	t.warn = warnDialog(t.root)
 
 	t.tree.SetHeaderHidden(true)
 	// The headings are at the left edge, without the arrow of a folder,

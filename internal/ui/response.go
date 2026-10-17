@@ -160,9 +160,7 @@ func newResponsePanel(bodyFont string) *responsePanel {
 		path := qt.QFileDialog_GetSaveFileName3(p.root, "Save Response", name)
 		return path, path != ""
 	}
-	p.warn = func(message string) {
-		qt.QMessageBox_Warning(p.root, "TriggerAPI", message)
-	}
+	p.warn = warnDialog(p.root)
 	layout := qt.NewQVBoxLayout(p.root)
 	p.result = qt.NewQLabel2()
 	p.result.SetTextFormat(qt.RichText)

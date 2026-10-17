@@ -71,6 +71,14 @@ bindings.
 - Show any request as a `curl` command, with the environment's variables
   filled in, to copy and run in a terminal, or run it from TriggerAPI with the
   installed `curl` and see the response as usual.
+- Paste a `curl` command, such as one copied from a browser's developer
+  tools, into the URL field of a new request that is not saved yet, and it
+  becomes the request: its method, address, params, headers, authorization
+  and body. The type of the body comes from its `Content-Type` header, which
+  is then not listed with the headers if it is the one that type sends
+  anyway, and a bearer `Authorization` header becomes the authorization.
+  Options that only say how curl runs (`-s`, `-L`, `-o`, ...) are left out,
+  and a command which sends a file or a multipart form is refused.
 
 **gRPC**
 
