@@ -433,6 +433,20 @@ func drawMonitor(painter *qt.QPainter) {
 	painter.DrawPath(path)
 }
 
+// drawClock draws a clock, for the history of the requests sent.
+func drawClock(painter *qt.QPainter) {
+	outline(painter)
+	painter.DrawEllipse2(26, 26, 76, 76)
+
+	path := qt.NewQPainterPath()
+	defer path.Delete()
+	// The hands, one up to twelve and one down to four.
+	path.MoveTo2(64, 40)
+	path.LineTo2(64, 64)
+	path.LineTo2(82, 74)
+	painter.DrawPath(path)
+}
+
 // whitePen returns a pen for drawing the lines of a symbol.
 func whitePen() *qt.QPen {
 	pen := qt.NewQPen3(qt.NewQColor6("#ffffff"))

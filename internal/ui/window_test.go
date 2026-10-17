@@ -65,8 +65,8 @@ func TestWindowSizeRemembered(t *testing.T) {
 func TestSidebarTabs(t *testing.T) {
 	mainthread.Wait(func() {
 		w := NewWindow(testFiles(t).Files)
-		if w.sidebar.Count() != 3 || w.sidebar.TabToolTip(tabWorkspaces) != "Workspaces" || w.sidebar.TabToolTip(tabEnvironments) != "Environments" || w.sidebar.TabToolTip(tabRequests) != "Requests" {
-			t.Errorf("tabs = %d: %q, %q, %q", w.sidebar.Count(), w.sidebar.TabToolTip(0), w.sidebar.TabToolTip(1), w.sidebar.TabToolTip(2))
+		if w.sidebar.Count() != 4 || w.sidebar.TabToolTip(tabWorkspaces) != "Workspaces" || w.sidebar.TabToolTip(tabEnvironments) != "Environments" || w.sidebar.TabToolTip(tabRequests) != "Requests" || w.sidebar.TabToolTip(tabHistory) != "History" {
+			t.Errorf("tabs = %d: %q, %q, %q, %q", w.sidebar.Count(), w.sidebar.TabToolTip(0), w.sidebar.TabToolTip(1), w.sidebar.TabToolTip(2), w.sidebar.TabToolTip(3))
 		}
 
 		// The tabs have icons and no text.
@@ -298,10 +298,11 @@ func TestFocusSidebar(t *testing.T) {
 			tabWorkspaces:   w.workspaces.list.QWidget,
 			tabEnvironments: w.environments.list.QWidget,
 			tabRequests:     w.requests.tree.QWidget,
+			tabHistory:      w.history.tree.QWidget,
 		}
 		// The requests are shown even from the sets.
 		w.requests.showView(viewSets)
-		for _, tab := range []int{tabWorkspaces, tabEnvironments, tabRequests} {
+		for _, tab := range []int{tabWorkspaces, tabEnvironments, tabRequests, tabHistory} {
 			w.focusSidebar(tab)
 			focused := w.FocusWidget()
 			if w.sidebar.CurrentIndex() != tab || focused == nil || focused.UnsafePointer() != lists[tab].UnsafePointer() {

@@ -138,3 +138,33 @@ func TestRequestSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestHistorySettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+
+	// Requests are kept, as many as the default, unless the settings say
+	// otherwise.
+	if got := Load(path); got.NoHistory || got.HistoryLimit != 0 || got.History() != DefaultHistoryLimit {
+		t.Errorf("defaults: %+v", got)
+	}
+
+	s := Load(path)
+	s.NoHistory, s.HistoryLimit = true, 50
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if got := Load(path); !got.NoHistory || got.History() != 50 {
+		t.Errorf("saved: %+v", got)
+	}
+
+	// A number that cannot be is put within what can.
+	for limit, want := range map[int]int{-5: DefaultHistoryLimit, MaxHistoryLimit + 1: MaxHistoryLimit} {
+		s.HistoryLimit = limit
+		if err := s.Save(path); err != nil {
+			t.Fatal(err)
+		}
+		if got := Load(path).History(); got != want {
+			t.Errorf("limit %d loaded as %d, want %d", limit, got, want)
+		}
+	}
+}

@@ -143,17 +143,26 @@ func testCall(t *testing.T, server Request, legacy bool) {
 		t.Errorf("status %q, server %q", res.Status, res.Server)
 	}
 	checkProtocol(t, c, res.Protocol, legacy)
+	if status, problem, failed := res.Outcome(); status != "OK" || problem != "" || failed {
+		t.Errorf("echo outcome %q, %q, %v", status, problem, failed)
+	}
 
 	// A tool's error is a result, but not OK.
 	res = call(KindTool, "fail", "")
 	if message, failed := res.ToolError(); !failed || message != "it went wrong" || res.OK() {
 		t.Errorf("fail %s", res.Result)
 	}
+	if status, problem, failed := res.Outcome(); status != "Tool error" || problem != "it went wrong" || !failed {
+		t.Errorf("fail outcome %q, %q, %v", status, problem, failed)
+	}
 
 	// A JSON-RPC error is a response too.
 	res = call(KindTool, "none", "")
 	if res.Error == nil || res.OK() {
 		t.Errorf("unknown tool %+v %s", res.Error, res.Result)
+	}
+	if status, problem, failed := res.Outcome(); !strings.HasSuffix(status, CodeName(res.Error.Code)) || problem != res.Error.Message || !failed {
+		t.Errorf("unknown tool outcome %q, %q, %v", status, problem, failed)
 	}
 
 	if res = call(KindResource, "test://greeting", "ignored"); !strings.Contains(string(res.Result), `"text":"hello"`) {

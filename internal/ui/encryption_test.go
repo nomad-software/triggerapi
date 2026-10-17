@@ -13,6 +13,7 @@ import (
 	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/crypt/crypttest"
 	"github.com/nomad-software/triggerapi/internal/env"
+	"github.com/nomad-software/triggerapi/internal/history"
 	"github.com/nomad-software/triggerapi/internal/settings"
 	"github.com/nomad-software/triggerapi/internal/workspace"
 )
@@ -56,6 +57,13 @@ func TestEncryption(t *testing.T) {
 		if err := requests.Save(path); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// A history, which is encrypted with the rest.
+	sent := &history.Store{}
+	sent.Add(&history.Entry{Request: collection.New(collection.TypeREST, "Sent"), Error: "refused"}, 10)
+	paths = append(paths, workspace.History(dir, "Other"))
+	if err := sent.SaveWith(paths[4], nil); err != nil {
+		t.Fatal(err)
 	}
 
 	contents := func() []string {

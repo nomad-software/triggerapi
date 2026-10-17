@@ -161,6 +161,33 @@ bindings.
   `book_room_20261011_173005_resp.json`, in lower case with underscores for
   anything that is not a letter or a digit.
 
+**History**
+
+- Every request sent is kept in the History tab of the sidebar, newest first
+  under a heading for each day, with its time, its status (in red if it
+  failed) and its name, or for a request that was not saved what it was sent
+  to. A WebSocket connection is kept once it is closed, with the messages
+  that went over it. A request that is cancelled is not kept.
+- Each workspace has its own history, encrypted like its requests. What is
+  kept is the request as it was written, with its `{{placeholders}}`, and
+  where it went with them filled in; the values of the other placeholders,
+  which are often secrets, are not kept.
+- Select an entry to open a copy of its request, not saved, in the tab that
+  is not pinned, with the response it was given. It can be sent again, or
+  saved to the sidebar with Save. Changing the saved request it was sent from
+  does not change the entry. Double-click an entry to open the saved request
+  it was sent from instead, if it is still where it was.
+- Each entry has a box to tick it, and clicking the heading of a day ticks
+  every entry of that day, or unticks them if they all are. The remove button
+  beneath removes the ticked entries, or the selected one if none is ticked.
+  The history can be searched by name and address.
+- The settings say how many requests are kept (50 to begin with, and up to
+  1000), or that none are. A response body larger than 1 MB is not kept,
+  and the oldest entries are dropped to keep the bodies within 32 MB.
+- The history is written to its file when the workspace is left and when
+  TriggerAPI closes, not after every request, as the whole file is encrypted
+  again each time it is written.
+
 **Organising requests**
 
 - Keep separate sets of environments and requests in workspaces, and switch
@@ -237,12 +264,13 @@ File > Settings has three tabs:
   encrypted with (see [Encryption](#encryption)), and exporting and
   importing them (see [Sharing workspaces](#sharing-workspaces)).
 - Requests: how long a request of any kind can take before it is given up
-  on, and whether a REST or GraphQL request follows redirects or shows the
-  response that redirects.
+  on, whether a REST or GraphQL request follows redirects or shows the
+  response that redirects, and whether the requests sent are kept in the
+  history, and how many.
 - User interface: the font of code (request and response bodies, messages,
   queries, arguments and the curl command), and the colours of the
   interface, listed in sections: the icons of the sidebar and of each type of
-  request, the buttons, the sets, placeholders, errors, the capture marks,
+  request, the buttons, the sets, the history, placeholders, errors, the capture marks,
   the matches of a search and JSON highlighting, which GraphQL is coloured
   with too.
 
@@ -283,7 +311,7 @@ where the variable is used, as in `id-{{request_id}}`.
 | Keys | Does |
 |---|---|
 | Ctrl+Return | Send the REST or GraphQL request, invoke the gRPC method or call the MCP tool, resource or prompt. While one is in flight, cancel it. For a WebSocket request, send the message, connecting first if need be. |
-| Ctrl+W, Ctrl+E, Ctrl+R | Go to the Workspaces, Environments or Requests tab of the sidebar, with the keyboard in its list (Ctrl+R shows the requests, not the sets). |
+| Ctrl+W, Ctrl+E, Ctrl+R, Ctrl+H | Go to the Workspaces, Environments, Requests or History tab of the sidebar, with the keyboard in its list (Ctrl+R shows the requests, not the sets). |
 | Ctrl+S | Go to the request sets in the sidebar, with the keyboard in their list. |
 | Ctrl+P | Go to the search of the Requests tab, to find a request and open it. |
 | Ctrl+F | Find text in the response. |
@@ -317,6 +345,16 @@ where the variable is used, as in `id-{{request_id}}`.
 | Left | The tree | Close the folder, or go to the folder an item is in. |
 | Right | The tree | Open the folder, or go to the first item in it. |
 | Return | The tree | Open the request, in the tab it is pinned in or else the tab that is not pinned. On a folder, open or close it. |
+
+**The history**
+
+| Keys | Where | Does |
+|---|---|---|
+| Return | The search box | Go to the first entry found, without opening it. |
+| Up, Down | The history | Move to the entry above or below, passing over the headings, without opening it. |
+| Return | The history | Open the entry. |
+| Space | The history | Tick or untick the entry. |
+| Delete | The history | Remove the ticked entries, or the entry if none is ticked. |
 
 **Finding text in a response**
 
@@ -552,8 +590,9 @@ The settings are kept where the system keeps the configuration of programs:
 | macOS | `~/Library/Application Support/triggerapi/settings.json` |
 
 They hold the window size and layout, the code font, colours, the time limit
-of requests and whether redirects are followed, the workspaces folder, the
-paths of the encryption keys and the workspace in use.
+of requests and whether redirects are followed, how much history is kept,
+the workspaces folder, the paths of the encryption keys and the workspace in
+use.
 
 The workspaces are kept, by default, where the system keeps the data of
 programs:
@@ -567,8 +606,9 @@ programs:
 | --- | --- |
 | `<name>/environments.json` | The environments of a workspace and their variables |
 | `<name>/requests.json` | The saved requests of a workspace and their folders |
+| `<name>/history.json` | The requests sent from a workspace and their responses |
 
-Each workspace has its own environments and requests, and is a folder named
+Each workspace has its own environments, requests and history, and is a folder named
 after it inside the workspaces folder. Workspaces are added, renamed and
 removed in the Workspaces tab of the sidebar; the selected one is the one in
 use. The workspaces folder can be kept elsewhere, such as a folder that is
@@ -580,7 +620,7 @@ runs TriggerAPI.
 
 ### Encryption
 
-The environments and requests of every workspace are encrypted with a pair
+The environments, requests and history of every workspace are encrypted with a pair
 of SSH keys, using [age](https://github.com/FiloSottile/age). Give the files of
 the public and the private key (Ed25519 or RSA, such as
 `~/.ssh/id_ed25519.pub` and `~/.ssh/id_ed25519`) under Encryption in the
@@ -618,7 +658,7 @@ export in the Workspaces tab of File > Settings.
   file that is not an export, or cannot be read with your keys, adds nothing.
 
 In the zip file each workspace is a folder named after it, holding its
-`environments.json` and `requests.json`.
+`environments.json` and `requests.json`. The history is not exported.
 
 ## Testing
 

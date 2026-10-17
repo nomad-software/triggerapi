@@ -56,6 +56,35 @@ func TestSettingsDialog(t *testing.T) {
 	})
 }
 
+func TestHistorySettingsDialog(t *testing.T) {
+	mainthread.Wait(func() {
+		current := settings.Settings{ResponseFont: "Monospace"}
+		d := newSettingsDialog(nil, current, Files{})
+		defer d.DeleteLater()
+
+		// The history is on the Requests tab, kept and at its default to
+		// begin with, which is not recorded.
+		if page := d.tabs.Widget(settingsTabRequests); !page.IsAncestorOf(d.history.QWidget) || !page.IsAncestorOf(d.historyLimit.QWidget) {
+			t.Error("the history is not on the Requests tab")
+		}
+		if !d.history.IsChecked() || d.historyLimit.Value() != settings.DefaultHistoryLimit || !d.historyLimit.IsEnabled() {
+			t.Errorf("at first: kept %v, limit %d", d.history.IsChecked(), d.historyLimit.Value())
+		}
+		if got := d.settings(current); got.NoHistory || got.HistoryLimit != 0 {
+			t.Errorf("unchanged: %+v", got)
+		}
+
+		d.historyLimit.SetValue(25)
+		d.history.SetChecked(false)
+		if d.historyLimit.IsEnabled() {
+			t.Error("the limit can be changed with no history kept")
+		}
+		if got := d.settings(current); !got.NoHistory || got.HistoryLimit != 25 {
+			t.Errorf("changed: %+v", got)
+		}
+	})
+}
+
 func TestApplySettings(t *testing.T) {
 	files := testFiles(t)
 	dir := filepath.Dir(files.Settings)

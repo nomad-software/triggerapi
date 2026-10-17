@@ -13,6 +13,7 @@ import (
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/graphql"
+	"github.com/nomad-software/triggerapi/internal/history"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 )
@@ -46,13 +47,16 @@ type outcome struct {
 	// show shows the result. It is called again whenever the tab of the
 	// request is gone back to.
 	show func()
+	// record keeps the result in an entry of the history.
+	record func(*history.Entry)
 }
 
 // run does the work of a button which sends a request (Send, Invoke, Call or
-// Execute) in the background, or
-// cancels the work already in flight. The work returns what to do with its
-// result, which is done on the main thread.
-func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(context.Context) (outcome, error)) {
+// Execute) in the background, or cancels the work already in flight. The
+// work returns what to do with its result, which is done on the main
+// thread. Unless it is cancelled, what came of it is kept in the entry of the
+// history, which is then added to the history; there is none if it is nil.
+func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *history.Entry, work func(context.Context) (outcome, error)) {
 	if w.cancel != nil {
 		w.cancel()
 		return
@@ -93,6 +97,19 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, work func(
 			if err == nil {
 				done.capture()
 			}
+			// It is kept in the history likewise, unless it was given up.
+			if entry != nil && !errors.Is(err, context.Canceled) {
+				entry.Duration = elapsed
+				switch {
+				case errors.Is(err, context.DeadlineExceeded):
+					entry.Error = timeoutError(limit).Error()
+				case err != nil:
+					entry.Error = err.Error()
+				default:
+					done.record(entry)
+				}
+				w.history.add(entry)
+			}
 
 			var result func()
 			switch {
@@ -125,8 +142,9 @@ func (w *Window) send() {
 	request := w.request.request()
 	req := request.Expand(w.expander())
 	req.Options = w.options()
+	entry := w.historyEntry(w.requestUI(collection.TypeREST), rest.JoinURL(req.URL, req.Params))
 
-	w.run(w.request.send, w.response, func(ctx context.Context) (outcome, error) {
+	w.run(w.request.send, w.response, entry, func(ctx context.Context) (outcome, error) {
 		res, err := rest.Send(ctx, w.client, req)
 		return w.restOutcome(res, request.Captures, w.response, w.response.show), err
 	})
@@ -139,8 +157,9 @@ func (w *Window) executeCurl() {
 	// What runs is the command as it is shown: a value made by a function
 	// would not be the same if it were made again.
 	req := w.request.commanded
+	entry := w.historyEntry(w.requestUI(collection.TypeREST), rest.JoinURL(req.URL, req.Params))
 
-	w.run(w.request.execute, w.response, func(ctx context.Context) (outcome, error) {
+	w.run(w.request.execute, w.response, entry, func(ctx context.Context) (outcome, error) {
 		res, err := rest.RunCurl(ctx, req)
 		return w.restOutcome(res, request.Captures, w.response, w.response.show), err
 	})
@@ -162,6 +181,7 @@ func (w *Window) restOutcome(res *rest.Response, captures []capture.Rule, respon
 			show(res)
 			response.showCaptured(captured)
 		},
+		record: func(e *history.Entry) { e.HTTP = res },
 	}
 }
 
@@ -169,10 +189,12 @@ func (w *Window) restOutcome(res *rest.Response, captures []capture.Rule, respon
 // It is sent as a REST request, with the same options.
 func (w *Window) sendGraphQL() {
 	request := w.graphql.request()
-	req, err := request.Expand(w.expander()).HTTP()
+	expanded := request.Expand(w.expander())
+	req, err := expanded.HTTP()
 	req.Options = w.options()
+	entry := w.historyEntry(w.requestUI(collection.TypeGraphQL), expanded.URL)
 
-	w.run(w.graphql.send, w.graphqlResponse, func(ctx context.Context) (outcome, error) {
+	w.run(w.graphql.send, w.graphqlResponse, entry, func(ctx context.Context) (outcome, error) {
 		if err != nil {
 			return outcome{}, err
 		}
@@ -217,7 +239,9 @@ func (w *Window) invoke() {
 		schema, _ = w.schemas.get(target)
 	}
 
-	w.run(w.grpc.invoke, w.grpcResponse, func(ctx context.Context) (outcome, error) {
+	entry := w.historyEntry(w.requestUI(collection.TypeGRPC), req.URL)
+
+	w.run(w.grpc.invoke, w.grpcResponse, entry, func(ctx context.Context) (outcome, error) {
 		res, err := rpc.Invoke(ctx, req, schema)
 
 		// Values are captured from the last message of a call that ended
@@ -237,6 +261,7 @@ func (w *Window) invoke() {
 				w.grpcResponse.showRPC(res)
 				w.grpcResponse.showCaptured(captured)
 			},
+			record: func(e *history.Entry) { e.GRPC = res },
 		}, err
 	})
 }

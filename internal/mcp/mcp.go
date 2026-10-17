@@ -121,20 +121,21 @@ func (r Request) endpoint() (string, error) {
 // Response is what came of a call: its result, or the error the server
 // answered with. What the server sends while a call is under way, such as
 // its progress, is not kept: the SDK hands it over apart from the answer, so
-// it cannot be told when all of it has come.
+// it cannot be told when all of it has come. It is kept in the history as
+// JSON.
 type Response struct {
 	// Result is the result of the call as JSON, or nil if Error is set.
-	Result json.RawMessage
-	Error  *jsonrpc.Error
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  *jsonrpc.Error  `json:"error,omitempty"`
 	// Status and Headers are those of the HTTP response the answer came
 	// in, if it was seen.
-	Status   string
-	Headers  http.Header
-	Duration time.Duration
+	Status   string        `json:"status,omitempty"`
+	Headers  http.Header   `json:"headers,omitempty"`
+	Duration time.Duration `json:"duration"`
 	// Protocol is the version of the protocol the client agreed on, and
 	// Server the name and version the server gave.
-	Protocol string
-	Server   string
+	Protocol string `json:"protocol,omitempty"`
+	Server   string `json:"server,omitempty"`
 }
 
 // ToolError returns what a tool said went wrong, if the result is that of a
@@ -167,6 +168,19 @@ func (r *Response) ToolError() (string, bool) {
 func (r *Response) OK() bool {
 	_, failed := r.ToolError()
 	return r.Error == nil && !failed
+}
+
+// Outcome returns how the call went: OK, Tool error for a tool which
+// reported an error, or the code of a JSON-RPC error and its name, with
+// what went wrong and whether it is a failure.
+func (r *Response) Outcome() (status, problem string, failed bool) {
+	if r.Error != nil {
+		return fmt.Sprintf("%d %s", r.Error.Code, CodeName(r.Error.Code)), r.Error.Message, true
+	}
+	if message, toolFailed := r.ToolError(); toolFailed {
+		return "Tool error", message, true
+	}
+	return "OK", "", false
 }
 
 // CodeName returns the name of a JSON-RPC error code, or ERROR for one that

@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 
+	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/history"
 	"github.com/nomad-software/triggerapi/internal/mcp"
 )
 
@@ -42,8 +44,9 @@ func (w *Window) callMCP() {
 	request := w.mcp.request()
 	req := request.Expand(w.expander())
 	client := w.mcpClientFor(req)
+	entry := w.historyEntry(w.requestUI(collection.TypeMCP), req.URL)
 
-	w.run(w.mcp.call, w.mcpResponse, func(ctx context.Context) (outcome, error) {
+	w.run(w.mcp.call, w.mcpResponse, entry, func(ctx context.Context) (outcome, error) {
 		res, err := client.Call(ctx, req)
 
 		// Values are captured from the result of a call that succeeded.
@@ -58,6 +61,7 @@ func (w *Window) callMCP() {
 				w.mcpResponse.showMCP(res)
 				w.mcpResponse.showCaptured(captured)
 			},
+			record: func(e *history.Entry) { e.MCP = res },
 		}, err
 	})
 }

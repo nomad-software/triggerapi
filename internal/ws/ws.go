@@ -97,14 +97,15 @@ func (r Request) Header() (header http.Header, host string) {
 	return header, host
 }
 
-// Message is a message sent or received over a connection.
+// Message is a message sent or received over a connection. It is kept in
+// the history as JSON.
 type Message struct {
 	// Sent is set for a message that was sent, and not received.
-	Sent bool
+	Sent bool `json:"sent,omitempty"`
 	// Text is the message, which for a binary one is a description of it.
-	Text   string
-	Binary bool
-	At     time.Time
+	Text   string    `json:"text"`
+	Binary bool      `json:"binary,omitempty"`
+	At     time.Time `json:"at"`
 }
 
 // Conn is an open connection.

@@ -547,14 +547,10 @@ func (p *responsePanel) showRPC(res *rpc.Response) {
 // beneath says how it went, as a failure if the server answered with an
 // error or the tool reported one.
 func (p *responsePanel) showMCP(res *mcp.Response) {
-	status, problem, failed := "OK", "", false
+	status, problem, failed := res.Outcome()
 	shown := res.Result
 	if res.Error != nil {
-		status = fmt.Sprintf("%d %s", res.Error.Code, mcp.CodeName(res.Error.Code))
-		problem, failed = res.Error.Message, true
 		shown, _ = json.Marshal(res.Error)
-	} else if message, toolFailed := res.ToolError(); toolFailed {
-		status, problem, failed = "Tool error", message, true
 	}
 
 	var text bytes.Buffer
@@ -575,6 +571,20 @@ func (p *responsePanel) showMCP(res *mcp.Response) {
 		field{label: "Server", value: res.Server},
 		field{label: "Protocol", value: res.Protocol},
 	)
+}
+
+// noteOmitted says in the bar beneath a response from the history that its
+// body, of a size, was too large to be kept there, and gives that as the
+// Size of an HTTP response, which would otherwise be that of no body.
+func (p *responsePanel) noteOmitted(size int) {
+	fields := slices.Clone(p.fields)
+	for i := range fields {
+		if fields[i].label == "Size" {
+			fields[i].value = formatSize(size)
+		}
+	}
+	fields = append(fields, field{label: "Body", value: "not kept in the history"})
+	p.setFields(fields...)
 }
 
 // headerRows returns the headers as name and value pairs sorted by name, with

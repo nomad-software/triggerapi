@@ -20,9 +20,13 @@ type settingsDialog struct {
 	font *qt.QFontComboBox
 	// timeout is how long a request can take, in seconds, which is zero
 	// for no limit, and redirects whether a REST request follows them.
-	timeout    *qt.QSpinBox
-	redirects  *qt.QCheckBox
-	workspaces *qt.QLineEdit
+	timeout   *qt.QSpinBox
+	redirects *qt.QCheckBox
+	// history is whether the requests sent are kept in the history of the
+	// workspace, and historyLimit how many are.
+	history      *qt.QCheckBox
+	historyLimit *qt.QSpinBox
+	workspaces   *qt.QLineEdit
 	// publicKey and privateKey are the paths of the files of the SSH keys
 	// the saved files are encrypted with.
 	publicKey  *qt.QLineEdit
@@ -75,6 +79,8 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 		font:         qt.NewQFontComboBox2(),
 		timeout:      qt.NewQSpinBox2(),
 		redirects:    qt.NewQCheckBox3("Follow redirects"),
+		history:      qt.NewQCheckBox3("Keep the requests sent in the history of the workspace"),
+		historyLimit: qt.NewQSpinBox2(),
 		workspaces:   qt.NewQLineEdit2(),
 		publicKey:    qt.NewQLineEdit2(),
 		privateKey:   qt.NewQLineEdit2(),
@@ -99,6 +105,12 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	d.timeout.SetSpecialValueText("No limit")
 	d.timeout.SetValue(current.Timeout)
 	d.redirects.SetChecked(!current.NoRedirects)
+	d.history.SetChecked(!current.NoHistory)
+	d.historyLimit.SetRange(1, settings.MaxHistoryLimit)
+	d.historyLimit.SetSuffix(" requests")
+	d.historyLimit.SetValue(current.History())
+	d.historyLimit.SetEnabled(d.history.IsChecked())
+	d.history.OnToggled(d.historyLimit.SetEnabled)
 
 	d.workspaces.SetText(orDefault(current.WorkspacesDir, defaults.Workspaces))
 
@@ -169,6 +181,17 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	requestsForm.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
 	requestsForm.AddRow3("Timeout", d.timeout.QWidget)
 	requestsForm.AddRow3("", d.redirects.QWidget)
+	historyHeading := sectionHeading("History")
+	historyHeading.SetContentsMargins(0, 12, 0, 0)
+	historyNote := qt.NewQLabel3("Each workspace keeps the requests sent from it, newest first, with their responses, " +
+		"encrypted like its requests, and written when the workspace is left or TriggerAPI closes. " +
+		"The oldest are dropped beyond this number, and a response body larger than 1 MB is not kept.")
+	historyNote.SetWordWrap(true)
+	historyNote.SetEnabled(false)
+	requestsForm.AddRowWithWidget(historyHeading.QWidget)
+	requestsForm.AddRow3("", d.history.QWidget)
+	requestsForm.AddRow3("Keep", d.historyLimit.QWidget)
+	requestsForm.AddRowWithWidget(historyNote.QWidget)
 
 	colours := qt.NewQWidget2()
 	coloursLayout := qt.NewQVBoxLayout(colours)
@@ -262,7 +285,7 @@ var colourSections = []struct {
 	title string
 	kinds []colourKind
 }{
-	{"Sidebar", []colourKind{colourWorkspaces, colourEnvironments, colourRequests, colourSets}},
+	{"Sidebar", []colourKind{colourWorkspaces, colourEnvironments, colourRequests, colourSets, colourHistory}},
 	{"Request types", []colourKind{colourREST, colourGRPC, colourWebSocket, colourGraphQL, colourMCP}},
 	{"Buttons", []colourKind{colourSend, colourAction, colourRemove}},
 	{"Text", []colourKind{colourFound, colourNotFound, colourError, colourMatch}},
@@ -445,6 +468,12 @@ func (d *settingsDialog) settings(base settings.Settings) settings.Settings {
 	}
 	base.Timeout = d.timeout.Value()
 	base.NoRedirects = !d.redirects.IsChecked()
+	base.NoHistory = !d.history.IsChecked()
+	base.HistoryLimit = d.historyLimit.Value()
+	if base.HistoryLimit == settings.DefaultHistoryLimit {
+		// The default is not recorded, so it keeps following the default.
+		base.HistoryLimit = 0
+	}
 	base.WorkspacesDir = location(d.workspaces, d.defaults.Workspaces)
 	base.PublicKey = strings.TrimSpace(d.publicKey.Text())
 	base.PrivateKey = strings.TrimSpace(d.privateKey.Text())

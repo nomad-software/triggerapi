@@ -79,6 +79,7 @@ func TestWorkspaces(t *testing.T) {
 
 	// Removing one deletes its files and its folder.
 	os.WriteFile(Environments(dir, "ZETA"), []byte("{}"), 0o644)
+	os.WriteFile(History(dir, "ZETA"), []byte("{}"), 0o644)
 	if err := Remove(dir, "ZETA"); err != nil {
 		t.Fatal(err)
 	}
@@ -159,9 +160,13 @@ func TestCopyAll(t *testing.T) {
 	Create(from, "B")
 	os.WriteFile(Environments(from, "A"), []byte("a envs"), 0o644)
 	os.WriteFile(Requests(from, "B"), []byte("b reqs"), 0o644)
+	os.WriteFile(History(from, "B"), []byte("b history"), 0o644)
 
 	if err := CopyAll(from, to); err != nil {
 		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(History(to, "B")); string(data) != "b history" {
+		t.Errorf("history = %q", data)
 	}
 	if got, want := list(t, to), []string{"A", "B"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("workspaces = %q, want %q", got, want)
@@ -178,10 +183,15 @@ func TestDuplicate(t *testing.T) {
 	Create(dir, "Hotel")
 	os.WriteFile(Environments(dir, "Hotel"), []byte("envs"), 0o644)
 	os.WriteFile(Requests(dir, "Hotel"), []byte("reqs"), 0o644)
+	os.WriteFile(History(dir, "Hotel"), []byte("history"), 0o644)
 
 	name, err := Duplicate(dir, "Hotel")
 	if err != nil || name != "Hotel copy" {
 		t.Fatalf("duplicate = %q, %v", name, err)
+	}
+	// The history is not copied.
+	if _, err := os.Stat(History(dir, name)); err == nil {
+		t.Error("the history was copied")
 	}
 	envs, _ := os.ReadFile(Environments(dir, name))
 	reqs, _ := os.ReadFile(Requests(dir, name))

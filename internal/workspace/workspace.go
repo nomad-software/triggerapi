@@ -22,7 +22,11 @@ const Default = "Default"
 const (
 	environmentsFile = "environments.json"
 	requestsFile     = "requests.json"
+	historyFile      = "history.json"
 )
+
+// files are the files of a workspace.
+var files = []string{environmentsFile, requestsFile, historyFile}
 
 // The folders and files of the workspaces can be read and written by the
 // user alone.
@@ -77,6 +81,22 @@ func Environments(dir, name string) string {
 // in.
 func Requests(dir, name string) string {
 	return filepath.Join(dir, name, requestsFile)
+}
+
+// History returns the path of the file the history of the requests sent
+// from a workspace is kept in.
+func History(dir, name string) string {
+	return filepath.Join(dir, name, historyFile)
+}
+
+// Files returns the paths of the files of a workspace: its environments,
+// requests and history.
+func Files(dir, name string) []string {
+	paths := make([]string, len(files))
+	for i, file := range files {
+		paths[i] = filepath.Join(dir, name, file)
+	}
+	return paths
 }
 
 // List returns the names of the workspaces in a folder, in alphabetical
@@ -178,7 +198,7 @@ func Rename(dir, from, to string) error {
 	return os.Rename(filepath.Join(dir, from), filepath.Join(dir, to))
 }
 
-// Remove deletes a workspace with its environments and requests. A folder
+// Remove deletes a workspace with its environments, requests and history. A folder
 // which has anything else in it is left alone, so that nothing is deleted
 // which was not put there by the program.
 func Remove(dir, name string) error {
@@ -192,7 +212,7 @@ func Remove(dir, name string) error {
 		return err
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || (entry.Name() != environmentsFile && entry.Name() != requestsFile) {
+		if entry.IsDir() || !slices.Contains(files, entry.Name()) {
 			return fmt.Errorf("its folder has other files in it, such as %s", entry.Name())
 		}
 	}
@@ -205,8 +225,8 @@ func Remove(dir, name string) error {
 	return os.Remove(folder)
 }
 
-// Duplicate makes a copy of a workspace, with its environments and requests,
-// and returns the name it was given.
+// Duplicate makes a copy of a workspace, with its environments and requests
+// but not its history, and returns the name it was given.
 func Duplicate(dir, name string) (string, error) {
 	if err := Valid(name); err != nil {
 		return "", err
@@ -239,6 +259,16 @@ func Import(dir, name, environments, requests string) error {
 	)
 }
 
+// copyWorkspace copies the files of a workspace into another. A file that
+// does not exist is skipped, and nothing already in the other is replaced.
+func copyWorkspace(fromDir, from, toDir, to string) error {
+	var failed []error
+	for _, file := range files {
+		failed = append(failed, copyFile(filepath.Join(fromDir, from, file), filepath.Join(toDir, to, file)))
+	}
+	return errors.Join(failed...)
+}
+
 // CopyAll copies every workspace of one folder into another, leaving the
 // first as it was. Nothing already in the second is replaced.
 func CopyAll(from, to string) error {
@@ -250,7 +280,7 @@ func CopyAll(from, to string) error {
 		if err := os.MkdirAll(filepath.Join(to, name), folderMode); err != nil {
 			return err
 		}
-		if err := Import(to, name, Environments(from, name), Requests(from, name)); err != nil {
+		if err := copyWorkspace(from, name, to, name); err != nil {
 			return err
 		}
 	}

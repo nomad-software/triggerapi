@@ -116,14 +116,15 @@ type Options struct {
 	NoRedirects bool
 }
 
-// Response is the result of sending a request.
+// Response is the result of sending a request. It is kept in the history
+// as JSON.
 type Response struct {
-	Status     string
-	StatusCode int
-	Proto      string
-	Headers    http.Header
-	Body       []byte
-	Duration   time.Duration
+	Status     string        `json:"status"`
+	StatusCode int           `json:"statusCode"`
+	Proto      string        `json:"proto,omitempty"`
+	Headers    http.Header   `json:"headers,omitempty"`
+	Body       []byte        `json:"body,omitempty"`
+	Duration   time.Duration `json:"duration"`
 }
 
 // Expand returns a copy of the credentials with f applied to each of them.

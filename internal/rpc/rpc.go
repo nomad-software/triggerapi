@@ -41,24 +41,24 @@ type Request struct {
 	Captures []capture.Rule `json:"captures,omitempty"`
 }
 
-// Response is the result of a call.
+// Response is the result of a call. It is kept in the history as JSON.
 type Response struct {
 	// Code is the gRPC status code the call ended with, which is 0 for OK,
 	// and CodeName its name, such as NOT_FOUND. Status is the message that
 	// came with it.
-	Code     int
-	CodeName string
-	Status   string
+	Code     int    `json:"code"`
+	CodeName string `json:"codeName"`
+	Status   string `json:"status,omitempty"`
 	// Messages are the response messages as indented JSON. A unary method
 	// has at most one.
-	Messages []string
-	Headers  http.Header
-	Trailers http.Header
-	Duration time.Duration
+	Messages []string      `json:"messages,omitempty"`
+	Headers  http.Header   `json:"headers,omitempty"`
+	Trailers http.Header   `json:"trailers,omitempty"`
+	Duration time.Duration `json:"duration"`
 	// Protocol is the RPC protocol the server answered in, such as
 	// "gRPC (proto)", as its Content-Type header says. It is empty if there
 	// was no answer.
-	Protocol string
+	Protocol string `json:"protocol,omitempty"`
 }
 
 // Protocol returns the RPC protocol, and the encoding of its messages, that

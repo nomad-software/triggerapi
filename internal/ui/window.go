@@ -61,6 +61,7 @@ const (
 	tabWorkspaces = iota
 	tabEnvironments
 	tabRequests
+	tabHistory
 )
 
 // Window is the main application window.
@@ -90,11 +91,12 @@ type Window struct {
 
 	client *http.Client
 	// sidebar has a tab for the workspaces, and one each for the
-	// environments and the requests of the workspace in use.
+	// environments, the requests and the history of the workspace in use.
 	sidebar      *qt.QTabWidget
 	workspaces   *workspaceList
 	environments *envList
 	requests     *requestTree
+	history      *historyList
 	// split divides the sidebar from the rest of the window, and splits
 	// divide the request from the response on each page that has them.
 	split  *qt.QSplitter
@@ -234,9 +236,11 @@ func NewWindow(files Files) *Window {
 			fmt.Fprintln(os.Stderr, "triggerapi: settings could not be saved:", err)
 		}
 		// An open connection is closed with the window, as is the client of
-		// an MCP server.
+		// an MCP server. The connection goes in the history, which is then
+		// written.
 		w.disconnectWS()
 		w.closeMCP()
+		w.history.flush()
 		super(event)
 	})
 
@@ -252,7 +256,7 @@ func NewWindow(files Files) *Window {
 		w.status("The workspaces could not be listed: " + err.Error())
 	}
 	w.config.Workspace = name
-	envs, envPath, requests, requestsPath := w.loadWorkspace(name)
+	l := w.loadWorkspace(name)
 
 	saveFailed := func(err error) {
 		w.status("Changes could not be saved: " + err.Error())
@@ -264,7 +268,7 @@ func NewWindow(files Files) *Window {
 		ui.editor.highlighter().expand = w.expand
 	}
 
-	w.environments = newEnvList(envs, envPath)
+	w.environments = newEnvList(l.envs, l.envPath)
 	w.environments.onError = saveFailed
 	w.environments.keys = currentKeys
 	w.environments.onChange = w.environmentChanged
@@ -291,7 +295,7 @@ func NewWindow(files Files) *Window {
 	w.workspaces.onRename = w.renamedWorkspace
 	w.workspaces.onList = w.updateHeaders
 
-	w.requests = newRequestTree(requests, requestsPath)
+	w.requests = newRequestTree(l.requests, l.requestsPath)
 	w.requests.onError = saveFailed
 	w.requests.keys = currentKeys
 	w.requests.onOpen = w.openRequest
@@ -306,6 +310,13 @@ func NewWindow(files Files) *Window {
 	w.requests.onRename = w.tabs.rename
 	// What is in the folders decides which endpoints have requests.
 	w.requests.onSave = w.syncEndpoints
+
+	w.history = newHistoryList(l.history, l.historyPath)
+	w.history.onError = saveFailed
+	w.history.keys = currentKeys
+	w.history.limit = func() int { return w.config.History() }
+	w.history.onOpen = w.openEntry
+	w.history.onGoTo = w.goToEntry
 	w.tabs.onSelect = func(from, to *requestTab) {
 		w.stash(from)
 		w.showTab(to, true)
@@ -403,10 +414,12 @@ func NewWindow(files Files) *Window {
 	w.sidebar.AddTab(plainPage(w.workspaces.root), "")
 	w.sidebar.AddTab(plainPage(w.environments.root), "")
 	w.sidebar.AddTab(plainPage(w.requests.root), "")
+	w.sidebar.AddTab(plainPage(w.history.root), "")
 	w.drawSidebarIcons()
 	w.sidebar.SetTabToolTip(tabWorkspaces, "Workspaces")
 	w.sidebar.SetTabToolTip(tabEnvironments, "Environments")
 	w.sidebar.SetTabToolTip(tabRequests, "Requests")
+	w.sidebar.SetTabToolTip(tabHistory, "History")
 	// The requests are what is wanted first.
 	w.sidebar.SetCurrentIndex(tabRequests)
 	// The environment editor belongs to the Environments tab, and is closed
@@ -463,7 +476,7 @@ func NewWindow(files Files) *Window {
 
 	qt.NewQShortcut3(qt.QKeySequence__Find, w.QObject).OnActivated(w.find)
 	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+P"), w.QObject).OnActivated(w.quickOpen)
-	// Ctrl+W, Ctrl+E and Ctrl+R go to the tabs of the sidebar.
+	// Ctrl+W, Ctrl+E, Ctrl+R and Ctrl+H go to the tabs of the sidebar.
 	for tab, key := range sidebarKeys {
 		qt.NewQShortcut2(qt.NewQKeySequence2(key), w.QObject).OnActivated(func() { w.focusSidebar(tab) })
 	}
@@ -705,6 +718,7 @@ var sidebarKeys = map[int]string{
 	tabWorkspaces:   "Ctrl+W",
 	tabEnvironments: "Ctrl+E",
 	tabRequests:     "Ctrl+R",
+	tabHistory:      "Ctrl+H",
 }
 
 // focusSidebar shows a tab of the sidebar with the keyboard in its list, to
@@ -721,6 +735,8 @@ func (w *Window) focusSidebar(tab int) {
 		// The requests, not the sets, as Ctrl+S goes to those.
 		w.requests.showView(viewRequests)
 		w.requests.tree.SetFocus()
+	case tabHistory:
+		w.history.tree.SetFocus()
 	}
 }
 

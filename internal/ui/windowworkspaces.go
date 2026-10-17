@@ -11,6 +11,7 @@ import (
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/env"
+	"github.com/nomad-software/triggerapi/internal/history"
 	"github.com/nomad-software/triggerapi/internal/jsonfile"
 	"github.com/nomad-software/triggerapi/internal/settings"
 	"github.com/nomad-software/triggerapi/internal/workspace"
@@ -39,51 +40,65 @@ func (w *Window) firstWorkspace() {
 	}
 }
 
-// loadWorkspace reads the environments and requests of a workspace, and
-// returns each with the path it is to be saved to. A file that could not be
-// read is never saved to, so it is not overwritten: its path is empty, as
-// are both if there is no workspace.
-func (w *Window) loadWorkspace(name string) (envs *env.Store, envPath string, requests *collection.Store, requestsPath string) {
+// loaded is what loadWorkspace read of a workspace: its environments,
+// requests and history, each with the path it is to be saved to.
+type loaded struct {
+	envs         *env.Store
+	envPath      string
+	requests     *collection.Store
+	requestsPath string
+	history      *history.Store
+	historyPath  string
+}
+
+// loadWorkspace reads the environments, requests and history of a
+// workspace. A file that could not be read is never saved to, so it is not
+// overwritten: its path is empty, as are all of them if there is no
+// workspace.
+func (w *Window) loadWorkspace(name string) loaded {
+	none := loaded{envs: &env.Store{Active: -1}, requests: &collection.Store{}, history: &history.Store{}}
 	if name == "" {
 		w.status("There is no workspace, so changes will not be saved.")
-		return &env.Store{Active: -1}, "", &collection.Store{}, ""
+		return none
 	}
-
 	// Nothing is read or saved without keys to encrypt it with.
 	if w.keys == nil {
 		w.status(needKeys)
-		return &env.Store{Active: -1}, "", &collection.Store{}, ""
+		return none
 	}
 
 	var failed []error
-	envPath = workspace.Environments(w.workspacesDir(), name)
-	requestsPath = workspace.Requests(w.workspacesDir(), name)
-
+	dir := w.workspacesDir()
+	l := loaded{
+		envPath:      workspace.Environments(dir, name),
+		requestsPath: workspace.Requests(dir, name),
+		historyPath:  workspace.History(dir, name),
+	}
 	// A file from before there were keys is encrypted once it has been
 	// read, which leaves alone one that cannot be.
-	envs, err := env.LoadWith(envPath, w.keys)
-	if err == nil {
-		err = w.encrypt(envPath)
+	read := func(path *string, err error) {
+		if err == nil {
+			err = w.encrypt(*path)
+		}
+		if err != nil {
+			*path = ""
+			failed = append(failed, err)
+		}
 	}
-	if err != nil {
-		envPath = ""
-		failed = append(failed, err)
-	}
-	requests, err = collection.LoadWith(requestsPath, w.keys)
-	if err == nil {
-		err = w.encrypt(requestsPath)
-	}
-	if err != nil {
-		requestsPath = ""
-		failed = append(failed, err)
-	}
+	var err error
+	l.envs, err = env.LoadWith(l.envPath, w.keys)
+	read(&l.envPath, err)
+	l.requests, err = collection.LoadWith(l.requestsPath, w.keys)
+	read(&l.requestsPath, err)
+	l.history, err = history.LoadWith(l.historyPath, w.keys)
+	read(&l.historyPath, err)
 
 	if len(failed) > 0 {
 		w.status("Saved data could not be loaded, changes will not be saved: " + errors.Join(failed...).Error())
 	} else {
 		w.status("")
 	}
-	return envs, envPath, requests, requestsPath
+	return l
 }
 
 // encrypt has a file that is not encrypted, as one from before there were
@@ -130,13 +145,16 @@ func openKeys(parent *qt.QWidget, s settings.Settings) (*crypt.Keys, error) {
 	return keys, nil
 }
 
-// changeKeys has the environments and requests of every workspace
+// changeKeys has the environments, requests and history of every workspace
 // encrypted with other keys from now on: each file is decrypted with the
 // keys there were and encrypted with those given. The workspace in use is
 // read again if it could not be before. Taking the keys away leaves the
 // files encrypted as they are, and nothing can be read or saved until there
 // are keys again, which the user is told.
 func (w *Window) changeKeys(keys *crypt.Keys) error {
+	// The history is written with the keys it was read with before the
+	// files are converted.
+	w.history.flush()
 	if keys == nil {
 		w.keys = nil
 		w.workspaces.open(w.config.Workspace)
@@ -149,7 +167,7 @@ func (w *Window) changeKeys(keys *crypt.Keys) error {
 
 	failed := []error{err}
 	for _, name := range names {
-		for _, path := range []string{workspace.Environments(dir, name), workspace.Requests(dir, name)} {
+		for _, path := range workspace.Files(dir, name) {
 			if err := jsonfile.Convert(path, w.keys, keys); err != nil {
 				failed = append(failed, fmt.Errorf("%s: %w", path, err))
 			}
@@ -157,7 +175,7 @@ func (w *Window) changeKeys(keys *crypt.Keys) error {
 	}
 	w.keys = keys
 
-	if w.environments.path == "" || w.requests.path == "" {
+	if w.environments.path == "" || w.requests.path == "" || w.history.path == "" {
 		w.workspaces.open(w.config.Workspace)
 	}
 	return errors.Join(failed...)
@@ -167,10 +185,11 @@ func (w *Window) changeKeys(keys *crypt.Keys) error {
 // and requests in place of those of the one before.
 func (w *Window) openWorkspace(name string) {
 	// The pinned requests of the workspace being left are noted while its
-	// requests are still there to be found.
+	// requests are still there to be found, and its history is written.
 	w.keepSet()
+	w.history.flush()
 
-	envs, envPath, requests, requestsPath := w.loadWorkspace(name)
+	l := w.loadWorkspace(name)
 	w.config.Workspace = name
 
 	// The environment being edited belongs to the workspace being left, as
@@ -178,9 +197,10 @@ func (w *Window) openWorkspace(name string) {
 	// pinned in this one.
 	w.closeEditor()
 
-	w.environments.load(envs, envPath)
+	w.environments.load(l.envs, l.envPath)
 	w.requests.clearSearch()
-	w.requests.load(requests, requestsPath)
+	w.requests.load(l.requests, l.requestsPath)
+	w.history.load(l.history, l.historyPath)
 	w.restoreTabs()
 	w.environmentChanged()
 }
@@ -209,11 +229,16 @@ func (w *Window) renamedWorkspace(name string) {
 	if w.requests.path != "" {
 		w.requests.path = workspace.Requests(w.workspacesDir(), name)
 	}
+	if w.history.path != "" {
+		w.history.path = workspace.History(w.workspacesDir(), name)
+	}
 }
 
 // moveWorkspaces keeps the workspaces in another folder from now on. If
 // there are none in it yet, the ones there are now are copied there.
 func (w *Window) moveWorkspaces(from string) error {
+	// The history is written where it is before it is copied.
+	w.history.flush()
 	to := w.workspacesDir()
 
 	names, err := workspace.List(to)

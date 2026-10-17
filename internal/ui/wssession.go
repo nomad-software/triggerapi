@@ -4,10 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/mappu/miqt/qt6/mainthread"
 
+	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/history"
 	"github.com/nomad-software/triggerapi/internal/ws"
 )
 
@@ -23,6 +27,11 @@ type wsSession struct {
 	// messages are those sent and received, in order.
 	messages       []ws.Message
 	sent, received int
+	// entry is the entry of the history the connection is kept in once it
+	// is closed, or nil if it is not to be, and start when it was asked
+	// for.
+	entry *history.Entry
+	start time.Time
 }
 
 // toggleWS opens a connection for the WebSocket request on show, with the
@@ -37,7 +46,8 @@ func (w *Window) toggleWS() {
 
 	request := w.ws.request().Expand(w.expander())
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &wsSession{ctx: ctx, cancel: cancel}
+	s := &wsSession{ctx: ctx, cancel: cancel, start: time.Now()}
+	s.entry = w.historyEntry(w.requestUI(collection.TypeWebSocket), request.URL)
 	w.socket = s
 
 	w.ws.connect.SetText("Cancel")
@@ -71,6 +81,11 @@ func (w *Window) toggleWS() {
 					field{fieldCode, "Not connected", true},
 					field{fieldError, err.Error(), true},
 				)
+				if s.entry != nil {
+					s.entry.Duration = time.Since(s.start)
+					s.entry.Error = err.Error()
+					w.history.add(s.entry)
+				}
 				return
 			}
 
@@ -159,7 +174,12 @@ func (w *Window) disconnectWS() {
 		s.cancel()
 	}
 	w.ws.setConnected(false)
-	w.showWSFields(s, field{fieldCode, "Disconnected", false}, field{})
+	status := field{fieldCode, "Disconnected", false}
+	w.showWSFields(s, status, field{})
+	// A connection given up before it was open is not kept.
+	if s.conn != nil {
+		w.recordWS(s, status, field{})
+	}
 }
 
 // closedWS shows that the connection ended by itself: the close code and
@@ -175,15 +195,55 @@ func (w *Window) closedWS(s *wsSession, err error) {
 	if code >= 0 {
 		status = field{fieldCode, strings.TrimSpace(fmt.Sprintf("%d %s", code, ws.CodeName(code))), !ws.Normal(code)}
 	}
-	w.showWSFields(s, status, field{fieldError, reason, true})
+	problem := field{fieldError, reason, true}
+	w.showWSFields(s, status, problem)
+	w.recordWS(s, status, problem)
+}
+
+// recordWS keeps a connection that has closed in the history: what went
+// over it, and how it ended.
+func (w *Window) recordWS(s *wsSession, status, problem field) {
+	if s.entry == nil {
+		return
+	}
+	record := &history.WebSocket{
+		Messages: slices.Clone(s.messages),
+		Status:   status.value,
+		Failed:   status.failure,
+		Reason:   problem.value,
+	}
+	if s.conn != nil {
+		record.Headers, record.Handshake = s.conn.Headers, s.conn.Duration
+	}
+	s.entry.Duration = time.Since(s.start)
+	s.entry.WebSocket = record
+	w.history.add(s.entry)
+	s.entry = nil
+}
+
+// showWSRecord shows a connection kept in the history as it was when it
+// closed.
+func (w *Window) showWSRecord(record *history.WebSocket) {
+	w.showWSMessages(record.Messages)
+	w.wsResponse.setHeaders(headerRows(record.Headers, ""))
+	sent, received := record.Counts()
+	w.wsResponse.setFields(wsFields(field{fieldCode, record.Status, record.Failed}, field{fieldError, record.Reason, true}, sent, received, record.Handshake)...)
 }
 
 // showWSLog shows the messages that have gone over a connection, oldest
 // first, each under a line saying which way it went and when, and keeps them
 // to be saved to a file.
 func (w *Window) showWSLog(s *wsSession) {
+	w.showWSMessages(s.messages)
+	w.showWSFields(s, field{fieldCode, "Connected", false}, field{})
+}
+
+// showWSMessages shows messages that have gone over a connection, oldest
+// first, each under a line saying which way it went and when, and keeps them
+// to be saved to a file.
+func (w *Window) showWSMessages(messages []ws.Message) {
 	var log strings.Builder
-	for i, m := range s.messages {
+	for i, m := range messages {
 		if i > 0 {
 			log.WriteString("\n\n")
 		}
@@ -200,17 +260,26 @@ func (w *Window) showWSLog(s *wsSession) {
 	// The newest message is the one wanted.
 	bar := r.body.VerticalScrollBar()
 	bar.SetValue(bar.Maximum())
-
-	w.showWSFields(s, field{fieldCode, "Connected", false}, field{})
 }
 
 // showWSFields fills the bar beneath the messages: the state of the
 // connection, any error, how many messages went each way and how long the
 // handshake took.
 func (w *Window) showWSFields(s *wsSession, status, problem field) {
-	fields := []field{status, problem, {label: "Messages", value: fmt.Sprintf("%d sent, %d received", s.sent, s.received)}}
+	var handshake time.Duration
 	if s.conn != nil {
-		fields = append(fields, field{label: "Handshake", value: formatDuration(s.conn.Duration)})
+		handshake = s.conn.Duration
 	}
-	w.wsResponse.setFields(fields...)
+	w.wsResponse.setFields(wsFields(status, problem, s.sent, s.received, handshake)...)
+}
+
+// wsFields returns the fields of the bar beneath the messages of a
+// connection. The time of the handshake is left out if it is zero, as it is
+// until the handshake is done.
+func wsFields(status, problem field, sent, received int, handshake time.Duration) []field {
+	fields := []field{status, problem, {label: "Messages", value: fmt.Sprintf("%d sent, %d received", sent, received)}}
+	if handshake > 0 {
+		fields = append(fields, field{label: "Handshake", value: formatDuration(handshake)})
+	}
+	return fields
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/crypt/crypttest"
 	"github.com/nomad-software/triggerapi/internal/env"
+	"github.com/nomad-software/triggerapi/internal/history"
 	"github.com/nomad-software/triggerapi/internal/settings"
 	"github.com/nomad-software/triggerapi/internal/workspace"
 )
@@ -76,6 +77,11 @@ func loadEnvs(path string) (*env.Store, error) {
 	return env.LoadWith(path, testKeys)
 }
 
+// loadHistory reads the history a test window saved.
+func loadHistory(path string) (*history.Store, error) {
+	return history.LoadWith(path, testKeys)
+}
+
 // loadRequests reads the requests a test window saved.
 func loadRequests(path string) (*collection.Store, error) {
 	return collection.LoadWith(path, testKeys)
@@ -103,6 +109,7 @@ type testPaths struct {
 	Files
 	Environments string
 	Requests     string
+	History      string
 }
 
 // closeWindows has every window closed when the test ends. A window saves
@@ -136,5 +143,6 @@ func testFiles(t *testing.T) testPaths {
 		Files:        Files{Settings: filepath.Join(dir, "settings.json"), Workspaces: workspaces},
 		Environments: workspace.Environments(workspaces, workspace.Default),
 		Requests:     workspace.Requests(workspaces, workspace.Default),
+		History:      workspace.History(workspaces, workspace.Default),
 	}
 }

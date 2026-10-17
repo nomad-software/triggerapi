@@ -21,6 +21,13 @@ const (
 // MaxTimeout is the longest a request can be given, in seconds.
 const MaxTimeout = 3600
 
+// DefaultHistoryLimit is how many requests the history of a workspace keeps
+// unless another number is chosen, and MaxHistoryLimit the most it can.
+const (
+	DefaultHistoryLimit = 50
+	MaxHistoryLimit     = 1000
+)
+
 // Settings is the state that is saved to disk.
 type Settings struct {
 	// Width and Height are the size of the window when it is not maximised.
@@ -43,6 +50,11 @@ type Settings struct {
 	// NoRedirects has a REST response that redirects to another address
 	// shown as it is. Such an address is otherwise followed.
 	NoRedirects bool `json:"noRedirects,omitempty"`
+	// NoHistory has requests sent without being kept in the history of
+	// the workspace, and HistoryLimit is how many the history keeps, which
+	// is DefaultHistoryLimit if it is zero.
+	NoHistory    bool `json:"noHistory,omitempty"`
+	HistoryLimit int  `json:"historyLimit,omitempty"`
 
 	// WorkspacesDir is the folder the workspaces are kept in, each in a
 	// folder of its own. A relative path is relative to the directory the
@@ -122,12 +134,15 @@ type Colours struct {
 	// Sets is the colour of the sets, of their tab in the sidebar and of
 	// their buttons.
 	Sets string `json:"sets,omitempty"`
+	// History is the colour of the tab of the history in the sidebar and
+	// of its buttons.
+	History string `json:"history,omitempty"`
 }
 
 // valid returns the colours with any that are not of the form #rrggbb
 // emptied.
 func (c Colours) valid() Colours {
-	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.WebSocket, &c.GraphQL, &c.MCP, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Captured, &c.NotCaptured, &c.Match, &c.Sets)
+	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.WebSocket, &c.GraphQL, &c.MCP, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Captured, &c.NotCaptured, &c.Match, &c.Sets, &c.History)
 	return c
 }
 
@@ -174,6 +189,7 @@ func Load(path string) Settings {
 		s.Width, s.Height = defaultWidth, defaultHeight
 	}
 	s.Timeout = min(max(s.Timeout, 0), MaxTimeout)
+	s.HistoryLimit = min(max(s.HistoryLimit, 0), MaxHistoryLimit)
 	s.SidebarWidth = max(s.SidebarWidth, 0)
 	s.ResponseHeight = max(s.ResponseHeight, 0)
 	s.JSONColours = s.JSONColours.valid()
@@ -182,6 +198,14 @@ func Load(path string) Settings {
 		s.ResponseFont = defaultResponseFont
 	}
 	return s
+}
+
+// History returns how many requests the history of a workspace keeps.
+func (s Settings) History() int {
+	if s.HistoryLimit <= 0 {
+		return DefaultHistoryLimit
+	}
+	return s.HistoryLimit
 }
 
 // Save writes the settings to the JSON file at path.

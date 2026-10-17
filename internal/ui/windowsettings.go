@@ -77,6 +77,10 @@ func (w *Window) applySettings(s settings.Settings) error {
 	w.config.Timeout, w.config.NoRedirects = s.Timeout, s.NoRedirects
 	w.request.updateCurl()
 
+	// A history which is to keep fewer requests drops the oldest at once.
+	w.config.NoHistory, w.config.HistoryLimit = s.NoHistory, s.HistoryLimit
+	w.history.keep()
+
 	w.config.JSONColours = s.JSONColours
 	w.applyJSONColours()
 
@@ -132,6 +136,7 @@ func (w *Window) drawSidebarIcons() {
 	w.sidebar.SetTabIcon(tabWorkspaces, drawTabIcon(themeColour(colourWorkspaces), drawMonitor))
 	w.sidebar.SetTabIcon(tabEnvironments, drawTabIcon(themeColour(colourEnvironments), drawGlobe))
 	w.sidebar.SetTabIcon(tabRequests, drawTabIcon(themeColour(colourRequests), drawFolder))
+	w.sidebar.SetTabIcon(tabHistory, drawTabIcon(themeColour(colourHistory), drawClock))
 }
 
 // applyColours shows the icons, the buttons which send, the placeholders and
@@ -146,6 +151,7 @@ func (w *Window) applyColours() {
 	w.requests.drawViewIcons()
 	w.requests.sets.draw(w.requests.sets.selected())
 	w.tabs.recolour()
+	w.history.recolour()
 
 	for _, ui := range w.uis {
 		ui.editor.recolour()

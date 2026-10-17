@@ -29,6 +29,7 @@ const (
 	colourNotCaptured
 	colourMatch
 	colourSets
+	colourHistory
 )
 
 // colourKinds are the colours, with what each is called in the settings and
@@ -40,7 +41,8 @@ const (
 // error. Captured and not captured are of the tick and the cross which say
 // how capturing from a response went, and the last is what marks each place
 // that text looked for in a response was found. Sets is the colour of the
-// sets of the Requests tab, their tab and their buttons.
+// sets of the Requests tab, their tab and their buttons, and History that of
+// the History tab and its buttons.
 var colourKinds = []struct {
 	kind     colourKind
 	label    string
@@ -67,6 +69,7 @@ var colourKinds = []struct {
 	{colourNotCaptured, "Not captured", failureColour, func(c *settings.Colours) *string { return &c.NotCaptured }},
 	{colourMatch, "Search matches", "#ffd43b", func(c *settings.Colours) *string { return &c.Match }},
 	{colourSets, "Sets", "#b8508c", func(c *settings.Colours) *string { return &c.Sets }},
+	{colourHistory, "History", "#6f8f2f", func(c *settings.Colours) *string { return &c.History }},
 }
 
 // customColours are the colours the user has chosen. See setColours.
