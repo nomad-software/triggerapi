@@ -81,21 +81,29 @@ func drawGlobe(painter *qt.QPainter) {
 	painter.DrawLine2(28, 64, 100, 64)
 }
 
-// drawFolder draws a folder, for the requests kept in folders.
-func drawFolder(painter *qt.QPainter) {
-	painter.SetPenWithPen(whitePen())
-	painter.SetBrushWithStyle(qt.NoBrush)
-
-	// A folder with its tab at the top left.
+// drawRequests draws two arrows going opposite ways, a request going out and
+// its response coming back, for requests and the folders they are kept in.
+func drawRequests(painter *qt.QPainter) {
+	outline(painter)
 	path := qt.NewQPainterPath()
-	path.MoveTo2(28, 40)
-	path.LineTo2(54, 40)
-	path.LineTo2(64, 52)
-	path.LineTo2(100, 52)
-	path.LineTo2(100, 92)
-	path.LineTo2(28, 92)
-	path.CloseSubpath()
+	exchange(path, 28, 100, 46, 82, 14)
 	painter.DrawPath(path)
+}
+
+// exchange adds to a path an arrow from left to right at the height top and
+// one from right to left beneath it at bottom, with heads of the size given.
+func exchange(path *qt.QPainterPath, left, right, top, bottom, head float64) {
+	path.MoveTo2(left, top)
+	path.LineTo2(right, top)
+	path.MoveTo2(right-head, top-head)
+	path.LineTo2(right, top)
+	path.LineTo2(right-head, top+head)
+
+	path.MoveTo2(right, bottom)
+	path.LineTo2(left, bottom)
+	path.MoveTo2(left+head, bottom-head)
+	path.LineTo2(left, bottom)
+	path.LineTo2(left+head, bottom+head)
 }
 
 // drawDocument draws a page with a folded corner and lines of text, for a
@@ -289,11 +297,13 @@ func setIcon() *qt.QIcon {
 	return cachedIcon("set", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourSets), drawSets) })
 }
 
-// drawFolderPlus draws a folder with a plus sign on it, for adding a folder.
-func drawFolderPlus(painter *qt.QPainter) {
-	drawFolder(painter)
+// drawRequestsPlus draws the arrows of drawRequests with a plus sign beside
+// them, for adding a folder.
+func drawRequestsPlus(painter *qt.QPainter) {
+	outline(painter)
 	path := qt.NewQPainterPath()
-	plus(path, 64, 72, 11)
+	exchange(path, 24, 76, 44, 84, 12)
+	plus(path, 96, 64, 10)
 	painter.DrawPath(path)
 }
 

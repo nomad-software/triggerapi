@@ -150,6 +150,15 @@ bindings.
   number of messages of a gRPC call, or the server and protocol version of an
   MCP call. Failures are in red. The headers of the response, and the
   trailers of a gRPC call, are in a tab of their own.
+- The Timing tab of a REST or GraphQL response shows where the time went:
+  the redirects, DNS lookup, TCP connect, TLS handshake, sending the request,
+  waiting for the first byte of the response (mostly the server's own time)
+  and downloading it, each with a bar on the time of the whole (in a colour
+  of its own, chosen in the settings), and in a panel beneath, the server's
+  address, whether the connection was new or reused, and the TLS version and
+  cipher. A request run with curl gives the times curl measures;
+  after a redirect, curl adds up the times of each request, so only the
+  redirects, the wait and the download are shown.
 - Capture values from a response into variables of the selected environment,
   such as a token from a login to use in later requests. The Capture tab of
   the response lists the variables to set, each with the path of its value in
@@ -291,7 +300,7 @@ File > Settings has four tabs:
   queries, arguments and the curl command), and the colours of the
   interface, listed in sections: the icons of the sidebar and of each type of
   request, the buttons, the sets, the history, placeholders, errors, the capture marks,
-  the matches of a search and JSON highlighting, which GraphQL is coloured
+  the matches of a search, the bars of the Timing tab and JSON highlighting, which GraphQL is coloured
   with too.
 
 The size and layout of the window are remembered between runs. Folders of

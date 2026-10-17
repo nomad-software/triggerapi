@@ -30,6 +30,7 @@ const (
 	colourMatch
 	colourSets
 	colourHistory
+	colourTiming
 )
 
 // colourKinds are the colours, with what each is called in the settings and
@@ -43,7 +44,8 @@ const (
 // how capturing from a response went, and the last is what marks each place
 // that text looked for in a response was found. Sets is the colour of the
 // sets of the Requests tab, their tab and their buttons, and History that of
-// the History tab and its buttons.
+// the History tab and its buttons. Timing is that of the bars of the Timing
+// tab of a response.
 var colourKinds = []struct {
 	kind     colourKind
 	label    string
@@ -71,6 +73,7 @@ var colourKinds = []struct {
 	{colourMatch, "Search matches", "#ffd43b", func(c *settings.Colours) *string { return &c.Match }},
 	{colourSets, "Sets", "#ff4989", func(c *settings.Colours) *string { return &c.Sets }},
 	{colourHistory, "History", "#2e9e5b", func(c *settings.Colours) *string { return &c.History }},
+	{colourTiming, "Timing bars", "#ba7d1c", func(c *settings.Colours) *string { return &c.Timing }},
 }
 
 // customColours are the colours the user has chosen. See setColours.

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"slices"
 	"strings"
@@ -125,6 +126,8 @@ type Response struct {
 	Headers    http.Header   `json:"headers,omitempty"`
 	Body       []byte        `json:"body,omitempty"`
 	Duration   time.Duration `json:"duration"`
+	// Timing says where the time went, if it is known.
+	Timing *Timing `json:"timing,omitempty"`
 }
 
 // Expand returns a copy of the credentials with f applied to each of them.
@@ -297,10 +300,10 @@ func encode(pairs []KeyValue) string {
 }
 
 // Send performs the request using the passed client and reads the whole
-// response body. Duration covers the time until the body is fully read. The
-// options of the request say how long it can take and if redirects are
-// followed; a request that takes too long fails with
-// context.DeadlineExceeded.
+// response body. Duration covers the time until the body is fully read, and
+// Timing says how it was spent. The options of the request say how long it
+// can take and if redirects are followed; a request that takes too long fails
+// with context.DeadlineExceeded.
 func Send(ctx context.Context, client *http.Client, r Request) (*Response, error) {
 	if r.Options.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -308,7 +311,9 @@ func Send(ctx context.Context, client *http.Client, r Request) (*Response, error
 		defer cancel()
 	}
 
-	req, err := r.Build(ctx)
+	start := time.Now()
+	trace := newTracer(start)
+	req, err := r.Build(httptrace.WithClientTrace(ctx, trace.trace()))
 	if err != nil {
 		return nil, err
 	}
@@ -320,8 +325,6 @@ func Send(ctx context.Context, client *http.Client, r Request) (*Response, error
 		client = &single
 	}
 
-	start := time.Now()
-
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -332,6 +335,7 @@ func Send(ctx context.Context, client *http.Client, r Request) (*Response, error
 	if err != nil {
 		return nil, err
 	}
+	end := time.Now()
 
 	return &Response{
 		Status:     res.Status,
@@ -339,7 +343,8 @@ func Send(ctx context.Context, client *http.Client, r Request) (*Response, error
 		Proto:      res.Proto,
 		Headers:    res.Header,
 		Body:       body,
-		Duration:   time.Since(start),
+		Duration:   end.Sub(start),
+		Timing:     trace.timing(end, res),
 	}, nil
 }
 

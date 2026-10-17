@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCurl(t *testing.T) {
@@ -174,6 +176,12 @@ func TestRunCurl(t *testing.T) {
 		len(res.Headers.Values("X-Many")) != 2 || string(res.Body) != `{"path": "/new", "key": "it's", "body": ""}` || res.Duration <= 0 {
 		t.Errorf("response = %+v, body %s", res, res.Body)
 	}
+	// The times curl measured are given, and not taken for the body.
+	if res.Timing == nil || res.Timing.Redirects != 1 || res.Timing.Address != strings.TrimPrefix(srv.URL, "http://") {
+		t.Errorf("timing = %+v", res.Timing)
+	} else if _, ok := res.Timing.Phase(StageRedirects); !ok {
+		t.Errorf("phases = %+v", res.Timing.Phases)
+	}
 
 	// A body is sent.
 	res, err = RunCurl(context.Background(), Request{Method: "POST", URL: srv.URL + "/a", BodyType: BodyText, Body: "hello"})
@@ -190,7 +198,7 @@ func TestRunCurl(t *testing.T) {
 	// What curl says of a failure is the error.
 	unused := httptest.NewServer(nil)
 	unused.Close()
-	if _, err := RunCurl(context.Background(), Request{Method: "GET", URL: unused.URL}); err == nil || !strings.Contains(err.Error(), "curl: (7)") {
+	if _, err := RunCurl(context.Background(), Request{Method: "GET", URL: unused.URL}); err == nil || !strings.Contains(err.Error(), "curl: (7)") || strings.Contains(err.Error(), curlTimesMark) {
 		t.Errorf("error = %v", err)
 	}
 
@@ -216,5 +224,38 @@ func TestParseCurlHeaders(t *testing.T) {
 
 	if _, err := parseCurlHeaders(""); err == nil {
 		t.Error("no error when there are no headers")
+	}
+}
+
+func TestCurlTiming(t *testing.T) {
+	ms := time.Millisecond
+
+	// Without a redirect each stage is given.
+	message, timing := splitCurlTimes("\n" + curlTimesMark + " 0.001 0.003 0.010 0.011 0.050 0.060 0.000000 0 ::1 8080\n")
+	if message != "" || timing == nil {
+		t.Fatalf("message %q, timing %+v", message, timing)
+	}
+	want := []Phase{{StageDNS, 0, 1 * ms}, {StageConnect, 1 * ms, 3 * ms}, {StageTLS, 3 * ms, 10 * ms}, {StageWait, 11 * ms, 50 * ms}, {StageDownload, 50 * ms, 60 * ms}}
+	if !reflect.DeepEqual(timing.Phases, want) || timing.Address != "[::1]:8080" || timing.Redirects != 0 {
+		t.Errorf("timing = %+v", timing)
+	}
+
+	// Without TLS there is no handshake, and with redirects only what
+	// follows them can be told apart.
+	_, timing = splitCurlTimes(curlTimesMark + " 0.001 0.003 0 0.004 0.500 0.510 0.300 2 127.0.0.1 80")
+	want = []Phase{{StageRedirects, 0, 300 * ms}, {StageWait, 300 * ms, 500 * ms}, {StageDownload, 500 * ms, 510 * ms}}
+	if !reflect.DeepEqual(timing.Phases, want) || timing.Redirects != 2 {
+		t.Errorf("timing = %+v", timing)
+	}
+
+	// The reason for a failure is kept apart from the times.
+	message, timing = splitCurlTimes("curl: (7) Failed to connect\n\n" + curlTimesMark + " 0 0 0 0 0 0 0 0  0\n")
+	if message != "curl: (7) Failed to connect" || timing == nil {
+		t.Errorf("message %q, timing %+v", message, timing)
+	}
+
+	// Times that cannot be read are not given.
+	if _, timing := splitCurlTimes(curlTimesMark + " x"); timing != nil {
+		t.Errorf("timing = %+v", timing)
 	}
 }

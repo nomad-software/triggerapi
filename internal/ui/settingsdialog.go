@@ -311,6 +311,7 @@ var colourSections = []struct {
 	{"Buttons", []colourKind{colourSend, colourAction, colourRemove}},
 	{"Text", []colourKind{colourFound, colourNotFound, colourError, colourMatch}},
 	{"Capture", []colourKind{colourCaptured, colourNotCaptured}},
+	{"Timing", []colourKind{colourTiming}},
 }
 
 // swatchWidth is the width of every swatch, so that they line up.

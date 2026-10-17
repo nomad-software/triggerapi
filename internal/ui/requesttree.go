@@ -157,7 +157,7 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	// its tooltip. They are the colour of the icon of the tab, but for the one
 	// which removes, and the one which imports is apart at the right. There
 	// is none to open a request, as selecting it does that.
-	addFolder := newIconButton(colourRequests, drawFolderPlus, "Add a folder")
+	addFolder := newIconButton(colourRequests, drawRequestsPlus, "Add a folder")
 	addFolder.OnClicked(t.addFolder)
 	addRequest := newIconButton(colourRequests, drawPlus, "Add a request")
 	addRequest.OnClicked(t.addRequest)
@@ -359,10 +359,10 @@ func (t *requestTree) load(store *collection.Store, path string) {
 }
 
 // drawViewIcons gives the tabs of the views their icons, in the colours of
-// the settings: the folder of the Requests tab of the sidebar, and the
+// the settings: the arrows of the Requests tab of the sidebar, and the
 // checklist of a set.
 func (t *requestTree) drawViewIcons() {
-	t.views.SetTabIcon(viewRequests, drawIcon(iconSize*2, themeColour(colourRequests), drawFolder))
+	t.views.SetTabIcon(viewRequests, drawIcon(iconSize*2, themeColour(colourRequests), drawRequests))
 	t.views.SetTabIcon(viewSets, setIcon())
 }
 
@@ -479,9 +479,9 @@ func (t *requestTree) order() []any {
 	return all
 }
 
-// folderIcon returns the icon of a folder.
+// folderIcon returns the icon of a folder, the arrows of requests.
 func folderIcon() *qt.QIcon {
-	return cachedIcon("folder", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourRequests), drawFolder) })
+	return cachedIcon("folder", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourRequests), drawRequests) })
 }
 
 // newItem adds an item at the end of the children of a parent item, or with

@@ -73,13 +73,14 @@ func TestCapture(t *testing.T) {
 		w.requests.addRequest()
 		request = w.open
 
-		// The captures are set on a tab of the response.
+		// The captures are set on a tab of the response, which the Timing
+		// tab of a REST response comes after.
 		for name, tabs := range map[string]*qt.QTabWidget{"REST": w.response.tabs, "gRPC": w.grpcResponse.tabs} {
-			if tabs.Count() != 3 || tabs.TabText(2) != "Capture" {
-				t.Errorf("%s response has %d tabs", name, tabs.Count())
+			if tabs.TabText(tabCapture) != "Capture" {
+				t.Errorf("%s response has %q where the Capture tab should be", name, tabs.TabText(tabCapture))
 			}
 		}
-		if w.response.tabs.Widget(2).IsAncestorOf(w.request.captures.table.QWidget) == false {
+		if w.response.tabs.Widget(tabCapture).IsAncestorOf(w.request.captures.table.QWidget) == false {
 			t.Error("the captures are not on the tab")
 		}
 

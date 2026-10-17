@@ -135,7 +135,7 @@ func (w *Window) applyJSONColours() {
 func (w *Window) drawSidebarIcons() {
 	w.sidebar.SetTabIcon(tabWorkspaces, drawTabIcon(themeColour(colourWorkspaces), drawMonitor))
 	w.sidebar.SetTabIcon(tabEnvironments, drawTabIcon(themeColour(colourEnvironments), drawGlobe))
-	w.sidebar.SetTabIcon(tabRequests, drawTabIcon(themeColour(colourRequests), drawFolder))
+	w.sidebar.SetTabIcon(tabRequests, drawTabIcon(themeColour(colourRequests), drawRequests))
 	w.sidebar.SetTabIcon(tabHistory, drawTabIcon(themeColour(colourHistory), drawClock))
 }
 

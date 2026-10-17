@@ -45,6 +45,9 @@ type responsePanel struct {
 	// that is shown.
 	captures *keyValueTable
 	captured []captureResult
+	// timing is the Timing tab, which only the panels of requests sent over
+	// HTTP have, and is otherwise nil.
+	timing *timingTab
 	// content is the body as it is saved: JSON formatted as it is shown,
 	// and any other HTTP response as it was received. fileName is a name
 	// for the file with the extension for what the content is, of which
@@ -287,6 +290,7 @@ func (p *responsePanel) clear() {
 	p.tabs.SetTabText(tabResponseHeaders, "Headers")
 	p.setFields()
 	p.showCaptured(nil)
+	p.showTiming(nil, 0)
 }
 
 // maxHighlight is the size of response above which it is not treated as
@@ -356,12 +360,14 @@ func (p *responsePanel) addCapture(path, name string) {
 	p.captures.addToEdit(name, path)
 }
 
-// Tabs of a response panel. The last is the one on which what to capture
-// from the response is set.
+// Tabs of a response panel. Capture is the one on which what to capture from
+// the response is set, and Timing, which comes after it, says where the time
+// of the response went.
 const (
 	tabResponse = iota
 	tabResponseHeaders
 	tabCapture
+	tabTiming
 )
 
 // setCaptureTable adds the Capture tab, which shows the table of what the
@@ -371,6 +377,20 @@ func (p *responsePanel) setCaptureTable(table *keyValueTable) {
 	p.tabs.AddTab(table.widget(), "Capture")
 	// The marks are of the rows as they were when the response came.
 	table.onStale = func() { p.showCaptured(nil) }
+}
+
+// addTimingTab adds the Timing tab, after the Capture tab.
+func (p *responsePanel) addTimingTab() {
+	p.timing = newTimingTab()
+	p.tabs.AddTab(p.timing.root, "Timing")
+}
+
+// showTiming shows where the time of a response went in the Timing tab, if
+// the panel has one. Without a timing there is a hint in its place.
+func (p *responsePanel) showTiming(timing *rest.Timing, total time.Duration) {
+	if p.timing != nil {
+		p.timing.show(timing, total)
+	}
 }
 
 // showCaptured marks the Capture tab with how capturing from the response
@@ -416,6 +436,9 @@ func (p *responsePanel) recolour() {
 	p.setFields(p.fields...)
 	p.showCaptured(p.captured)
 	p.find.recolour()
+	if p.timing != nil {
+		p.timing.recolour()
+	}
 }
 
 // setFields fills the bar beneath the response with labelled values. Fields
@@ -503,6 +526,7 @@ func (p *responsePanel) show(res *rest.Response) {
 		field{label: "Size", value: formatSize(len(res.Body))},
 		field{label: "Protocol", value: res.Proto},
 	)
+	p.showTiming(res.Timing, res.Duration)
 }
 
 // showGraphQL shows the response to a GraphQL request as that to a REST

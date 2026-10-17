@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -132,8 +133,9 @@ func RunCurl(ctx context.Context, r Request) (*Response, error) {
 	file.Close()
 	defer os.Remove(file.Name())
 
-	// The progress meter is left out, but not the reason for a failure.
-	args := []string{"--silent", "--show-error", "--dump-header", file.Name()}
+	// The progress meter is left out, but not the reason for a failure. The
+	// times are written after the reason, on a line of their own.
+	args := []string{"--silent", "--show-error", "--dump-header", file.Name(), "--write-out", curlTimes}
 	head := false
 	for _, option := range options {
 		head = head || slices.Contains(option, "--head")
@@ -152,6 +154,7 @@ func RunCurl(ctx context.Context, r Request) (*Response, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
+	message, timing := splitCurlTimes(problem.String())
 	// This is how curl ends when it has taken too long, which is to be the
 	// error that Send gives.
 	var exit *exec.ExitError
@@ -159,7 +162,7 @@ func RunCurl(ctx context.Context, r Request) (*Response, error) {
 		return nil, context.DeadlineExceeded
 	}
 	if err != nil {
-		if message := strings.TrimSpace(problem.String()); message != "" {
+		if message != "" {
 			return nil, errors.New(message)
 		}
 		return nil, fmt.Errorf("curl: %w", err)
@@ -179,7 +182,81 @@ func RunCurl(ctx context.Context, r Request) (*Response, error) {
 		res.Body = body.Bytes()
 	}
 	res.Duration = duration
+	res.Timing = timing
 	return res, nil
+}
+
+// curlTimes is what curl is asked to write when it has finished: a line of
+// the times it measured, on its standard error, which is told apart from
+// the rest by its start.
+const curlTimes = "%{stderr}\n" + curlTimesMark + " %{time_namelookup} %{time_connect} %{time_appconnect} " +
+	"%{time_pretransfer} %{time_starttransfer} %{time_total} %{time_redirect} %{num_redirects} %{remote_ip} %{remote_port}\n"
+
+const curlTimesMark = "triggerapi-times"
+
+// splitCurlTimes takes the line of times that curlTimes asks for out of what
+// curl wrote on its standard error, and returns the rest, which is the
+// reason for a failure, and the Timing made of them, which is nil if they
+// were not there or could not be read.
+func splitCurlTimes(stderr string) (string, *Timing) {
+	var rest []string
+	var timing *Timing
+	for _, line := range strings.Split(stderr, "\n") {
+		if fields, ok := strings.CutPrefix(line, curlTimesMark+" "); ok {
+			timing = curlTiming(strings.Fields(fields))
+			continue
+		}
+		rest = append(rest, line)
+	}
+	return strings.TrimSpace(strings.Join(rest, "\n")), timing
+}
+
+// curlTiming makes a Timing of the times curl measured, as curlTimes lists
+// them. Each time is in seconds from the start, but where there were
+// redirects, curl adds up the times of each request, so the stages before
+// the response cannot be told apart and only the redirects, the waiting for
+// the last response and its download are given.
+func curlTiming(fields []string) *Timing {
+	if len(fields) < 8 {
+		return nil
+	}
+	var at [7]time.Duration
+	for i := range at {
+		seconds, err := strconv.ParseFloat(fields[i], 64)
+		if err != nil {
+			return nil
+		}
+		at[i] = time.Duration(seconds * float64(time.Second))
+	}
+	lookup, connect, handshake, before, first, total, redirect := at[0], at[1], at[2], at[3], at[4], at[5], at[6]
+	redirects, err := strconv.Atoi(fields[7])
+	if err != nil {
+		return nil
+	}
+
+	timing := &Timing{Redirects: redirects}
+	if len(fields) >= 10 && fields[8] != "" {
+		timing.Address = net.JoinHostPort(fields[8], fields[9])
+	}
+	add := func(stage Stage, from, to time.Duration) {
+		if to > from {
+			timing.Phases = append(timing.Phases, Phase{stage, from, to})
+		}
+	}
+	if redirects > 0 {
+		add(StageRedirects, 0, redirect)
+		add(StageWait, redirect, first)
+	} else {
+		add(StageDNS, 0, lookup)
+		add(StageConnect, lookup, connect)
+		// There is no handshake without TLS, when its time is nought.
+		if handshake > 0 {
+			add(StageTLS, connect, handshake)
+		}
+		add(StageWait, before, first)
+	}
+	add(StageDownload, first, total)
+	return timing
 }
 
 // curlTimedOut is the exit status of curl when a request has taken longer

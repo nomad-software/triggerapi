@@ -141,6 +141,9 @@ type Colours struct {
 	// History is the colour of the tab of the history in the sidebar and
 	// of its buttons.
 	History string `json:"history,omitempty"`
+	// Timing is the colour of the bars of the Timing tab of a response,
+	// which show when each stage of a request was.
+	Timing string `json:"timing,omitempty"`
 }
 
 // valid returns the colours with any that are not of the form #rrggbb

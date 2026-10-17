@@ -201,7 +201,7 @@ func NewWindow(files Files) *Window {
 	w.graphqlResponse = newResponsePanel(w.config.ResponseFont)
 	w.mcpResponse = newResponsePanel(w.config.ResponseFont)
 	w.uis = []*requestUI{
-		{typ: collection.TypeREST, page: pageRequest, editor: w.request, response: w.response, send: w.send},
+		{typ: collection.TypeREST, page: pageRequest, editor: w.request, response: w.response, send: w.send, timing: true},
 		{typ: collection.TypeGRPC, page: pageGRPC, editor: w.grpc, response: w.grpcResponse, send: w.invoke,
 			// The methods offered are those of the server.
 			shown:     func() { w.reflect(false) },
@@ -209,7 +209,7 @@ func NewWindow(files Files) *Window {
 		{typ: collection.TypeWebSocket, page: pageWS, editor: w.ws, response: w.wsResponse, send: w.connectAndSendWS},
 		{typ: collection.TypeGraphQL, page: pageGraphQL, editor: w.graphql, response: w.graphqlResponse, send: w.sendGraphQL,
 			// The schema is that of the server, if it is on show.
-			shown: func() { w.graphql.loadSchema(false) }},
+			shown: func() { w.graphql.loadSchema(false) }, timing: true},
 		{typ: collection.TypeMCP, page: pageMCP, editor: w.mcp, response: w.mcpResponse, send: w.callMCP,
 			// What can be called is what the server has.
 			shown:     func() { w.discoverMCP(false) },
@@ -221,8 +221,11 @@ func NewWindow(files Files) *Window {
 	w.grpcResponse.setCaptureTable(w.grpc.captures)
 	w.graphqlResponse.setCaptureTable(w.graphql.captures)
 	w.mcpResponse.setCaptureTable(w.mcp.captures)
-	// A response is saved to a file named after its request.
 	for _, ui := range w.uis {
+		if ui.timing {
+			ui.response.addTimingTab()
+		}
+		// A response is saved to a file named after its request.
 		ui.response.requestName = func() string {
 			if w.open == nil {
 				return ""

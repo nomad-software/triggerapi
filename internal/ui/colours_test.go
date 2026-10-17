@@ -46,6 +46,7 @@ func TestColourSettingFields(t *testing.T) {
 		colourMatch:        "Match",
 		colourSets:         "Sets",
 		colourHistory:      "History",
+		colourTiming:       "Timing",
 	}
 	if len(colourKinds) != len(want) || reflect.TypeFor[settings.Colours]().NumField() != len(want) {
 		t.Fatalf("there are %d colours and %d settings, want %d of each", len(colourKinds), reflect.TypeFor[settings.Colours]().NumField(), len(want))
