@@ -360,7 +360,7 @@ func TestColourSettings(t *testing.T) {
 		}
 
 		d := newSettingsDialog(w.QWidget, w.config, files.Files)
-		if d.tabs.Count() != 4 || d.tabs.TabText(settingsTabRequests) != "Requests" || d.tabs.TabText(settingsTabWorkspaces) != "Workspaces" || d.tabs.TabText(settingsTabHistory) != "History" || d.tabs.TabText(settingsTabInterface) != "User interface" {
+		if d.tabs.Count() != 5 || d.tabs.TabText(settingsTabRequests) != "Requests" || d.tabs.TabText(settingsTabNetwork) != "Network" || d.tabs.TabText(settingsTabWorkspaces) != "Workspaces" || d.tabs.TabText(settingsTabHistory) != "History" || d.tabs.TabText(settingsTabInterface) != "User interface" {
 			t.Errorf("the dialog has %d tabs", d.tabs.Count())
 		}
 		custom := map[colourKind]string{

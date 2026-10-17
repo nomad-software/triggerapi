@@ -120,12 +120,22 @@ var adviseKeys = func(parent *qt.QWidget) {
 // askPassphrase asks for the passphrase of the private key in the file at
 // path. Tests replace it rather than let the dialog open.
 var askPassphrase = func(parent *qt.QWidget, path string) ([]byte, error) {
-	ok := false
-	passphrase := qt.QInputDialog_GetText4(parent, "Private Key", "Passphrase of "+path, qt.QLineEdit__Password, "", &ok)
-	if !ok {
+	passphrase, err := askHidden(parent, "Private Key", "Passphrase of "+path)
+	if err != nil {
 		return nil, errors.New("no passphrase was given")
 	}
 	return []byte(passphrase), nil
+}
+
+// askHidden asks for a passphrase or password in a dialog which does not
+// show what is typed. It is an error if the user cancels.
+func askHidden(parent *qt.QWidget, title, label string) (string, error) {
+	ok := false
+	value := qt.QInputDialog_GetText4(parent, title, label, qt.QLineEdit__Password, "", &ok)
+	if !ok {
+		return "", errors.New("none was given")
+	}
+	return value, nil
 }
 
 // openKeys returns the keys the settings name, which are nil if they name

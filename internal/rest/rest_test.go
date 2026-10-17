@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nomad-software/triggerapi/internal/network"
 )
 
 func TestBuildURL(t *testing.T) {
@@ -289,5 +291,40 @@ func TestCurlOptions(t *testing.T) {
 		if got, err := r.Curl(); err != nil || got != want {
 			t.Errorf("%+v: %q, %v, want %q", options, got, err, want)
 		}
+	}
+}
+
+func TestSendNetwork(t *testing.T) {
+	// The proxy answers in place of the server.
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("proxied"))
+	}))
+	defer proxy.Close()
+	secure := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("secure"))
+	}))
+	defer secure.Close()
+
+	c, err := network.Load(network.Config{
+		Proxy:   proxy.URL,
+		NoProxy: []string{"127.0.0.1"},
+		Hosts:   []network.Host{{Pattern: "127.0.0.1", Insecure: true}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.CloseIdleConnections()
+	options := Options{Network: c}
+
+	// What the response went through is recorded.
+	res, err := Send(context.Background(), c.HTTP(), Request{Method: "GET", URL: "http://example.invalid/", Options: options})
+	if err != nil || string(res.Body) != "proxied" || res.Timing.Proxy != proxy.URL || res.Timing.Unverified {
+		t.Errorf("response %+v, %v", res, err)
+	}
+	// A host whose certificate is not checked is reached directly, as the
+	// proxy is bypassed for it.
+	res, err = Send(context.Background(), c.HTTP(), Request{Method: "GET", URL: secure.URL, Options: options})
+	if err != nil || string(res.Body) != "secure" || res.Timing.Proxy != "" || !res.Timing.Unverified {
+		t.Errorf("response %+v, %v", res, err)
 	}
 }

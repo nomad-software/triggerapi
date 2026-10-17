@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nomad-software/triggerapi/internal/network"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 	"github.com/nomad-software/triggerapi/internal/rpc/rpctest"
@@ -309,5 +310,27 @@ func TestProtocol(t *testing.T) {
 		if got := rpc.Protocol(contentType); got != want {
 			t.Errorf("Protocol(%q) = %q, want %q", contentType, got, want)
 		}
+	}
+}
+
+func TestInvokeNetwork(t *testing.T) {
+	srv := server(t, rpctest.ReflectionAll)
+	_, port, _ := strings.Cut(strings.TrimPrefix(srv.URL, "http://"), ":")
+
+	// The name does not exist: the settings say where it is reached.
+	client, err := network.Load(network.Config{Hosts: []network.Host{{Pattern: "grpc.example.invalid", Address: "127.0.0.1"}}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := rpc.Request{URL: "grpc.example.invalid:" + port, Method: "test.v1.Echo/Say", Message: `{"text": "hi"}`, Network: client}
+	res, err := rpc.Invoke(context.Background(), req, nil)
+	if err != nil || !res.OK() {
+		t.Fatalf("response %+v, %v", res, err)
+	}
+
+	// Without them it is not reached.
+	req.Network = nil
+	if _, err := rpc.Invoke(context.Background(), req, nil); err == nil {
+		t.Error("a name that does not exist was reached")
 	}
 }

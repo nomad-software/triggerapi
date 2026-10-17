@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"html"
 	"strconv"
 	"strings"
 	"time"
@@ -49,6 +48,8 @@ type timingTab struct {
 	bars []*timingBar
 	// details says what the connection was.
 	details *qt.QLabel
+	// timing is what is shown, which is nil for none.
+	timing *rest.Timing
 }
 
 func newTimingTab() *timingTab {
@@ -156,11 +157,16 @@ func (t *timingTab) show(timing *rest.Timing, total time.Duration) {
 	t.table.Item(last, colTimingTime).SetText(formatTiming(total))
 	t.bars[last].set(0, at(total))
 
+	t.timing = timing
 	t.details.SetText(timingDetails(timing))
 }
 
-// recolour draws the bars again, after the colours have changed.
+// recolour draws the bars and the details again, after the colours have
+// changed.
 func (t *timingTab) recolour() {
+	if t.timing != nil && t.pages.CurrentIndex() == timingPageTable {
+		t.details.SetText(timingDetails(t.timing))
+	}
 	for _, bar := range t.bars {
 		bar.widget.Update()
 	}
@@ -173,15 +179,22 @@ func timingDetails(timing *rest.Timing) string {
 	if timing.Reused {
 		connection = "Reused, so there was no lookup, connecting or handshake"
 	}
+	certificate := ""
+	if timing.Unverified {
+		certificate = "Not checked, as the network settings say for this host"
+	}
 	faded := fadedTextColour()
 	var parts []string
 	for _, f := range []field{
 		{label: "Address", value: timing.Address},
+		{label: "Proxy", value: timing.Proxy},
 		{label: "Connection", value: connection},
 		{label: "TLS", value: timing.TLS},
+		{label: "Certificate", value: certificate, failure: true},
 	} {
 		if f.value != "" {
-			parts = append(parts, fmt.Sprintf(`<b style="color: %s">%s:</b> %s`, faded, f.label, html.EscapeString(f.value)))
+			label, value := f.html(faded)
+			parts = append(parts, label+" "+value)
 		}
 	}
 	return strings.Join(parts, "&nbsp;&nbsp;&nbsp;&nbsp; ")

@@ -102,6 +102,17 @@ type field struct {
 	failure bool
 }
 
+// html returns the label and the value of the field as rich text: the label
+// bold in the colour faded, which is fainter than the value, and a value that
+// is a failure in the colour of errors.
+func (f field) html(faded string) (label, value string) {
+	value = html.EscapeString(f.value)
+	if f.failure {
+		value = fmt.Sprintf(`<span style="color: %s">%s</span>`, themeColour(colourError), value)
+	}
+	return fmt.Sprintf(`<b style="color: %s">%s:</b>`, faded, html.EscapeString(f.label)), value
+}
+
 // newResponsePanel creates the panel, showing the response body in the named
 // font family.
 func newResponsePanel(bodyFont string) *responsePanel {
@@ -459,11 +470,7 @@ func (p *responsePanel) setFields(fields ...field) {
 	// error if there is one.
 	filled := false
 	for _, f := range p.fields {
-		value := html.EscapeString(f.value)
-		if f.failure {
-			value = fmt.Sprintf(`<span style="color: %s">%s</span>`, themeColour(colourError), value)
-		}
-		label := fmt.Sprintf(`<b style="color: %s">%s:</b>`, faded, html.EscapeString(f.label))
+		label, value := f.html(faded)
 
 		switch f.label {
 		case fieldCode:

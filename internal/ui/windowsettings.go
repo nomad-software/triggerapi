@@ -75,6 +75,9 @@ func (w *Window) applySettings(s settings.Settings) error {
 	// The curl command says how long the request can take and whether it
 	// follows redirects.
 	w.config.Timeout, w.config.NoRedirects = s.Timeout, s.NoRedirects
+	if err := w.applyNetwork(s.Network); err != nil {
+		failed = append(failed, err)
+	}
 	w.request.updateCurl()
 
 	// A history which is to keep fewer requests drops the oldest at once.

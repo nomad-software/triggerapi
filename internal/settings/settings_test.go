@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/nomad-software/triggerapi/internal/network"
 )
 
 func TestSaveLoad(t *testing.T) {
@@ -136,6 +138,36 @@ func TestRequestSettings(t *testing.T) {
 		if got := Load(path).Timeout; got != want {
 			t.Errorf("timeout %d loaded as %d, want %d", timeout, got, want)
 		}
+	}
+}
+
+func TestNetworkSettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+
+	// A file from before there were network settings has none, and is
+	// written as it was.
+	if err := os.WriteFile(path, []byte(`{"width": 900, "height": 700, "responseFont": "Mono", "timeout": 5}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := Load(path)
+	if !s.Network.IsZero() || s.Timeout != 5 {
+		t.Errorf("loaded %+v", s)
+	}
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); strings.Contains(string(data), "network") {
+		t.Errorf("saved %s", data)
+	}
+
+	// They are kept.
+	s.Network = network.Config{Proxy: "http://gary@proxy:3128", NoProxy: []string{"lan"}, MinTLS: network.TLS13,
+		Hosts: []network.Host{{Pattern: "*.example.com", CA: "~/ca.pem", Cert: "c.p12", Insecure: true, Address: "10.0.0.1"}}}
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if got := Load(path); !reflect.DeepEqual(got.Network, s.Network) {
+		t.Errorf("loaded %+v, want %+v", got.Network, s.Network)
 	}
 }
 

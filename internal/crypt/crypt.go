@@ -8,13 +8,14 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"filippo.io/age"
 	"filippo.io/age/agessh"
 	"filippo.io/age/armor"
 	"golang.org/x/crypto/ssh"
+
+	"github.com/nomad-software/triggerapi/internal/homedir"
 )
 
 // intros are what a file that age has encrypted can start with: armoured,
@@ -45,7 +46,7 @@ func Open(public, private string, passphrase func() ([]byte, error)) (*Keys, err
 		return nil, errors.New("both a public and a private key are needed")
 	}
 
-	public, private = home(public), home(private)
+	public, private = homedir.Expand(public), homedir.Expand(private)
 
 	line, err := os.ReadFile(public)
 	if err != nil {
@@ -85,7 +86,7 @@ func Recipient(public string) (*Keys, error) {
 	if public == "" {
 		return nil, errors.New("a public key is needed")
 	}
-	line, err := os.ReadFile(home(public))
+	line, err := os.ReadFile(homedir.Expand(public))
 	if err != nil {
 		return nil, fmt.Errorf("the public key could not be read: %w", err)
 	}
@@ -94,20 +95,6 @@ func Recipient(public string) (*Keys, error) {
 		return nil, fmt.Errorf("%s is not a public key that can be used: %w", public, err)
 	}
 	return &Keys{recipient: recipient}, nil
-}
-
-// home returns a path with the ~ it starts with, if it does, replaced by the
-// home folder of the user.
-func home(path string) string {
-	rest, ok := strings.CutPrefix(path, "~")
-	if !ok || (rest != "" && !os.IsPathSeparator(rest[0])) {
-		return path
-	}
-	dir, err := os.UserHomeDir()
-	if err != nil {
-		return path
-	}
-	return filepath.Join(dir, rest)
 }
 
 // Unusable returns keys which fail, for the reason given, to encrypt or

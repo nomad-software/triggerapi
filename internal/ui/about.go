@@ -42,7 +42,8 @@ func licenceText() string {
 		"<a href=\"https://github.com/coder/websocket\">websocket</a> (ISC), " +
 		"<a href=\"https://age-encryption.org\">age</a> (BSD), " +
 		"<a href=\"https://github.com/protocolbuffers/protobuf-go\">Go protobuf</a> (BSD), " +
-		"<a href=\"https://pkg.go.dev/golang.org/x/crypto\">x/crypto</a> (BSD) and " +
+		"<a href=\"https://pkg.go.dev/golang.org/x/crypto\">x/crypto</a> (BSD), " +
+		"<a href=\"https://github.com/SSLMate/go-pkcs12\">go-pkcs12</a> (BSD) and " +
 		"<a href=\"https://github.com/go-yaml/yaml\">yaml</a> (MIT and Apache 2.0).</p>"
 }
 

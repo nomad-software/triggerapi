@@ -20,7 +20,7 @@ import (
 // headers and body that Send would. Placeholders should have been expanded
 // first.
 func (r Request) Curl() (string, error) {
-	options, err := r.curlOptions()
+	options, _, err := r.curlOptions()
 	if err != nil {
 		return "", err
 	}
@@ -44,11 +44,13 @@ func (r Request) Curl() (string, error) {
 
 // curlOptions returns the arguments of the curl command which makes the
 // request, an option and its value together. The first holds the options
-// which say how the request is made, followed by its address.
-func (r Request) curlOptions() ([][]string, error) {
+// which say how the request is made, followed by its address. The request
+// they were made from is returned too, for where it goes, as its headers
+// may have been changed in making them.
+func (r Request) curlOptions() ([][]string, *http.Request, error) {
 	req, err := r.Build(context.Background())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	address := req.URL.String()
 	content := r.content()
@@ -76,6 +78,11 @@ func (r Request) curlOptions() ([][]string, error) {
 		first = append(first, "--globoff")
 	}
 	options := [][]string{append(first, address)}
+
+	// How the server is reached, as the client Send is given does.
+	if r.Options.Network != nil {
+		options = append(options, r.Options.Network.CurlOptions(req.URL.Hostname())...)
+	}
 
 	// Basic authorization is given as the name and password where it can
 	// be, which is easier to read than the header made from them.
@@ -109,13 +116,13 @@ func (r Request) curlOptions() ([][]string, error) {
 		options = append(options, []string{"--data-raw", content})
 	}
 
-	return options, nil
+	return options, req, nil
 }
 
 // RunCurl makes the request by running the curl command that Curl describes,
 // and returns the response it was given. The curl program must be installed.
 func RunCurl(ctx context.Context, r Request) (*Response, error) {
-	options, err := r.curlOptions()
+	options, req, err := r.curlOptions()
 	if err != nil {
 		return nil, err
 	}
@@ -141,11 +148,25 @@ func RunCurl(ctx context.Context, r Request) (*Response, error) {
 		head = head || slices.Contains(option, "--head")
 		args = append(args, option...)
 	}
+	// A passphrase or password is read from the standard input, so that it
+	// is not among the arguments, which other users can see. It comes last,
+	// as curl takes the last of an option given twice: the proxy's user is
+	// among the arguments without the password.
+	var secrets string
+	if r.Options.Network != nil {
+		secrets = r.Options.Network.CurlConfig(req.URL.Hostname())
+	}
+	if secrets != "" {
+		args = append(args, "--config", "-")
+	}
 
 	var body, problem bytes.Buffer
 	cmd := exec.CommandContext(ctx, program, args...)
 	cmd.Stdout = &body
 	cmd.Stderr = &problem
+	if secrets != "" {
+		cmd.Stdin = strings.NewReader(secrets)
+	}
 
 	start := time.Now()
 	err = cmd.Run()
@@ -182,7 +203,9 @@ func RunCurl(ctx context.Context, r Request) (*Response, error) {
 		res.Body = body.Bytes()
 	}
 	res.Duration = duration
-	res.Timing = timing
+	// curl does not say where it was redirected to, so the proxy and the
+	// checking of the certificate are those of the address asked for.
+	res.Timing = r.Options.annotate(timing, req)
 	return res, nil
 }
 

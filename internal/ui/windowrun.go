@@ -14,6 +14,7 @@ import (
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/graphql"
 	"github.com/nomad-software/triggerapi/internal/history"
+	"github.com/nomad-software/triggerapi/internal/network"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 )
@@ -24,7 +25,7 @@ import (
 
 // options returns how requests are sent, as the settings say.
 func (w *Window) options() rest.Options {
-	return rest.Options{Timeout: w.timeout(), NoRedirects: w.config.NoRedirects}
+	return rest.Options{Timeout: w.timeout(), NoRedirects: w.config.NoRedirects, Network: w.net}
 }
 
 // timeoutError is the error of a request that took longer than the limit of
@@ -85,6 +86,7 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *his
 	// handed back to it.
 	go func() {
 		done, err := work(ctx)
+		err = network.Explain(err)
 		elapsed := time.Since(start)
 
 		mainthread.Start(func() {
@@ -232,6 +234,7 @@ func (w *Window) loadGraphQLSchema(force bool) {
 func (w *Window) invoke() {
 	request := w.grpc.request()
 	req := request.Expand(w.expander())
+	req.Network = w.net
 
 	// The service definition is loaded by the call if it has not been yet.
 	var schema *rpc.Schema
@@ -328,6 +331,7 @@ func (w *Window) createRequests(ui *requestUI, endpoints []string) {
 func (w *Window) reflect(force bool) {
 	w.grpc.status.set("")
 	req := w.grpc.request().Expand(w.expand)
+	req.Network = w.net
 	target, err := req.Target()
 	if err != nil {
 		// There is no server to ask yet.

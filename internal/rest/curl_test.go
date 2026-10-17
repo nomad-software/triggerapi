@@ -2,6 +2,7 @@ package rest
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nomad-software/triggerapi/internal/network"
 )
 
 func TestCurl(t *testing.T) {
@@ -257,5 +260,55 @@ func TestCurlTiming(t *testing.T) {
 	// Times that cannot be read are not given.
 	if _, timing := splitCurlTimes(curlTimesMark + " x"); timing != nil {
 		t.Errorf("timing = %+v", timing)
+	}
+}
+
+func TestCurlNetwork(t *testing.T) {
+	if _, err := exec.LookPath("curl"); err != nil {
+		t.Skip("curl is not installed")
+	}
+
+	// The proxy answers in place of the server, if it is given the password.
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Proxy-Authorization") != "Basic "+base64.StdEncoding.EncodeToString([]byte("gary:p\"w")) {
+			w.WriteHeader(http.StatusProxyAuthRequired)
+			return
+		}
+		w.Write([]byte("proxied"))
+	}))
+	defer proxy.Close()
+	secure := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("secure"))
+	}))
+	defer secure.Close()
+
+	c, err := network.Load(network.Config{
+		Proxy:   strings.Replace(proxy.URL, "http://", "http://gary@", 1),
+		NoProxy: []string{"127.0.0.1"},
+		Hosts:   []network.Host{{Pattern: "127.0.0.1", Insecure: true}},
+	}, func(network.Secret) (string, error) { return `p"w`, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := Options{Network: c, NoRedirects: true}
+
+	// The command says how the server is reached, and never the password.
+	command, err := Request{Method: "GET", URL: "http://example.invalid/", Options: options}.Curl()
+	if err != nil || !strings.Contains(command, "--proxy "+proxy.URL) || !strings.Contains(command, "--proxy-user gary") ||
+		!strings.Contains(command, "--noproxy 127.0.0.1") || strings.Contains(command, `p"w`) {
+		t.Errorf("command = %s, %v", command, err)
+	}
+	if command, _ := (Request{Method: "GET", URL: secure.URL, Options: options}).Curl(); !strings.Contains(command, "--insecure") {
+		t.Errorf("command = %s", command)
+	}
+
+	// Run, the password reaches the proxy, and what was used is recorded.
+	res, err := RunCurl(context.Background(), Request{Method: "GET", URL: "http://example.invalid/", Options: options})
+	if err != nil || string(res.Body) != "proxied" || res.Timing.Proxy != proxy.URL {
+		t.Errorf("response %+v, %v", res, err)
+	}
+	res, err = RunCurl(context.Background(), Request{Method: "GET", URL: secure.URL, Options: options})
+	if err != nil || string(res.Body) != "secure" || !res.Timing.Unverified {
+		t.Errorf("response %+v, %v", res, err)
 	}
 }

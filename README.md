@@ -286,7 +286,7 @@ bindings.
 
 **Settings**
 
-File > Settings has four tabs:
+File > Settings has five tabs:
 
 - Workspaces: the folder the workspaces are kept in, the SSH keys they are
   encrypted with (see [Encryption](#encryption)), and exporting and
@@ -294,6 +294,8 @@ File > Settings has four tabs:
 - Requests: how long a request of any kind can take before it is given up
   on, and whether a REST or GraphQL request follows redirects or shows the
   response that redirects.
+- Network: how every kind of request reaches its server (see
+  [Network](#network)).
 - History: whether the requests sent are kept in the history, how many, and
   the diff tool responses are compared with.
 - User interface: the font of code (request and response bodies, messages,
@@ -689,6 +691,45 @@ export in the Workspaces tab of File > Settings.
 
 In the zip file each workspace is a folder named after it, holding its
 `environments.json` and `requests.json`. The history is not exported.
+
+### Network
+
+The Network tab of the settings says how every kind of request (REST,
+GraphQL, gRPC, WebSocket and MCP, and the curl command) reaches its server.
+These settings belong to the computer, not to a workspace, so nothing shared
+or imported can change them.
+
+- Proxy: the one the environment names (`HTTP_PROXY`, `HTTPS_PROXY` and
+  `NO_PROXY`, the default), none, or a proxy of your own (`http`, `https` or
+  `socks5`). A proxy can name a user, as in `http://gary@proxy:3128`; its
+  password is asked for once a session and never saved. The hosts under Not
+  for, and the hosts inside them, are reached directly.
+- Least TLS version: TLS 1.2, or TLS 1.3 only.
+- Hosts: what is particular to some servers. A host is a name, `*.name` for
+  any name inside it, or `*` for every one, and a request uses the most
+  particular host that matches its own. Each can have:
+  - a trusted CA: a file of certificates in PEM, whose authorities are
+    trusted for the host in place of the system's, as for a server with a
+    certificate of your company's own, or a proxy that inspects traffic;
+  - a client certificate, for a server that asks for one: a certificate and
+    its private key in PEM, or a PKCS #12 file (`.p12` or `.pfx`) holding
+    both. The passphrase of an encrypted key or PKCS #12 file is asked for
+    once a session and never saved. An encrypted PKCS #8 key cannot be read;
+    put it in a PKCS #12 file with
+    `openssl pkcs12 -export -in cert.pem -inkey key.pem -out client.p12`;
+  - not checking the server's certificate, for a self-signed one. The
+    Timing tab of a response says so, in red;
+  - an address to connect to in place of the host's own (an IP address or a
+    name, with or without a port), while the request still names the host,
+    like curl's `--connect-to`.
+
+Paths can start with `~`. A failure to reach a server says what may be done
+about it, such as trusting the authority of its certificate. The curl
+command has the same options (`--proxy`, `--noproxy`, `--tlsv1.3`,
+`--cacert`, `--cert`, `--key`, `--insecure` and `--connect-to`), and a
+passphrase or password is given to curl on its standard input, never as an
+argument or in the command shown. The Timing tab of a response shows the
+proxy it went through.
 
 ## Testing
 

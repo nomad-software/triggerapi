@@ -16,6 +16,7 @@ import (
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/mcp"
+	"github.com/nomad-software/triggerapi/internal/network"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 	"github.com/nomad-software/triggerapi/internal/settings"
 )
@@ -89,7 +90,17 @@ type Window struct {
 	// requests are encrypted with. They are nil if the settings have none.
 	keys *crypt.Keys
 
+	// net sends requests as the network settings say, and client is the
+	// http.Client with it as its transport. See windownetwork.go.
+	net    *network.Client
 	client *http.Client
+	// netErr is what was wrong with the network settings when they were
+	// last loaded, which has them loaded again when the settings are next
+	// accepted, as a passphrase may not have been given.
+	netErr error
+	// secrets are the passphrases and passwords the network settings were
+	// given, kept for the session so that each is asked for once.
+	secrets map[network.Secret]string
 	// sidebar has a tab for the workspaces, and one each for the
 	// environments, the requests and the history of the workspace in use.
 	sidebar      *qt.QTabWidget
@@ -171,7 +182,6 @@ type Window struct {
 func NewWindow(files Files) *Window {
 	w := &Window{
 		QMainWindow: qt.NewQMainWindow2(),
-		client:      &http.Client{},
 		request:     newRequestPanel(),
 		grpc:        newGRPCPanel(),
 		ws:          newWSPanel(),
@@ -259,6 +269,14 @@ func NewWindow(files Files) *Window {
 	// A failure to open the keys is reported when the files are loaded.
 	w.keys, _ = openKeys(w.QWidget, w.config)
 	currentKeys := func() *crypt.Keys { return w.keys }
+	// Requests to a host whose settings could not be loaded fail with the
+	// reason; the others are sent as the settings say.
+	client, err := w.loadNetwork(w.config.Network)
+	if err != nil {
+		w.netErr = err
+		w.status(err.Error())
+	}
+	w.useNetwork(client)
 	name, err := w.workspaces.load(w.config.Workspace)
 	if err != nil {
 		w.status("The workspaces could not be listed: " + err.Error())

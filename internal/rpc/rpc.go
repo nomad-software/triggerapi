@@ -12,6 +12,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 
 	"github.com/nomad-software/triggerapi/internal/capture"
+	"github.com/nomad-software/triggerapi/internal/network"
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
@@ -39,6 +41,11 @@ type Request struct {
 	// Captures are the values to take from the last response message and
 	// keep in variables of the active environment. See rest.Request.
 	Captures []capture.Rule `json:"captures,omitempty"`
+
+	// Network is how the server is reached: the proxy, TLS and what is
+	// particular to its host. It is not saved: whoever calls gives it, and
+	// nil is the default.
+	Network *network.Client `json:"-"`
 }
 
 // Response is the result of a call. It is kept in the history as JSON.
@@ -157,7 +164,18 @@ func (r Request) client() (target string, client *http.Client, closer func(), er
 	} else {
 		protocols.SetUnencryptedHTTP2(true)
 	}
-	transport := &http.Transport{Protocols: protocols, Proxy: http.ProxyFromEnvironment}
+	settings := r.Network
+	if settings == nil {
+		settings = network.Default()
+	}
+	u, err := url.Parse(target)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	transport, err := settings.Transport(u.Hostname(), protocols)
+	if err != nil {
+		return "", nil, nil, err
+	}
 
 	return target, &http.Client{Transport: transport}, transport.CloseIdleConnections, nil
 }

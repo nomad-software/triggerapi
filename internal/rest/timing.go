@@ -57,6 +57,12 @@ type Timing struct {
 	Address string `json:"address,omitempty"`
 	// TLS is the version of TLS and the cipher suite, if there was TLS.
 	TLS string `json:"tls,omitempty"`
+	// Proxy is the address of the proxy the request went through, if it
+	// went through one.
+	Proxy string `json:"proxy,omitempty"`
+	// Unverified records that the certificate of the server was not
+	// checked, as the settings said for its host.
+	Unverified bool `json:"unverified,omitempty"`
 }
 
 // Phase returns the phase of a stage, and reports false if there was none.
@@ -67,6 +73,17 @@ func (t *Timing) Phase(stage Stage) (Phase, bool) {
 		}
 	}
 	return Phase{}, false
+}
+
+// annotate adds to a timing what the network settings of the request made of
+// it, the request being the last made, after any redirects. It is given back.
+func (o Options) annotate(timing *Timing, req *http.Request) *Timing {
+	if timing == nil || o.Network == nil || req == nil {
+		return timing
+	}
+	timing.Proxy = o.Network.Proxy(req)
+	timing.Unverified = req.URL.Scheme == "https" && o.Network.Unverified(req.URL.Hostname())
+	return timing
 }
 
 // tracer records the times of the events of a request, through the hooks of

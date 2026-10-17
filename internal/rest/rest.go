@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/nomad-software/triggerapi/internal/capture"
+	"github.com/nomad-software/triggerapi/internal/network"
 )
 
 // Methods lists the HTTP methods offered by the client.
@@ -115,6 +116,10 @@ type Options struct {
 	// NoRedirects has a response that redirects to another address
 	// returned as it is, where the address would otherwise be followed.
 	NoRedirects bool
+	// Network is what the request is sent with, which the curl command
+	// follows too, and which says what proxy it went through. Send is
+	// given the client that uses it. Nil is the default of each.
+	Network *network.Client
 }
 
 // Response is the result of sending a request. It is kept in the history
@@ -344,7 +349,7 @@ func Send(ctx context.Context, client *http.Client, r Request) (*Response, error
 		Headers:    res.Header,
 		Body:       body,
 		Duration:   end.Sub(start),
-		Timing:     trace.timing(end, res),
+		Timing:     r.Options.annotate(trace.timing(end, res), res.Request),
 	}, nil
 }
 

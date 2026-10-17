@@ -12,7 +12,8 @@ import (
 
 // settingsDialog edits the settings the user can choose, on a tab for each
 // sort: Workspaces (settingsTabWorkspaces), Requests (settingsTabRequests),
-// History (settingsTabHistory) and User interface (settingsTabInterface).
+// Network (settingsTabNetwork), History (settingsTabHistory) and User
+// interface (settingsTabInterface).
 type settingsDialog struct {
 	*qt.QDialog
 
@@ -22,6 +23,8 @@ type settingsDialog struct {
 	// for no limit, and redirects whether a REST request follows them.
 	timeout   *qt.QSpinBox
 	redirects *qt.QCheckBox
+	// network is the Network tab, in a file of its own.
+	network *networkTab
 	// history is whether the requests sent are kept in the history of the
 	// workspace, and historyLimit how many are.
 	history      *qt.QCheckBox
@@ -62,6 +65,7 @@ type settingsDialog struct {
 const (
 	settingsTabWorkspaces = iota
 	settingsTabRequests
+	settingsTabNetwork
 	settingsTabHistory
 	settingsTabInterface
 )
@@ -241,6 +245,8 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	// The order matches the tab constants.
 	d.tabs.AddTab(plainPage(general), "Workspaces")
 	d.tabs.AddTab(plainPage(requests), "Requests")
+	d.network = newNetworkTab(d.QWidget, current.Network)
+	d.tabs.AddTab(plainPage(d.network.root), "Network")
 	d.tabs.AddTab(plainPage(historyPage), "History")
 	d.tabs.AddTab(plainPage(colours), "User interface")
 
@@ -277,16 +283,26 @@ func (d *settingsDialog) fileRow(edit *qt.QLineEdit, caption string) *qt.QLayout
 // browseRow lays out a path field beside a button to browse for the path
 // with, which puts what choose returns in the field unless it is empty.
 func browseRow(edit *qt.QLineEdit, choose func() string) *qt.QLayout {
+	return pathRow(edit, browseButton(edit, choose))
+}
+
+// browseButton returns a button to browse for a path with, which puts what
+// choose returns in the field unless it is empty.
+func browseButton(edit *qt.QLineEdit, choose func() string) *qt.QPushButton {
 	browse := qt.NewQPushButton3("Browse…")
 	browse.OnClicked(func() {
 		if path := choose(); path != "" {
 			edit.SetText(path)
 		}
 	})
+	return browse
+}
 
+// pathRow lays out a path field beside its button.
+func pathRow(edit *qt.QLineEdit, button *qt.QPushButton) *qt.QLayout {
 	row := qt.NewQHBoxLayout2()
 	row.AddWidget2(edit.QWidget, 1)
-	row.AddWidget(browse.QWidget)
+	row.AddWidget(button.QWidget)
 	return row.QLayout
 }
 
@@ -490,6 +506,7 @@ func (d *settingsDialog) settings(base settings.Settings) settings.Settings {
 	}
 	base.Timeout = d.timeout.Value()
 	base.NoRedirects = !d.redirects.IsChecked()
+	base.Network = d.network.config()
 	base.DiffCommand = strings.TrimSpace(d.diffCommand.Text())
 	base.NoHistory = !d.history.IsChecked()
 	base.HistoryLimit = d.historyLimit.Value()

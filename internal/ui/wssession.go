@@ -12,6 +12,7 @@ import (
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/history"
+	"github.com/nomad-software/triggerapi/internal/network"
 	"github.com/nomad-software/triggerapi/internal/ws"
 )
 
@@ -61,6 +62,7 @@ func (w *Window) toggleWS() {
 			dial, stop = context.WithTimeout(ctx, limit)
 		}
 		conn, err := ws.Dial(dial, w.client, request)
+		err = network.Explain(err)
 		stop()
 		mainthread.Start(func() {
 			if w.socket != s {

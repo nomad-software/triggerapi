@@ -8,6 +8,7 @@ import (
 	"regexp"
 
 	"github.com/nomad-software/triggerapi/internal/jsonfile"
+	"github.com/nomad-software/triggerapi/internal/network"
 )
 
 const (
@@ -50,6 +51,10 @@ type Settings struct {
 	// NoRedirects has a REST response that redirects to another address
 	// shown as it is. Such an address is otherwise followed.
 	NoRedirects bool `json:"noRedirects,omitempty"`
+	// Network says how requests reach their servers: the proxy, TLS and
+	// what is particular to some hosts. It belongs to this machine, and is
+	// in no workspace, so that nothing shared changes it.
+	Network network.Config `json:"network,omitzero"`
 	// NoHistory has requests sent without being kept in the history of
 	// the workspace, and HistoryLimit is how many the history keeps, which
 	// is DefaultHistoryLimit if it is zero.
