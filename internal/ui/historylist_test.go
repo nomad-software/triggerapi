@@ -104,10 +104,27 @@ func TestHistorySearch(t *testing.T) {
 }
 
 // clickHistory clicks an item of the history in a column, or twice for a
-// double click.
+// double click. The first column of a heading is clicked on its box, past
+// its arrow.
 func clickHistory(h *historyList, item *qt.QTreeWidgetItem, column int, double bool) {
+	x := h.tree.Header().SectionViewportPosition(column) + 3
+	if item.Parent() == nil && column == colHistoryCheck {
+		x += h.tree.Indentation()
+	}
+	clickHistoryAt(h, item, x, double)
+}
+
+// clickDate clicks the date of a heading of the history, past its box, or
+// twice for a double click.
+func clickDate(h *historyList, item *qt.QTreeWidgetItem, double bool) {
+	clickHistoryAt(h, item, h.tree.Header().SectionViewportPosition(colHistoryTitle), double)
+}
+
+// clickHistoryAt clicks the row of an item of the history at a place across
+// it, or twice for a double click.
+func clickHistoryAt(h *historyList, item *qt.QTreeWidgetItem, x int, double bool) {
 	rect := h.tree.VisualItemRect(item)
-	at := qt.NewQPointF3(float64(h.tree.Header().SectionViewportPosition(column)+3), float64(rect.Center().Y()))
+	at := qt.NewQPointF3(float64(x), float64(rect.Center().Y()))
 	defer at.Delete()
 	kinds := []qt.QEvent__Type{qt.QEvent__MouseButtonPress, qt.QEvent__MouseButtonRelease}
 	if double {
@@ -196,9 +213,16 @@ func TestHistoryTicking(t *testing.T) {
 			t.Errorf("heading %v", today.CheckState(colHistoryCheck))
 		}
 
-		// A click on a heading ticks every entry of its day, and again
-		// unticks them.
-		clickHistory(h, yesterday, colHistoryTitle, false)
+		// A click on the date of a heading ticks nothing, and selects
+		// nothing.
+		clickDate(h, yesterday, false)
+		if got := tickedTitles(h); !slices.Equal(got, []string{"a"}) || h.selected() != nil || len(opened) != 0 {
+			t.Errorf("ticked %q", got)
+		}
+
+		// A click on the box of a heading ticks every entry of its day, and
+		// again unticks them.
+		clickHistory(h, yesterday, colHistoryCheck, false)
 		if got := tickedTitles(h); !slices.Equal(got, []string{"a", "c", "d"}) || yesterday.CheckState(colHistoryCheck) != qt.Checked {
 			t.Errorf("ticked %q", got)
 		}
@@ -301,6 +325,98 @@ func TestHistoryHeadingsShaded(t *testing.T) {
 		}
 		if rowColour(h.tree, heading.Child(0)) != rowColour(h.tree, heading.Child(1)) {
 			t.Error("an entry is shaded")
+		}
+	})
+}
+
+func TestHistoryDaysOpenAndClose(t *testing.T) {
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.Local)
+	store := testHistory(now, "a", "b", "c")
+	store.Entries[2].Time = now.AddDate(0, 0, -1)
+	mainthread.Wait(func() {
+		h := newHistoryList(store, "")
+		h.now = func() time.Time { return now }
+		h.limit = func() int { return 10 }
+		h.draw(nil)
+		h.root.Resize(400, 400)
+		h.root.Show()
+		defer h.root.Hide()
+		today := func() *qt.QTreeWidgetItem { return h.tree.TopLevelItem(0) }
+		yesterday := func() *qt.QTreeWidgetItem { return h.tree.TopLevelItem(1) }
+
+		// Every day is open to begin with.
+		if !today().IsExpanded() || !yesterday().IsExpanded() || !h.tree.RootIsDecorated() {
+			t.Fatal("the days are not open folders")
+		}
+
+		// The arrow of a heading closes it, without ticking anything, and
+		// opens it again.
+		arrow := h.tree.Header().SectionViewportPosition(colHistoryCheck) + h.tree.Indentation()/2
+		clickHistoryAt(h, today(), arrow, false)
+		if today().IsExpanded() || len(h.ticked) != 0 {
+			t.Errorf("open %v, ticked %q", today().IsExpanded(), tickedTitles(h))
+		}
+		clickHistoryAt(h, today(), arrow, false)
+		if !today().IsExpanded() {
+			t.Error("the day did not open again")
+		}
+
+		// A double click on the date closes it, and another opens it,
+		// without ticking anything.
+		clickDate(h, today(), true)
+		if today().IsExpanded() || len(h.ticked) != 0 {
+			t.Errorf("open %v, ticked %q", today().IsExpanded(), tickedTitles(h))
+		}
+		clickDate(h, today(), true)
+		if !today().IsExpanded() || len(h.ticked) != 0 {
+			t.Errorf("open %v, ticked %q", today().IsExpanded(), tickedTitles(h))
+		}
+
+		// A click on its box ticks the day, leaving it open.
+		clickHistory(h, today(), colHistoryCheck, false)
+		if got := tickedTitles(h); !slices.Equal(got, []string{"a", "b"}) || !today().IsExpanded() {
+			t.Errorf("ticked %q", got)
+		}
+
+		// A closed day stays closed when the history is drawn again, and a
+		// new entry is seen in a day that is open.
+		clickHistoryAt(h, yesterday(), arrow, false)
+		h.add(&history.Entry{Time: now.Add(time.Minute), Request: collection.New(collection.TypeREST, "new"), Error: "refused"})
+		if yesterday().IsExpanded() || !today().IsExpanded() || today().ChildCount() != 3 {
+			t.Errorf("yesterday open %v, today open %v", yesterday().IsExpanded(), today().IsExpanded())
+		}
+
+		// A search opens every day, and clearing it closes them again.
+		h.search.SetText("c")
+		if !h.tree.TopLevelItem(0).IsExpanded() {
+			t.Error("the search did not open the day it found something in")
+		}
+		h.search.Clear()
+		if yesterday().IsExpanded() {
+			t.Error("the closed day was opened by the search")
+		}
+
+		// Left and Right on an entry close and open its day.
+		h.tree.SetFocus()
+		h.tree.SetCurrentItem(today().Child(0))
+		press := func(key qt.Key) {
+			event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(key), qt.NoModifier)
+			defer event.Delete()
+			qt.QCoreApplication_SendEvent(h.tree.QObject, event.QEvent)
+		}
+		press(qt.Key_Left)
+		if today().IsExpanded() {
+			t.Error("Left did not close the day")
+		}
+		press(qt.Key_Right)
+		if !today().IsExpanded() {
+			t.Error("Right did not open the day")
+		}
+
+		// Another workspace's history starts with every day open.
+		h.load(testHistory(now.AddDate(0, 0, -1), "x"), "")
+		if !h.tree.TopLevelItem(0).IsExpanded() {
+			t.Error("a day of another history is closed")
 		}
 	})
 }

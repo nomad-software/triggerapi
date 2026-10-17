@@ -177,7 +177,10 @@ bindings.
   saved to the sidebar with Save. Changing the saved request it was sent from
   does not change the entry. Double-click an entry to open the saved request
   it was sent from instead, if it is still where it was.
-- Each entry has a box to tick it, and clicking the heading of a day ticks
+- The days are folders, opened and closed by the arrow before each, by
+  double-clicking the date, or by Left and Right on an entry. Each is open
+  until it is closed, and a search opens them all.
+- Each entry has a box to tick it, and the box of the heading of a day ticks
   every entry of that day, or unticks them if they all are. The remove button
   beneath removes the ticked entries, or the selected one if none is ticked.
   The history can be searched by name and address.
@@ -361,6 +364,7 @@ where the variable is used, as in `id-{{request_id}}`.
 |---|---|---|
 | Return | The search box | Go to the first entry found, without opening it. |
 | Up, Down | The history | Move to the entry above or below, passing over the headings, without opening it. |
+| Left, Right | The history | Close or open the day of the entry. |
 | Return | The history | Open the entry. |
 | Space | The history | Tick or untick the entry. |
 | Delete | The history | Remove the ticked entries, or the entry if none is ticked. |

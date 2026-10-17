@@ -26,6 +26,16 @@ const (
 	colHistoryTitle
 )
 
+// rowPart is the part of the row of an item of the history a click is on:
+// the arrow of a heading, the box of a heading or an entry, or the rest.
+type rowPart int
+
+const (
+	partRest rowPart = iota
+	partArrow
+	partBox
+)
+
 // historyList lists the requests sent from the workspace in use, newest
 // first, under a heading for each day. Selecting one opens a copy of it, with
 // its response, as a request that is not saved, and double-clicking it opens
@@ -54,7 +64,11 @@ type historyList struct {
 	days [][]*history.Entry
 	// ticked are the entries whose boxes are ticked, which stay so while a
 	// search hides them.
-	ticked   map[*history.Entry]bool
+	ticked map[*history.Entry]bool
+	// closed are the days whose headings are closed, by the start of the
+	// day. A day is open until it is closed, so new entries are seen, and
+	// what is closed is forgotten when another workspace is opened.
+	closed   map[time.Time]bool
 	updating bool
 	// toggled is set when a press of the mouse has ticked or unticked, so
 	// that its release is not taken for a click.
@@ -92,6 +106,7 @@ func newHistoryList(store *history.Store, path string) *historyList {
 		limit:  func() int { return 0 },
 		now:    time.Now,
 		ticked: map[*history.Entry]bool{},
+		closed: map[time.Time]bool{},
 	}
 	h.warn = func(message string) {
 		qt.QMessageBox_Warning(h.root, "TriggerAPI", message)
@@ -105,11 +120,10 @@ func newHistoryList(store *history.Store, path string) *historyList {
 
 	h.tree.SetColumnCount(4)
 	h.tree.SetHeaderHidden(true)
-	// The headings are at the left edge, with the boxes of the entries
-	// beneath theirs. They are always open.
-	h.tree.SetRootIsDecorated(false)
-	h.tree.SetIndentation(0)
-	h.tree.SetItemsExpandable(false)
+	// The headings are folders, opened and closed by the arrow before
+	// them, with their entries indented beneath them. A double click on
+	// one ticks its day twice, so it is not also opened or closed.
+	h.tree.SetRootIsDecorated(true)
 	h.tree.SetExpandsOnDoubleClick(false)
 	h.tree.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
 	// The headings of the days are shaded, across the whole tree.
@@ -118,11 +132,14 @@ func newHistoryList(store *history.Store, path string) *historyList {
 	header := h.tree.Header()
 	header.SetStretchLastSection(false)
 	// The column of the boxes is as wide as a box and the margins either
-	// side of it.
+	// side of it, with room for the arrow of a heading and the indent of
+	// the entries under it.
 	style := h.tree.Style()
 	margin := style.PixelMetric(qt.QStyle__PM_FocusFrameHMargin, nil, h.tree.QWidget) + 1
-	width := style.PixelMetric(qt.QStyle__PM_IndicatorWidth, nil, h.tree.QWidget) + 3*margin
-	header.SetMinimumSectionSize(width)
+	width := style.PixelMetric(qt.QStyle__PM_IndicatorWidth, nil, h.tree.QWidget) + 3*margin + 2*h.tree.Indentation()
+	// The least width of a column, which would otherwise keep the column
+	// of boxes wider than it, is that of every column, so it is none.
+	header.SetMinimumSectionSize(0)
 	header.SetSectionResizeMode2(colHistoryCheck, qt.QHeaderView__Fixed)
 	header.ResizeSection(colHistoryCheck, width)
 	header.SetSectionResizeMode2(colHistoryTime, qt.QHeaderView__ResizeToContents)
@@ -143,15 +160,45 @@ func newHistoryList(store *history.Store, path string) *historyList {
 	layout.AddLayout(newButtonRow(h.diff, remove).QLayout)
 
 	// Clicking where there is no entry clears the selection. A heading
-	// cannot be selected: a click on it ticks its day, as one on the box of
-	// an entry ticks the entry, without selecting it. A double click on
-	// either is two clicks.
-	toggle := func(event *qt.QMouseEvent) bool {
+	// cannot be selected: a click on its arrow opens or closes it, as a
+	// double click on its date does, and one on its box ticks its day, as
+	// one on the box of an entry ticks the entry, without selecting it. A
+	// double click on a box is two clicks.
+	box := style.PixelMetric(qt.QStyle__PM_IndicatorWidth, nil, h.tree.QWidget) + 2*margin
+	partAt := func(item *qt.QTreeWidgetItem, x int) rowPart {
+		across := x - h.tree.Header().SectionViewportPosition(colHistoryCheck)
+		switch {
+		case item.Parent() != nil && h.tree.ColumnAt(x) == colHistoryCheck:
+			return partBox
+		case item.Parent() != nil:
+			return partRest
+		case across < h.tree.Indentation():
+			return partArrow
+		case across < h.tree.Indentation()+box:
+			return partBox
+		}
+		return partRest
+	}
+	// click handles a press or a double click on an item, and reports if
+	// the tree is to be left out of it.
+	click := func(event *qt.QMouseEvent, double bool) bool {
 		item := h.tree.ItemAt(event.Pos())
-		if item == nil || (item.Parent() != nil && h.tree.ColumnAt(event.Pos().X()) != colHistoryCheck) {
+		if item == nil {
 			return false
 		}
-		h.toggle(item)
+		switch partAt(item, event.Pos().X()) {
+		case partBox:
+			h.toggle(item)
+		case partRest:
+			if item.Parent() != nil {
+				return false
+			}
+			if double {
+				item.SetExpanded(!item.IsExpanded())
+			}
+		default:
+			return false
+		}
 		h.toggled = true
 		return true
 	}
@@ -161,7 +208,7 @@ func newHistoryList(store *history.Store, path string) *historyList {
 			h.tree.SetCurrentItem(nil)
 			h.tree.ClearSelection()
 		}
-		if !toggle(event) {
+		if !click(event, false) {
 			super(event)
 		}
 	})
@@ -172,10 +219,13 @@ func newHistoryList(store *history.Store, path string) *historyList {
 		h.toggled = false
 	})
 	h.tree.OnMouseDoubleClickEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
-		if !toggle(event) {
+		if !click(event, true) {
 			super(event)
 		}
 	})
+	// Which days are closed is kept, but not while a search opens them all.
+	h.tree.OnItemExpanded(func(item *qt.QTreeWidgetItem) { h.setClosed(item, false) })
+	h.tree.OnItemCollapsed(func(item *qt.QTreeWidgetItem) { h.setClosed(item, true) })
 	h.tree.OnCurrentItemChanged(func(*qt.QTreeWidgetItem, *qt.QTreeWidgetItem) {
 		if h.updating || h.browsing {
 			return
@@ -190,11 +240,16 @@ func newHistoryList(store *history.Store, path string) *historyList {
 			h.onGoTo(e)
 		}
 	})
-	// The keyboard moves through the entries without opening them, passing
-	// over the headings. Return opens the entry it has got to, Space ticks
-	// it, and Delete removes the ticked entries or else it.
+	// The keyboard moves up and down through the entries without opening
+	// them, passing over the headings. Return opens the entry it has got
+	// to, Space ticks it, Delete removes the ticked entries or else it, and
+	// Left and Right close and open its day.
 	h.tree.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
 		switch event.Key() {
+		case int(qt.Key_Left), int(qt.Key_Right):
+			if item := h.tree.CurrentItem(); item != nil && item.Parent() != nil {
+				item.Parent().SetExpanded(event.Key() == int(qt.Key_Right))
+			}
 		case int(qt.Key_Return), int(qt.Key_Enter):
 			h.open()
 		case int(qt.Key_Space):
@@ -229,6 +284,7 @@ func (h *historyList) load(store *history.Store, path string) {
 	h.path = path
 	h.dirty = false
 	h.ticked = map[*history.Entry]bool{}
+	h.closed = map[time.Time]bool{}
 	h.draw(nil)
 }
 
@@ -242,7 +298,8 @@ func (h *historyList) query() []string {
 }
 
 // draw lists the entries that match the search, under a heading for each
-// day, with an entry selected if it is listed.
+// day, with an entry selected if it is listed. The days are open but for
+// those that have been closed, and all are open while there is a search.
 func (h *historyList) draw(selected *history.Entry) {
 	defer func(prev bool) { h.updating = prev }(h.updating)
 	h.updating = true
@@ -253,6 +310,7 @@ func (h *historyList) draw(selected *history.Entry) {
 	today := dayOf(h.now())
 	var heading *qt.QTreeWidgetItem
 	var day time.Time
+	var days []time.Time
 	for _, e := range h.store.Entries {
 		if words != nil && !e.Matches(words) {
 			continue
@@ -260,12 +318,16 @@ func (h *historyList) draw(selected *history.Entry) {
 		if d := dayOf(e.Time); heading == nil || !d.Equal(day) {
 			heading, day = h.newHeading(dayLabel(d, today)), d
 			h.days = append(h.days, nil)
+			days = append(days, d)
 		}
 		item := h.newEntry(heading, e)
 		h.days[len(h.days)-1] = append(h.days[len(h.days)-1], e)
 		if e == selected {
 			h.tree.SetCurrentItem(item)
 		}
+	}
+	for i, d := range days {
+		h.tree.TopLevelItem(i).SetExpanded(words != nil || !h.closed[d])
 	}
 	h.refresh()
 }
@@ -330,8 +392,26 @@ func (h *historyList) newHeading(label string) *qt.QTreeWidgetItem {
 	item.SetFlags(qt.ItemIsEnabled | qt.ItemIsUserCheckable | qt.ItemIsAutoTristate)
 	item.SetCheckState(colHistoryCheck, qt.Unchecked)
 	item.SetFirstColumnSpanned(true)
-	item.SetExpanded(true)
 	return item
+}
+
+// setClosed records that the day of a heading has been closed or opened by
+// the user. While there is a search nothing is recorded, as it opens them
+// all.
+func (h *historyList) setClosed(item *qt.QTreeWidgetItem, closed bool) {
+	if h.updating || h.query() != nil || item.Parent() != nil {
+		return
+	}
+	index := h.tree.IndexOfTopLevelItem(item)
+	if index < 0 || index >= len(h.days) || len(h.days[index]) == 0 {
+		return
+	}
+	day := dayOf(h.days[index][0].Time)
+	if closed {
+		h.closed[day] = true
+	} else {
+		delete(h.closed, day)
+	}
 }
 
 // newEntry adds the item of an entry under a heading: its box, its time,
