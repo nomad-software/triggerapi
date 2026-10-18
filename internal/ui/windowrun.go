@@ -11,6 +11,7 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
 
+	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/graphql"
@@ -60,6 +61,10 @@ type outcome struct {
 	show func()
 	// record keeps the result in an entry of the history.
 	record func(*history.Entry)
+	// checks are the assertions of the request, and facts what of the
+	// result they check, or nil if there is nothing of it to check.
+	checks []assert.Check
+	facts  *assert.Facts
 }
 
 // run does the work of a button which sends a request (Send, Invoke, Call or
@@ -116,8 +121,13 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *his
 
 			// The request was made for what it captures as much as for
 			// what it shows, so that is kept whatever is on show by now.
+			// The response is then checked, with what was captured.
+			var asserted []assert.Result
 			if err == nil {
 				done.capture()
+				if done.facts != nil {
+					asserted = w.runAssertions(done.checks, *done.facts)
+				}
 			}
 			// It is kept in the history likewise, unless it was given up.
 			if entry != nil && !errors.Is(err, context.Canceled) {
@@ -129,6 +139,7 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *his
 					entry.Error = err.Error()
 				default:
 					done.record(entry)
+					entry.Assertions = asserted
 				}
 				w.history.add(entry)
 			}
@@ -147,7 +158,10 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *his
 			case err != nil:
 				result = func() { response.showError(err, elapsed) }
 			default:
-				result = done.show
+				result = func() {
+					done.show()
+					response.showAsserted(asserted)
+				}
 			}
 
 			// The tab keeps the result, to show it again when the tab is
@@ -169,7 +183,7 @@ func (w *Window) send() {
 
 	w.run(w.request.send, w.response, entry, w.authorizer(w.requestUI(collection.TypeREST), &req.Auth), 0, func(ctx context.Context) (outcome, error) {
 		res, err := rest.Send(ctx, w.client, req)
-		return w.restOutcome(res, request.Captures, w.response, w.response.show), err
+		return w.restOutcome(res, request.Captures, request.Assertions, w.response, w.response.show), err
 	})
 }
 
@@ -184,7 +198,7 @@ func (w *Window) executeCurl() {
 
 	w.run(w.request.execute, w.response, entry, w.authorizer(w.requestUI(collection.TypeREST), &req.Auth), w.timeout(), func(ctx context.Context) (outcome, error) {
 		res, err := rest.RunCurl(ctx, req)
-		return w.restOutcome(res, request.Captures, w.response, w.response.show), err
+		return w.restOutcome(res, request.Captures, request.Assertions, w.response, w.response.show), err
 	})
 }
 
@@ -213,10 +227,18 @@ func (w *Window) streamer(response *responsePanel) func(*rest.Response) {
 // restOutcome returns what to do with the response to a request sent over
 // HTTP, which is nil if there was an error instead: show shows it in the
 // response panel. Values are captured from a response with a status that is
-// a success, or for a stream of events from the last event.
-func (w *Window) restOutcome(res *rest.Response, captures []capture.Rule, response *responsePanel, show func(*rest.Response)) outcome {
+// a success, or for a stream of events from the last event, and the checks
+// are of any response.
+func (w *Window) restOutcome(res *rest.Response, captures []capture.Rule, checks []assert.Check, response *responsePanel, show func(*rest.Response)) outcome {
 	var captured []captureResult
+	var facts *assert.Facts
+	if res != nil {
+		f := httpFacts(res)
+		facts = &f
+	}
 	return outcome{
+		checks: checks,
+		facts:  facts,
 		capture: func() {
 			if res.StatusCode >= 200 && res.StatusCode < 300 {
 				captured = w.capture(captures, res.Document())
@@ -245,7 +267,7 @@ func (w *Window) sendGraphQL() {
 			return outcome{}, err
 		}
 		res, err := rest.Send(ctx, w.client, req)
-		return w.restOutcome(res, request.Captures, w.graphqlResponse, w.graphqlResponse.showGraphQL), err
+		return w.restOutcome(res, request.Captures, request.Assertions, w.graphqlResponse, w.graphqlResponse.showGraphQL), err
 	})
 }
 
@@ -294,6 +316,11 @@ func (w *Window) invoke() {
 
 	w.run(w.grpc.invoke, w.grpcResponse, entry, w.authorizer(w.requestUI(collection.TypeGRPC), &req.Auth), w.timeout(), func(ctx context.Context) (outcome, error) {
 		res, err := rpc.Invoke(ctx, req, schema)
+		var grpcFacts *assert.Facts
+		if res != nil {
+			f := rpcFacts(res)
+			grpcFacts = &f
+		}
 
 		// Values are captured from the last message of a call that ended
 		// with OK, which is the only message of a unary method.
@@ -313,6 +340,8 @@ func (w *Window) invoke() {
 				w.grpcResponse.showCaptured(captured)
 			},
 			record: func(e *history.Entry) { e.GRPC = res },
+			checks: request.Assertions,
+			facts:  grpcFacts,
 		}, err
 	})
 }

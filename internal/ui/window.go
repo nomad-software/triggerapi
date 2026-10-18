@@ -237,6 +237,11 @@ func NewWindow(files Files) *Window {
 	w.grpcResponse.setCaptureTable(w.grpc.captures)
 	w.graphqlResponse.setCaptureTable(w.graphql.captures)
 	w.mcpResponse.setCaptureTable(w.mcp.captures)
+	// What the response should be is set beside it likewise.
+	w.response.setAssertTable(w.request.assertions)
+	w.grpcResponse.setAssertTable(w.grpc.assertions)
+	w.graphqlResponse.setAssertTable(w.graphql.assertions)
+	w.mcpResponse.setAssertTable(w.mcp.assertions)
 	// What an MCP server sends while a call is under way is beside it.
 	w.mcpResponse.addEventsTab()
 	for _, ui := range w.uis {

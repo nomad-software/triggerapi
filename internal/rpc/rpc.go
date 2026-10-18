@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/dynamicpb"
 
+	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/network"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -41,6 +42,9 @@ type Request struct {
 	// Captures are the values to take from the last response message and
 	// keep in variables of the active environment. See rest.Request.
 	Captures []capture.Rule `json:"captures,omitempty"`
+	// Assertions are as those of a rest.Request, the body being the last
+	// response message.
+	Assertions []assert.Check `json:"assertions,omitempty"`
 
 	// Network is how the server is reached: the proxy, TLS and what is
 	// particular to its host. It is not saved: whoever calls gives it, and

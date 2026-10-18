@@ -47,6 +47,9 @@ type graphqlPanel struct {
 	// captures are the variables to set from the response. See
 	// requestPanel.captures.
 	captures *keyValueTable
+	// assertions are what the response should be. Like the captures they
+	// are shown beside the response.
+	assertions *assertTable
 
 	// described is the schema of the server, or nil if it has not been
 	// loaded, and schema shows it in the schema definition language, and
@@ -133,6 +136,8 @@ func newGraphQLPanel() *graphqlPanel {
 
 	p.captures = newCaptureTable()
 	p.captures.onChange = p.changed
+	p.assertions = newAssertTable(p.highlight)
+	p.assertions.onChange = p.changed
 
 	p.tabs = qt.NewQTabWidget2()
 	// The order matches the tab constants.
@@ -204,12 +209,13 @@ func (p *graphqlPanel) compose(name string) *collection.Request {
 // request reads the widgets into a graphql.Request.
 func (p *graphqlPanel) request() graphql.Request {
 	return graphql.Request{
-		URL:       p.url.Text(),
-		Headers:   p.headers.items(),
-		Auth:      p.auth.auth(),
-		Query:     p.query.ToPlainText(),
-		Variables: p.variables.ToPlainText(),
-		Captures:  captureRules(p.captures),
+		URL:        p.url.Text(),
+		Headers:    p.headers.items(),
+		Auth:       p.auth.auth(),
+		Query:      p.query.ToPlainText(),
+		Variables:  p.variables.ToPlainText(),
+		Captures:   captureRules(p.captures),
+		Assertions: p.assertions.checks(),
 	}
 }
 
@@ -225,6 +231,7 @@ func (p *graphqlPanel) load(r graphql.Request) {
 		p.variables.SetPlainText(r.Variables)
 		p.variablesFold.reset()
 		setCaptureRules(p.captures, r.Captures)
+		p.assertions.setChecks(r.Assertions)
 	})
 	p.loaded = ""
 	p.setSchema(nil)

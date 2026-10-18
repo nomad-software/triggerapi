@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/graphql"
 	"github.com/nomad-software/triggerapi/internal/mcp"
@@ -410,7 +411,7 @@ func TestFavouriteDropped(t *testing.T) {
 	// A file from when folders could be favourites loads with nothing else
 	// lost, and the mark is not written again.
 	path := filepath.Join(t.TempDir(), "requests.json")
-	old := `{"folders":[{"name":"a","collapsed":true,"favourite":true,"requests":[{"name":"r","method":"GET","url":"example.com"}]}]}`
+	old := `{"folders":[{"name":"a","collapsed":true,"favourite":true,"requests":[{"name":"1 rest","method":"GET","url":"example.com"}]}]}`
 	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -669,7 +670,7 @@ func TestMCPRequest(t *testing.T) {
 	}
 
 	// One with nothing of its own is given an empty request.
-	if err := os.WriteFile(path, []byte(`{"folders":[{"name":"a","requests":[{"name":"m","type":"mcp"}]}]}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"folders":[{"name":"a","requests":[{"name":"4 mcp","type":"mcp"}]}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if loaded, err = Load(path); err != nil || loaded.Folders[0].Requests[0].MCP == nil {
@@ -762,5 +763,56 @@ func TestOAuthSettings(t *testing.T) {
 		if !reflect.DeepEqual(a, saved) {
 			t.Errorf("%s: %+v %+v", r.Name, a, a.OAuth)
 		}
+	}
+}
+
+// TestAssertions checks that a file from before requests had assertions
+// reads and writes as it did, and that the assertions of every type that has
+// them are kept.
+func TestAssertions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "requests.json")
+	old := `{"folders":[{"name":"a","requests":[` +
+		`{"name":"1 rest","method":"GET","url":"{{host}}/a","auth":{"type":"none"},"captures":[{"key":"id","value":"id","enabled":true}]},` +
+		`{"name":"2 grpc","type":"grpc","grpc":{"url":"localhost:1","method":"a.B/C","auth":{"type":"none"}}},` +
+		`{"name":"3 graphql","type":"graphql","graphql":{"url":"{{host}}/graphql","auth":{"type":"none"},"query":"{ a }"}},` +
+		`{"name":"4 mcp","type":"mcp","mcp":{"url":"{{host}}/mcp","auth":{"type":"none"},"name":"echo"}}]}]}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); strings.Contains(string(data), "assertions") {
+		t.Errorf("a file without assertions was written with them: %s", data)
+	}
+	requests := s.Folders[0].Requests
+	if len(requests) != 4 || len(requests[0].Request.Captures) != 1 {
+		t.Fatalf("loaded %+v", requests)
+	}
+
+	check := []assert.Check{{Subject: assert.Body, Path: "id", Comparison: assert.Equals, Value: "{{id}}", Enabled: true}}
+	requests[0].Request.Assertions = check
+	requests[1].GRPC.Assertions = check
+	requests[2].GraphQL.Assertions = check
+	requests[3].MCP.Assertions = check
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := loaded.Folders[0].Requests
+	for i, assertions := range [][]assert.Check{got[0].Request.Assertions, got[1].GRPC.Assertions, got[2].GraphQL.Assertions, got[3].MCP.Assertions} {
+		if !reflect.DeepEqual(assertions, check) {
+			t.Errorf("request %d has assertions %+v", i, assertions)
+		}
+	}
+	if c := got[0].Clone(); !reflect.DeepEqual(c.Request.Assertions, check) {
+		t.Errorf("clone has assertions %+v", c.Request.Assertions)
 	}
 }

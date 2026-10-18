@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
@@ -29,6 +30,8 @@ type Request struct {
 	Variables string `json:"variables,omitempty"`
 	// Captures are as those of a rest.Request.
 	Captures []capture.Rule `json:"captures,omitempty"`
+	// Assertions are as those of a rest.Request.
+	Assertions []assert.Check `json:"assertions,omitempty"`
 }
 
 // Expand applies f to every part of the request that can hold a placeholder.

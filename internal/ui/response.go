@@ -16,6 +16,7 @@ import (
 
 	qt "github.com/mappu/miqt/qt6"
 
+	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/graphql"
 	"github.com/nomad-software/triggerapi/internal/history"
@@ -44,6 +45,11 @@ type responsePanel struct {
 	// that is shown.
 	captures *keyValueTable
 	captured []captureResult
+	// assertions is the table of the Assertions tab, which belongs to the
+	// request panel likewise, and asserted what came of checking the
+	// response that is shown with them.
+	assertions *assertTable
+	asserted   []assert.Result
 	// timing is the Timing tab, which only the panels of requests sent over
 	// HTTP have, and is otherwise nil.
 	timing *timingTab
@@ -318,6 +324,7 @@ func (p *responsePanel) clear() {
 	p.tabs.SetTabText(tabResponseHeaders, "Headers")
 	p.setFields()
 	p.showCaptured(nil)
+	p.showAsserted(nil)
 	p.showTiming(nil, 0)
 	p.entry = nil
 	p.streamed, p.streaming = 0, false
@@ -360,17 +367,21 @@ func (p *responsePanel) capturePath(position int) (path, name string, ok bool) {
 
 // contextMenu returns the menu of the body for a position in it: the usual
 // one of an editor and, if there is a value there that can be captured, the
-// offer to capture it.
+// offer to capture it and the offer to assert that it is what it is.
 func (p *responsePanel) contextMenu(position int) *qt.QMenu {
 	menu := p.body.CreateStandardContextMenu()
 	if path, name, ok := p.capturePath(position); ok {
-		label := "Capture the whole response"
+		// An & would otherwise underline the letter after it.
+		shown := strings.ReplaceAll(path, "&", "&&")
+		captureLabel, assertLabel := "Capture the whole response", "Assert the whole response"
 		if path != "" {
-			// An & would otherwise underline the letter after it.
-			label = "Capture " + strings.ReplaceAll(path, "&", "&&")
+			captureLabel, assertLabel = "Capture "+shown, "Assert "+shown
 		}
 		menu.AddSeparator()
-		menu.AddActionWithText(label).OnTriggered(func() { p.addCapture(path, name) })
+		menu.AddActionWithText(captureLabel).OnTriggered(func() { p.addCapture(path, name) })
+		if p.assertions != nil {
+			menu.AddActionWithText(assertLabel).OnTriggered(func() { p.addAssertion(path) })
+		}
 	}
 	return menu
 }
@@ -382,14 +393,28 @@ func (p *responsePanel) addCapture(path, name string) {
 	p.captures.addToEdit(name, path)
 }
 
+// addAssertion adds a check that the value at a path is what it is in the
+// response on show, and shows it on the Assertions tab with its value ready
+// to be changed.
+func (p *responsePanel) addAssertion(path string) {
+	value, err := capture.Extract(p.captureDoc, path)
+	if err != nil {
+		return
+	}
+	p.tabs.SetCurrentIndex(tabAssertions)
+	p.assertions.add(assert.Check{Subject: assert.Body, Path: path, Comparison: assert.Equals, Value: value, Enabled: true})
+}
+
 // Tabs of a response panel. Capture is the one on which what to capture from
-// the response is set, and Timing, which comes after it, says where the time
-// of the response went. The panel of MCP requests has Events in place of
-// Timing (see eventsTab).
+// the response is set, Assertions the one on which what the response should
+// be is, and Timing, which comes after them, says where the time of the
+// response went. The panel of MCP requests has Events in place of Timing
+// (see eventsTab).
 const (
 	tabResponse = iota
 	tabResponseHeaders
 	tabCapture
+	tabAssertions
 	tabTiming
 )
 
@@ -402,7 +427,36 @@ func (p *responsePanel) setCaptureTable(table *keyValueTable) {
 	table.onStale = func() { p.showCaptured(nil) }
 }
 
-// addTimingTab adds the Timing tab, after the Capture tab.
+// setAssertTable adds the Assertions tab, after the Capture tab, which shows
+// the table of what the response to the request should be.
+func (p *responsePanel) setAssertTable(table *assertTable) {
+	p.assertions = table
+	p.tabs.AddTab(table.widget(), "Assertions")
+	// The marks are of the rows as they were when the response came.
+	table.onStale = func() { p.showAsserted(nil) }
+}
+
+// showAsserted marks the Assertions tab with how the checks of the response
+// went: a tick if every one passed and a cross if any failed, with the same
+// against each row of the table, beside why it failed. With no results the
+// marks are taken away.
+func (p *responsePanel) showAsserted(results []assert.Result) {
+	p.asserted = results
+	if p.assertions == nil {
+		return
+	}
+	p.assertions.showResults(results)
+
+	if len(results) == 0 {
+		none := qt.NewQIcon()
+		defer none.Delete()
+		p.tabs.SetTabIcon(tabAssertions, none)
+		return
+	}
+	p.tabs.SetTabIcon(tabAssertions, assertIcon(assert.Failed(results) == 0))
+}
+
+// addTimingTab adds the Timing tab, after the Assertions tab.
 func (p *responsePanel) addTimingTab() {
 	p.timing = newTimingTab()
 	p.tabs.AddTab(p.timing.root, "Timing")
@@ -458,6 +512,7 @@ func (p *responsePanel) showCaptured(results []captureResult) {
 func (p *responsePanel) recolour() {
 	p.setFields(p.fields...)
 	p.showCaptured(p.captured)
+	p.showAsserted(p.asserted)
 	p.find.recolour()
 	if p.timing != nil {
 		p.timing.recolour()

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/graphql"
@@ -62,6 +63,11 @@ type Entry struct {
 	// Omitted is the size of the body that was left out, as it was larger
 	// than MaxBody, or zero if none was.
 	Omitted int `json:"omitted,omitempty"`
+
+	// Assertions are what came of checking the response with the
+	// assertions of the request, which an entry from before they were
+	// checked does not have.
+	Assertions []assert.Result `json:"assertions,omitempty"`
 }
 
 // WebSocket is what went over the connection of a WebSocket request.

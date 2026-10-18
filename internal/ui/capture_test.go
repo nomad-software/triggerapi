@@ -156,7 +156,7 @@ func TestCapture(t *testing.T) {
 
 		// The marks follow the colours of the settings.
 		s := w.config
-		s.Colours.Captured, s.Colours.NotCaptured = "#001100", "#110000"
+		s.Colours.Passed, s.Colours.Failed = "#001100", "#110000"
 		if err := w.applySettings(s); err != nil {
 			t.Error(err)
 		}
@@ -293,9 +293,10 @@ func TestClickToCapture(t *testing.T) {
 				offset += 1 + strings.Index(body[offset+1:], text)
 			}
 			menu := p.contextMenu(len(utf16.Encode([]rune(body[:offset]))) + 1)
-			actions := menu.Actions()
-			if last := actions[len(actions)-1]; strings.HasPrefix(last.Text(), "Capture") {
-				return last.Text(), last
+			for _, action := range menu.Actions() {
+				if strings.HasPrefix(action.Text(), "Capture") {
+					return action.Text(), action
+				}
 			}
 			return "", nil
 		}

@@ -59,6 +59,29 @@ func TestLoadInvalidIconColours(t *testing.T) {
 	}
 }
 
+// TestCaptureColours checks that the colours of the marks of capturing in a
+// file from before they were those of passing and failing are kept as them,
+// unless those are there too, and are written only as them.
+func TestCaptureColours(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	os.WriteFile(path, []byte(`{"colours": {"captured": "#001100", "notCaptured": "#110000", "error": "#123456"}}`), 0o644)
+	s := Load(path)
+	if want := (Colours{Passed: "#001100", Failed: "#110000", Error: "#123456"}); s.Colours != want {
+		t.Errorf("got %+v, want %+v", s.Colours, want)
+	}
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); strings.Contains(string(data), "aptured") || !strings.Contains(string(data), `"passed": "#001100"`) {
+		t.Errorf("saved %s", data)
+	}
+
+	os.WriteFile(path, []byte(`{"colours": {"captured": "#001100", "passed": "#002200", "notCaptured": "#110000"}}`), 0o644)
+	if got, want := Load(path).Colours, (Colours{Passed: "#002200", Failed: "#110000"}); got != want {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
 func TestDefaultColoursNotSaved(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	if err := (Settings{Width: 900, Height: 600}).Save(path); err != nil {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/mappu/miqt/qt6/mainthread"
 
+	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/history"
 	"github.com/nomad-software/triggerapi/internal/mcp"
@@ -56,6 +57,11 @@ func (w *Window) callMCP() {
 	// the client then finds.
 	w.run(w.mcp.call, w.mcpResponse, entry, w.authorizer(w.requestUI(collection.TypeMCP), &req.Auth), w.timeout(), func(ctx context.Context) (outcome, error) {
 		res, err := client.Call(ctx, req, listener)
+		var facts *assert.Facts
+		if res != nil {
+			f := mcpFacts(res)
+			facts = &f
+		}
 
 		// Values are captured from the result of a call that succeeded.
 		var captured []captureResult
@@ -70,6 +76,8 @@ func (w *Window) callMCP() {
 				w.mcpResponse.showCaptured(captured)
 			},
 			record: func(e *history.Entry) { e.MCP = res },
+			checks: request.Assertions,
+			facts:  facts,
 		}, err
 	})
 }

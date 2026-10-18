@@ -326,7 +326,7 @@ var colourSections = []struct {
 	{"Request types", []colourKind{colourREST, colourGRPC, colourWebSocket, colourGraphQL, colourMCP}},
 	{"Buttons", []colourKind{colourSend, colourAction, colourRemove}},
 	{"Text", []colourKind{colourFound, colourNotFound, colourError, colourMatch}},
-	{"Capture", []colourKind{colourCaptured, colourNotCaptured}},
+	{"Captures and assertions", []colourKind{colourPassed, colourFailed}},
 	{"Timing", []colourKind{colourTiming}},
 }
 

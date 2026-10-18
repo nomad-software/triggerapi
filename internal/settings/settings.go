@@ -3,6 +3,7 @@
 package settings
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -133,10 +134,6 @@ type Colours struct {
 	NotFound string `json:"notFound,omitempty"`
 	// Error is the colour of the text of errors and of failed statuses.
 	Error string `json:"error,omitempty"`
-	// Captured and NotCaptured are the colours of the marks which say that
-	// a value was captured from a response, and that one could not be.
-	Captured    string `json:"captured,omitempty"`
-	NotCaptured string `json:"notCaptured,omitempty"`
 	// Match is the colour that marks the places text looked for in a
 	// response was found.
 	Match string `json:"match,omitempty"`
@@ -149,12 +146,40 @@ type Colours struct {
 	// Timing is the colour of the bars of the Timing tab of a response,
 	// which show when each stage of a request was.
 	Timing string `json:"timing,omitempty"`
+	// Passed and Failed are the colours of the marks which say that a value
+	// was captured from a response or an assertion of a request held of
+	// it, and that one could not be or did not.
+	Passed string `json:"passed,omitempty"`
+	Failed string `json:"failed,omitempty"`
+}
+
+// UnmarshalJSON reads colours, taking those of the marks of capturing from a
+// file from before they were Passed and Failed, which they were named
+// captured and notCaptured in, unless Passed and Failed are there too.
+func (c *Colours) UnmarshalJSON(data []byte) error {
+	type plain Colours
+	var read struct {
+		plain
+		Captured    string `json:"captured"`
+		NotCaptured string `json:"notCaptured"`
+	}
+	if err := json.Unmarshal(data, &read); err != nil {
+		return err
+	}
+	*c = Colours(read.plain)
+	if c.Passed == "" {
+		c.Passed = read.Captured
+	}
+	if c.Failed == "" {
+		c.Failed = read.NotCaptured
+	}
+	return nil
 }
 
 // valid returns the colours with any that are not of the form #rrggbb
 // emptied.
 func (c Colours) valid() Colours {
-	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.WebSocket, &c.GraphQL, &c.MCP, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Captured, &c.NotCaptured, &c.Match, &c.Sets, &c.History)
+	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.WebSocket, &c.GraphQL, &c.MCP, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Match, &c.Sets, &c.History, &c.Passed, &c.Failed)
 	return c
 }
 

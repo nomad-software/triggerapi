@@ -203,6 +203,37 @@ bindings.
   each variable shows whether it was captured.
 - Right-click a value in a JSON response and choose Capture to add the
   variable for it, with its path filled in.
+- Check that a response is what it should be with assertions, listed on the
+  Assertions tab of the response of every REST, GraphQL, gRPC and MCP
+  request and saved with it. Each row checks one thing: the status, the time
+  in milliseconds, a header (named in the path column), a value in the body
+  (by the same paths as captures; with no path, the whole body, as text if it
+  is not JSON) or the size of the body in bytes. It compares it in one of
+  these ways:
+  - **equals** / **does not equal**: a number as a number, so `1` equals
+    `1.0`; an object or array as JSON, so spacing does not matter; anything
+    else as text, with `null` for null. The status is compared ignoring
+    case, by any name it goes by: an HTTP status by its code (`200`) or its
+    status line (`200 OK`), a gRPC status by its name (`NOT_FOUND`) or code
+    (`5`), and an MCP call by its outcome (`OK`, `Tool error`, or the code
+    and name of a JSON-RPC error).
+  - **contains** / **does not contain**: text containing the value, or an
+    array with an element equal to it.
+  - **matches regex**.
+  - **exists** / **does not exist**: the path or header is there, even if it
+    is null.
+  - **is less than** / **is greater than**: both are numbers.
+  - **has length**: the elements of an array, the members of an object or the
+    characters of a string.
+  - **is empty**: an empty array, object or string, or null.
+
+  `{{placeholders}}` in the value are replaced when the response comes, after
+  any values have been captured from it. Every response is checked, an error
+  status too, but nothing is when there is no response at all. A tick or a
+  cross on the tab and against each row shows how it went, with why a check
+  failed beside it, and the results are kept in the history. Right-click a
+  value in a JSON response and choose Assert to add a check that it equals
+  what it is.
 - JSON bodies, messages, arguments and responses are syntax highlighted, and
   their objects and arrays can be folded.
 - Find text in a response with Ctrl+F, or the button beside its tabs: every
@@ -238,7 +269,7 @@ bindings.
   every entry of that day, or unticks them if they all are. The remove button
   beneath removes the ticked entries, or the selected one if none is ticked.
   The history can be searched by name and address.
-- Compare the responses of two or more ticked entries with a diff tool of
+- Compare the responses of two or three ticked entries with a diff tool of
   your choosing, such as `meld` or `kdiff3`, with the compare button beside
   the remove button. The tool is set under History in File > Settings as a
   command, to which the files to compare are added, oldest first: each holds
@@ -341,7 +372,7 @@ File > Settings has five tabs:
 - User interface: the font of code (request and response bodies, messages,
   queries, arguments and the curl command), and the colours of the
   interface, listed in sections: the icons of the sidebar and of each type of
-  request, the buttons, the sets, the history, placeholders, errors, the capture marks,
+  request, the buttons, the sets, the history, placeholders, errors, the marks of captures and assertions,
   the matches of a search, the bars of the Timing tab and JSON highlighting, which GraphQL is coloured
   with too.
 

@@ -69,6 +69,9 @@ type requestPanel struct {
 	// are shown as the Capture tab of its response panel, where the
 	// response they are about is.
 	captures *keyValueTable
+	// assertions are what the response should be. Like the captures they
+	// are shown beside the response.
+	assertions *assertTable
 
 	auth *authEditor
 
@@ -201,6 +204,8 @@ func newRequestPanel() *requestPanel {
 
 	p.captures = newCaptureTable()
 	p.captures.onChange = p.changed
+	p.assertions = newAssertTable(p.highlight)
+	p.assertions.onChange = p.changed
 
 	// The curl button is at the right of the line the tabs are on.
 	p.curl = newIconButton(colourAction, drawPrompt, "Show the request as a curl command")
@@ -528,15 +533,16 @@ func (p *requestPanel) request() rest.Request {
 	base, _ := rest.SplitURL(p.url.Text())
 
 	return rest.Request{
-		Method:   p.method.CurrentText(),
-		URL:      base,
-		Params:   p.params.items(),
-		Headers:  p.headers.items(),
-		Auth:     p.auth.auth(),
-		BodyType: bodyTypes[p.bodyType.CurrentIndex()].typ,
-		Body:     p.bodyRaw.ToPlainText(),
-		Form:     p.bodyForm.items(),
-		Captures: captureRules(p.captures),
+		Method:     p.method.CurrentText(),
+		URL:        base,
+		Params:     p.params.items(),
+		Headers:    p.headers.items(),
+		Auth:       p.auth.auth(),
+		BodyType:   bodyTypes[p.bodyType.CurrentIndex()].typ,
+		Body:       p.bodyRaw.ToPlainText(),
+		Form:       p.bodyForm.items(),
+		Captures:   captureRules(p.captures),
+		Assertions: p.assertions.checks(),
 	}
 }
 
@@ -562,6 +568,7 @@ func (p *requestPanel) load(r rest.Request) {
 	p.bodyFold.reset()
 	p.bodyForm.setItems(r.Form)
 	setCaptureRules(p.captures, r.Captures)
+	p.assertions.setChecks(r.Assertions)
 	p.showLikelyTab()
 	p.updateCurl()
 	p.updatePreview()

@@ -72,6 +72,7 @@ func (w *Window) replayEntry(e *history.Entry) func() {
 	}
 	return func() {
 		show()
+		r.showAsserted(e.Assertions)
 		// It is saved under the name and time it was sent with.
 		r.entry = e
 		if e.Omitted > 0 {
@@ -90,6 +91,9 @@ func (w *Window) diffEntries(entries []*history.Entry) error {
 	}
 	if len(entries) < 2 {
 		return errors.New("tick at least two entries to compare their responses")
+	}
+	if len(entries) > maxDiff {
+		return fmt.Errorf("%d entries are ticked, and no more than %d responses can be compared at once, as diff tools compare up to %d files", len(entries), maxDiff, maxDiff)
 	}
 	dir, paths, err := writeDiffFiles(entries)
 	if err != nil {

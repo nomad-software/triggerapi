@@ -25,12 +25,12 @@ const (
 	colourFound
 	colourNotFound
 	colourError
-	colourCaptured
-	colourNotCaptured
 	colourMatch
 	colourSets
 	colourHistory
 	colourTiming
+	colourPassed
+	colourFailed
 )
 
 // colourKinds are the colours, with what each is called in the settings and
@@ -40,12 +40,12 @@ const (
 // Execute beside the curl command. The action buttons are those beside the tabs of a panel,
 // curl and save, and the pin of a request tab. A placeholder that the active
 // environment defines is green, and one that it does not is the colour of an
-// error. Captured and not captured are of the tick and the cross which say
-// how capturing from a response went, and the last is what marks each place
-// that text looked for in a response was found. Sets is the colour of the
+// error. Search matches is what marks each place that text looked for in a
+// response was found. Sets is the colour of the
 // sets of the Requests tab, their tab and their buttons, and History that of
 // the History tab and its buttons. Timing is that of the bars of the Timing
-// tab of a response.
+// tab of a response. Passed and failed are of the tick and the cross which
+// say how capturing from a response and its assertions went.
 var colourKinds = []struct {
 	kind     colourKind
 	label    string
@@ -68,12 +68,12 @@ var colourKinds = []struct {
 	{colourFound, "Placeholders found", "#2e9e5b", func(c *settings.Colours) *string { return &c.Found }},
 	{colourNotFound, "Placeholders not found", "#ef5350", func(c *settings.Colours) *string { return &c.NotFound }},
 	{colourError, "Errors", "#ef5350", func(c *settings.Colours) *string { return &c.Error }},
-	{colourCaptured, "Captured", "#2e9e5b", func(c *settings.Colours) *string { return &c.Captured }},
-	{colourNotCaptured, "Not captured", "#ef5350", func(c *settings.Colours) *string { return &c.NotCaptured }},
 	{colourMatch, "Search matches", "#ffd43b", func(c *settings.Colours) *string { return &c.Match }},
 	{colourSets, "Sets", "#ff4989", func(c *settings.Colours) *string { return &c.Sets }},
 	{colourHistory, "History", "#2e9e5b", func(c *settings.Colours) *string { return &c.History }},
 	{colourTiming, "Timing bars", "#ba7d1c", func(c *settings.Colours) *string { return &c.Timing }},
+	{colourPassed, "Passed", "#2e9e5b", func(c *settings.Colours) *string { return &c.Passed }},
+	{colourFailed, "Failed", "#ef5350", func(c *settings.Colours) *string { return &c.Failed }},
 }
 
 // customColours are the colours the user has chosen. See setColours.

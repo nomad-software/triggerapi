@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/network"
 )
@@ -113,6 +114,10 @@ type Request struct {
 	// variables of the active environment, as the capture package reads
 	// them. Placeholders in them are not replaced.
 	Captures []capture.Rule `json:"captures,omitempty"`
+	// Assertions are what the response should be, as the assert package
+	// checks them. Placeholders in their values are replaced when they are
+	// checked.
+	Assertions []assert.Check `json:"assertions,omitempty"`
 
 	// Options say how the request is sent. They are not part of the
 	// request as it is saved: whoever sends it gives them.

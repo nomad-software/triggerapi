@@ -98,6 +98,9 @@ type mcpPanel struct {
 	// captures are the variables to set from the response. See
 	// requestPanel.captures.
 	captures *keyValueTable
+	// assertions are what the response should be. Like the captures they
+	// are shown beside the response.
+	assertions *assertTable
 	// endpoints lists what the server has, to make requests of.
 	endpoints *endpointTable
 
@@ -189,6 +192,8 @@ func newMCPPanel() *mcpPanel {
 
 	p.captures = newCaptureTable()
 	p.captures.onChange = p.changed
+	p.assertions = newAssertTable(p.highlight)
+	p.assertions.onChange = p.changed
 
 	p.endpoints = newEndpointTable()
 
@@ -236,14 +241,15 @@ func (p *mcpPanel) compose(name string) *collection.Request {
 func (p *mcpPanel) request() mcp.Request {
 	kind, name := mcpSplit(p.endpoint.current())
 	return mcp.Request{
-		Transport: p.transport,
-		URL:       p.url.Text(),
-		Headers:   p.headers.items(),
-		Auth:      p.auth.auth(),
-		Kind:      kind,
-		Name:      name,
-		Arguments: p.arguments.ToPlainText(),
-		Captures:  captureRules(p.captures),
+		Transport:  p.transport,
+		URL:        p.url.Text(),
+		Headers:    p.headers.items(),
+		Auth:       p.auth.auth(),
+		Kind:       kind,
+		Name:       name,
+		Arguments:  p.arguments.ToPlainText(),
+		Captures:   captureRules(p.captures),
+		Assertions: p.assertions.checks(),
 	}
 }
 
@@ -262,6 +268,7 @@ func (p *mcpPanel) load(r mcp.Request) {
 		p.headers.setItems(r.Headers)
 		p.auth.load(r.Auth)
 		setCaptureRules(p.captures, r.Captures)
+		p.assertions.setChecks(r.Assertions)
 		p.endpoints.setMethods(nil)
 		p.status.set("")
 		p.describe()

@@ -21,9 +21,9 @@ type captureResult struct {
 // one that was not.
 func captureIcon(captured bool) *qt.QIcon {
 	if captured {
-		return cachedIcon("captured", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourCaptured), drawTick) })
+		return cachedIcon("captured", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourPassed), drawTick) })
 	}
-	return cachedIcon("not captured", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourNotCaptured), drawCross) })
+	return cachedIcon("not captured", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourFailed), drawCross) })
 }
 
 // newCaptureTable returns the table of the Capture tab of a response panel:

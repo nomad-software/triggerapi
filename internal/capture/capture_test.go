@@ -1,6 +1,8 @@
 package capture
 
 import (
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -71,6 +73,31 @@ func TestExtractErrors(t *testing.T) {
 		if _, err := Extract(body, "a"); err == nil || !strings.Contains(err.Error(), "not JSON") {
 			t.Errorf("%q: %v", body, err)
 		}
+	}
+}
+
+// TestFind checks that a value is given as it is decoded, and that a path
+// which is not in the document is told apart from one that cannot be looked
+// for.
+func TestFind(t *testing.T) {
+	value, err := Find(document, "price")
+	if err != nil || value != json.Number("417.50") {
+		t.Errorf("Find gave %#v, %v", value, err)
+	}
+
+	var missing *MissingError
+	for _, path := range []string{"gone", "data.items[99]", "token.part", "data.items.name", "data.user[0]"} {
+		if _, err := Find(document, path); !errors.As(err, &missing) {
+			t.Errorf("Find(%q) gave %v, not a MissingError", path, err)
+		}
+	}
+	for _, path := range []string{"data.items[x]", "a..b"} {
+		if _, err := Find(document, path); err == nil || errors.As(err, &missing) {
+			t.Errorf("Find(%q) gave %v, which should be another error", path, err)
+		}
+	}
+	if _, err := Find("not json", ""); err == nil || errors.As(err, &missing) {
+		t.Errorf("Find of text gave %v, which should be another error", err)
 	}
 }
 

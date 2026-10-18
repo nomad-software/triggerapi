@@ -375,8 +375,8 @@ func TestColourSettings(t *testing.T) {
 			colourFound:        "#880000",
 			colourNotFound:     "#990000",
 			colourError:        "#bb0000",
-			colourCaptured:     "#cc0000",
-			colourNotCaptured:  "#dd0000",
+			colourPassed:       "#cc0000",
+			colourFailed:       "#dd0000",
 		}
 		for kind, colour := range custom {
 			d.swatches[kind].set(colour)

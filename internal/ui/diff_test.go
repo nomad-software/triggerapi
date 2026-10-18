@@ -61,6 +61,31 @@ func TestWriteDiffFiles(t *testing.T) {
 	}
 }
 
+// TestDiffTooMany checks that comparing more responses than a diff tool can
+// is refused, with the reason, and that the tool is not run.
+func TestDiffTooMany(t *testing.T) {
+	now := time.Now()
+	mainthread.Wait(func() {
+		w := NewWindow(testFiles(t).Files)
+		w.Show()
+		var warned []string
+		w.history.warn = func(message string) { warned = append(warned, message) }
+		w.config.DiffCommand = "triggerapi-no-such-diff-tool"
+		for i := range maxDiff + 1 {
+			w.history.add(&history.Entry{
+				Time:    now.Add(time.Duration(i) * time.Second),
+				Request: collection.NewREST("r", rest.Request{}),
+				HTTP:    &rest.Response{StatusCode: 200, Body: []byte("body")},
+			})
+		}
+		w.history.toggle(w.history.tree.TopLevelItem(0))
+		w.history.diff.Click()
+		if want := "4 entries are ticked, and no more than 3 responses can be compared at once, as diff tools compare up to 3 files."; len(warned) != 1 || warned[0] != want || len(w.diffDirs) != 0 {
+			t.Errorf("warned %q", warned)
+		}
+	})
+}
+
 func TestDiffHistory(t *testing.T) {
 	dir := t.TempDir()
 	// The diff tool is a script which writes down the files it is given.

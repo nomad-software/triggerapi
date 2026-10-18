@@ -40,6 +40,9 @@ type grpcPanel struct {
 	// captures are the variables to set from the response. See
 	// requestPanel.captures.
 	captures *keyValueTable
+	// assertions are what the response should be. Like the captures they
+	// are shown beside the response.
+	assertions *assertTable
 	// endpoints lists the methods of the server, to make requests of.
 	endpoints *endpointTable
 	// described is the service definition of the server, or nil if it has
@@ -132,6 +135,8 @@ func newGRPCPanel() *grpcPanel {
 
 	p.captures = newCaptureTable()
 	p.captures.onChange = p.changed
+	p.assertions = newAssertTable(p.highlight)
+	p.assertions.onChange = p.changed
 
 	p.metadata = newKeyValueTable("Key", "Value")
 	p.metadata.onChange = p.changed
@@ -187,13 +192,14 @@ func (p *grpcPanel) compose(name string) *collection.Request {
 // request reads the widgets into an rpc.Request.
 func (p *grpcPanel) request() rpc.Request {
 	return rpc.Request{
-		URL:      p.url.Text(),
-		TLS:      p.tls.IsChecked(),
-		Method:   p.method.current(),
-		Message:  p.message.ToPlainText(),
-		Metadata: p.metadata.items(),
-		Auth:     p.auth.auth(),
-		Captures: captureRules(p.captures),
+		URL:        p.url.Text(),
+		TLS:        p.tls.IsChecked(),
+		Method:     p.method.current(),
+		Message:    p.message.ToPlainText(),
+		Metadata:   p.metadata.items(),
+		Auth:       p.auth.auth(),
+		Captures:   captureRules(p.captures),
+		Assertions: p.assertions.checks(),
 	}
 }
 
@@ -219,6 +225,7 @@ func (p *grpcPanel) load(r rpc.Request) {
 	p.messageFold.reset()
 	p.metadata.setItems(r.Metadata)
 	setCaptureRules(p.captures, r.Captures)
+	p.assertions.setChecks(r.Assertions)
 	p.auth.load(r.Auth)
 
 	p.endpoints.setMethods(nil)

@@ -18,6 +18,10 @@ import (
 // settings name. The command is the user's own, from the settings, never
 // from a workspace, so nothing anyone else has written is run.
 
+// maxDiff is the most responses that are compared at once, as diff tools
+// compare no more than three files.
+const maxDiff = 3
+
 // errNoDiffCommand is the error of comparing with no diff tool in the settings.
 var errNoDiffCommand = errors.New("there is no diff tool to compare them with: set its command under History in File > Settings")
 

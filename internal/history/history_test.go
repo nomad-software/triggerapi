@@ -12,6 +12,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 
+	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/crypt/crypttest"
@@ -54,6 +55,10 @@ func TestSaveAndLoad(t *testing.T) {
 		URL:     "localhost:9000",
 		Path:    []string{"Echo", "Say"},
 		GRPC:    &rpc.Response{Code: 5, CodeName: "NOT_FOUND", Messages: []string{"{}"}, Trailers: http.Header{"X-T": {"1"}}},
+		Assertions: []assert.Result{
+			{Check: assert.Check{Subject: assert.Status, Comparison: assert.Equals, Value: "OK", Enabled: true}, Reason: "the status is NOT_FOUND, not OK"},
+			{Check: assert.Check{Subject: assert.Time, Comparison: assert.Less, Value: "500", Enabled: true}, Passed: true},
+		},
 	}
 	store.Add(grpc, 10)
 	socket := &Entry{
@@ -90,7 +95,7 @@ func TestSaveAndLoad(t *testing.T) {
 			t.Errorf("entry %d = %s %s", i, got.Request.Type, got.Title())
 		}
 	}
-	if got := loaded.Entries[2]; !reflect.DeepEqual(got.GRPC, grpc.GRPC) || !reflect.DeepEqual(got.Path, grpc.Path) {
+	if got := loaded.Entries[2]; !reflect.DeepEqual(got.GRPC, grpc.GRPC) || !reflect.DeepEqual(got.Path, grpc.Path) || !reflect.DeepEqual(got.Assertions, grpc.Assertions) {
 		t.Errorf("gRPC entry = %+v at %q", got.GRPC, got.Path)
 	}
 	if got := loaded.Entries[1].WebSocket; got.Status != "Disconnected" || len(got.Messages) != 2 || !got.Messages[0].Sent || got.Messages[1].Text != "hello" {

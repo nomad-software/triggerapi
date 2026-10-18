@@ -256,14 +256,40 @@ func PathAt(document string, offset int) (path, name string, found bool) {
 	}
 }
 
-// Extract returns the value at a path in a JSON document, as text: a string
-// as it is, without its quotes; a number, true or false as written; nothing
-// for null; and an object or an array as JSON. An empty path is the whole
-// document. See parse for how a path is written.
+// Extract returns the value at a path in a JSON document, as text (see
+// Text). An empty path is the whole document. See parse for how a path is
+// written.
 func Extract(document, path string) (string, error) {
-	steps, err := parse(path)
+	value, err := Find(document, path)
 	if err != nil {
 		return "", err
+	}
+	return Text(value)
+}
+
+// MissingError is the error of a path that is not in a document: a member
+// or an element that is not there, or a step into something that is not an
+// object or an array.
+type MissingError struct {
+	message string
+}
+
+func (e *MissingError) Error() string { return e.message }
+
+// Missing returns a MissingError.
+func Missing(format string, args ...any) error {
+	return &MissingError{fmt.Sprintf(format, args...)}
+}
+
+// Find returns the value at a path in a JSON document, as encoding/json
+// decodes it, but for numbers, which are json.Numbers as they are written.
+// An empty path is the whole document. A path that is not in the document
+// is a MissingError, and one that cannot be read, or a document that is not
+// JSON, another error.
+func Find(document, path string) (any, error) {
+	steps, err := parse(path)
+	if err != nil {
+		return nil, err
 	}
 
 	// Numbers are kept as they are written, not turned into floats.
@@ -271,40 +297,46 @@ func Extract(document, path string) (string, error) {
 	decoder.UseNumber()
 	var value any
 	if err := decoder.Decode(&value); err != nil {
-		return "", errors.New("the response is not JSON")
+		return nil, errors.New("the response is not JSON")
 	}
 	if _, err := decoder.Token(); err != io.EOF {
-		return "", errors.New("the response is not JSON")
+		return nil, errors.New("the response is not JSON")
 	}
 
 	for _, s := range steps {
 		switch in := value.(type) {
 		case map[string]any:
 			if s.isIndex {
-				return "", fmt.Errorf("%s is for an array, but there is an object there", s)
+				return nil, Missing("%s is for an array, but there is an object there", s)
 			}
 			member, ok := in[s.name]
 			if !ok {
-				return "", fmt.Errorf("there is no %s in the response", s)
+				return nil, Missing("there is no %s in the response", s)
 			}
 			value = member
 		case []any:
 			if !s.isIndex {
-				return "", fmt.Errorf("%s is for an object, but there is an array there", s)
+				return nil, Missing("%s is for an object, but there is an array there", s)
 			}
 			index := s.index
 			if index < 0 {
 				index += len(in)
 			}
 			if index < 0 || index >= len(in) {
-				return "", fmt.Errorf("there is no %s in an array of %d", s, len(in))
+				return nil, Missing("there is no %s in an array of %d", s, len(in))
 			}
 			value = in[index]
 		default:
-			return "", fmt.Errorf("there is nothing to look for %s in", s)
+			return nil, Missing("there is nothing to look for %s in", s)
 		}
 	}
+	return value, nil
+}
 
+// Text returns a value that Find returned as text: a string as it is,
+// without its quotes; a number, true or false as written; nothing for null;
+// and an object or an array as JSON.
+func Text(value any) (string, error) {
 	switch v := value.(type) {
 	case nil:
 		return "", nil

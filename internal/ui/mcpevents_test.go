@@ -60,7 +60,7 @@ func TestMCPEvents(t *testing.T) {
 		w.mcp.reload.Click()
 
 		// The tab is after the Capture tab, and empty to begin with.
-		if w.mcpResponse.events == nil || w.mcpResponse.events.index != tabCapture+1 || tabText() != "Events" {
+		if w.mcpResponse.events == nil || w.mcpResponse.events.index != tabAssertions+1 || tabText() != "Events" {
 			t.Error("the panel of MCP requests has no Events tab after Capture")
 		}
 	})

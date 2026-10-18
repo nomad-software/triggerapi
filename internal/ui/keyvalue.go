@@ -48,9 +48,6 @@ type rowStatus struct {
 	tip  string
 }
 
-// removeIconSize is the size of the icon which removes a row.
-const removeIconSize = 18
-
 // keyValueTable is an editable list of key/value pairs, each of which can be
 // switched off. An empty row is always kept at the bottom for new entries.
 // The pairs are kept in alphabetical order of their keys. Each row but the
@@ -133,47 +130,11 @@ func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
 }
 
 // delegateColumns has a click anywhere in the cell of a checkbox switch it,
-// and not only one on the box itself, and has the cell of the remove button,
-// which cannot be selected itself, drawn as selected with the rest of its
-// row.
+// and the cell of the remove button drawn as selected with the rest of its
+// row (see delegateCheckColumn and delegateRemoveColumn).
 func (t *keyValueTable) delegateColumns() {
-	check := qt.NewQStyledItemDelegate2(t.table.QObject)
-	check.OnEditorEvent(func(super func(*qt.QEvent, *qt.QAbstractItemModel, *qt.QStyleOptionViewItem, *qt.QModelIndex) bool, event *qt.QEvent, model *qt.QAbstractItemModel, option *qt.QStyleOptionViewItem, index *qt.QModelIndex) bool {
-		switch event.Type() {
-		case qt.QEvent__MouseButtonPress, qt.QEvent__MouseButtonRelease, qt.QEvent__MouseButtonDblClick:
-		default:
-			// The space bar, as it always has.
-			return super(event, model, option, index)
-		}
-		mouse := qt.UnsafeNewQMouseEvent(event.UnsafePointer())
-		if mouse.Button() != qt.LeftButton || !option.Rect().ContainsWithQPoint(mouse.Position().ToPoint()) {
-			return super(event, model, option, index)
-		}
-		// The release switches it, as a click on the box does. The press
-		// is left to the table, which selects the row with it, and a double
-		// click is taken so that nothing else is done with it.
-		switch event.Type() {
-		case qt.QEvent__MouseButtonPress:
-			return false
-		case qt.QEvent__MouseButtonRelease:
-			if item := t.table.Item(index.Row(), colEnabled); item != nil {
-				item.SetCheckState(checkState(item.CheckState() != qt.Checked))
-			}
-		}
-		return true
-	})
-	t.table.SetItemDelegateForColumn(colEnabled, check.QAbstractItemDelegate)
-
-	remove := qt.NewQStyledItemDelegate2(t.table.QObject)
-	remove.OnPaint(func(super func(*qt.QPainter, *qt.QStyleOptionViewItem, *qt.QModelIndex), painter *qt.QPainter, option *qt.QStyleOptionViewItem, index *qt.QModelIndex) {
-		if t.table.SelectionModel().IsRowSelected(index.Row()) {
-			state := option.State()
-			option.SetState(state | qt.QStyle__State_Selected | qt.QStyle__State_Enabled)
-			defer option.SetState(state)
-		}
-		super(painter, option, index)
-	})
-	t.table.SetItemDelegateForColumn(colRemove, remove.QAbstractItemDelegate)
+	delegateCheckColumn(t.table, colEnabled)
+	delegateRemoveColumn(t.table, colRemove)
 }
 
 // editing reports whether a cell is being edited.
@@ -250,13 +211,6 @@ func (t *keyValueTable) sort() {
 	t.updating = false
 
 	t.changed()
-}
-
-func checkState(enabled bool) qt.CheckState {
-	if enabled {
-		return qt.Checked
-	}
-	return qt.Unchecked
 }
 
 // pair returns the contents of a row.
@@ -358,32 +312,9 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 	}
 }
 
-// removeRowIcon returns the icon of the buttons which remove a row.
-func removeRowIcon() *qt.QIcon {
-	return cachedIcon("remove row", func() *qt.QIcon { return drawIcon(removeIconSize*2, themeColour(colourRemove), drawBin) })
-}
-
 // newRemoveButton returns a button which removes the row it is in.
 func (t *keyValueTable) newRemoveButton() *qt.QWidget {
-	button := qt.NewQToolButton2()
-	followColours(button, func() { button.SetIcon(removeRowIcon()) })
-	button.SetIconSize(qt.NewQSize2(removeIconSize, removeIconSize))
-	button.SetToolTip("Remove this row")
-	button.SetAutoRaise(true)
-	// The keyboard moves between the cells that are typed in, and a cell
-	// counts as being edited while something inside the table has focus.
-	button.SetFocusPolicy(qt.NoFocus)
-	// The rows move as others are removed, so the row of the button is
-	// found when it is pressed.
-	button.OnClicked(func() {
-		for row := range t.table.RowCount() {
-			if cell := t.table.CellWidget(row, colRemove); cell != nil && cell.UnsafePointer() == button.QWidget.UnsafePointer() {
-				t.remove(row)
-				return
-			}
-		}
-	})
-	return button.QWidget
+	return newRowRemoveButton(t.table, colRemove, t.remove)
 }
 
 // add inserts a pair above the trailing empty row.
