@@ -56,7 +56,8 @@ func (s *Schema) Method(name string) (Method, bool) {
 }
 
 // Example returns a JSON message for the method with every field present, as
-// a starting point to edit.
+// a starting point to edit, or for a method that takes a stream of messages
+// an array of two.
 func (s *Schema) Example(method string) (string, error) {
 	m, ok := s.Method(method)
 	if !ok {
@@ -69,6 +70,11 @@ func (s *Schema) Example(method string) (string, error) {
 	data, err := protojson.MarshalOptions{Resolver: s.types, EmitUnpopulated: true}.Marshal(message)
 	if err != nil {
 		return "", err
+	}
+	// A method that takes a stream of messages is given two, to show that
+	// it can be given several.
+	if m.ClientStreaming {
+		data = slices.Concat([]byte("["), data, []byte(","), data, []byte("]"))
 	}
 	return indent(data)
 }

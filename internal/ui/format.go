@@ -12,6 +12,9 @@ import (
 type formatButton struct {
 	button *qt.QToolButton
 	edit   *qt.QPlainTextEdit
+	// several records that the editor can hold several values one after
+	// another, as the messages of a stream of gRPC.
+	several bool
 
 	// warn tells the user of a problem.
 	warn func(message string)
@@ -31,7 +34,11 @@ func newFormatButton(edit *qt.QPlainTextEdit) *formatButton {
 // not JSON. The change is one that the editor can undo.
 func (f *formatButton) format() {
 	text := f.edit.ToPlainText()
-	formatted, err := rest.FormatJSON(text)
+	format := rest.FormatJSON
+	if f.several {
+		format = rest.FormatJSONValues
+	}
+	formatted, err := format(text)
 	if err != nil {
 		f.warn("This is not valid JSON, so it cannot be formatted: " + err.Error())
 		return

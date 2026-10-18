@@ -29,3 +29,13 @@ func TestFormatJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatJSONValues(t *testing.T) {
+	got, err := FormatJSONValues(`{"a":1} {"b":{{b}}}` + "\n\n" + `[1]`)
+	if want := "{\n  \"a\": 1\n}\n{\n  \"b\": {{b}}\n}\n[\n  1\n]"; err != nil || got != want {
+		t.Errorf("FormatJSONValues = %q, %v, want %q", got, err, want)
+	}
+	if got, err := FormatJSONValues(`{"a":1} {`); err == nil {
+		t.Errorf("FormatJSONValues of JSON that is not valid = %q", got)
+	}
+}

@@ -91,8 +91,13 @@ bindings.
 
 **gRPC**
 
-- Call unary and server-streaming methods, sending the message as JSON with
-  metadata and basic, bearer or OAuth 2.0 authorization.
+- Call methods of every kind (unary, server streaming, client streaming and
+  bidirectional), sending the message as JSON with metadata and basic,
+  bearer or OAuth 2.0 authorization. A method that takes a stream of
+  messages is given several, one after another or in an array, which are
+  all sent before the server's answers are shown; the request says so
+  beside the message, its example is two messages, and Format and completion
+  work on each.
 - The methods of a server are discovered using gRPC server reflection, so no
   protobuf files are needed, and an example message can be filled in for the
   method chosen.
@@ -924,6 +929,21 @@ for the message of a language model.
 | `ARGS="-token secret"` | Refuse requests without `Authorization: Bearer secret` |
 | `ARGS="-legacy"` | Behave as a server from before protocol version 2026-07-28, with sessions |
 | `ARGS="-addr localhost:9000"` | Listen elsewhere |
+
+### A sample gRPC server
+
+`test/grpcserver` is a small gRPC server, described through reflection, to
+try gRPC requests against by hand. Start it with:
+
+```sh
+make grpc-server
+```
+
+and give a gRPC request the address `localhost:50051`, without TLS. Its
+service, `sample.v1.Demo`, has a method of every kind: `Say` (unary),
+`Countdown` (server streaming, `{"from": 5, "delayMs": 300}`), `Sum`
+(client streaming: send it numbers, `[{"value": 1}, {"value": 2}]`), `Chat`
+(bidirectional, answering each message) and `Fail`. It logs every call.
 
 ### A sample REST server
 

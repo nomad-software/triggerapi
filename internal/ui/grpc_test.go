@@ -405,3 +405,62 @@ func TestGRPCRequestBarOrder(t *testing.T) {
 		}
 	})
 }
+
+// TestGRPCClientStream checks that a method which takes a stream of messages
+// is said to, given an example of two, and sent each of those given.
+func TestGRPCClientStream(t *testing.T) {
+	srv := rpctest.NewStreamingServer(rpctest.ReflectionAll)
+	defer srv.Close()
+
+	var w *Window
+	body := func() string { return w.grpcResponse.body.ToPlainText() }
+	mainthread.Wait(func() {
+		w = NewWindow(testFiles(t).Files)
+		w.Show()
+		addGRPCRequest(w)
+		if w.grpc.streaming.IsVisibleTo(w.grpc.root) {
+			t.Error("a stream is said to be taken before the definition is loaded")
+		}
+		w.grpc.url.SetText(srv.URL)
+		w.grpc.targetChanged()
+	})
+	waitFor(t, "the methods", func() bool { return w.grpc.method.count() == 6 })
+
+	mainthread.Wait(func() {
+		w.grpc.method.selectMethod("test.v1.Echo/Say")
+		if w.grpc.streaming.IsVisibleTo(w.grpc.root) {
+			t.Error("Say is said to take a stream")
+		}
+		w.grpc.method.selectMethod("test.v1.Echo/Gather")
+		if !w.grpc.streaming.IsVisibleTo(w.grpc.root) {
+			t.Error("Gather is not said to take a stream")
+		}
+
+		// The example is two messages.
+		w.grpc.example.Click()
+		if text := w.grpc.message.ToPlainText(); !strings.HasPrefix(text, "[\n  {") || strings.Count(text, `"text"`) != 2 {
+			t.Errorf("example %s", text)
+		}
+
+		// Messages one after another are formatted each.
+		w.grpc.message.SetPlainText(`{"text":"a"} {"text":"b"}`)
+		w.grpc.format.format()
+		if text := w.grpc.message.ToPlainText(); text != "{\n  \"text\": \"a\"\n}\n{\n  \"text\": \"b\"\n}" {
+			t.Errorf("formatted %q", text)
+		}
+		w.grpc.invoke.Click()
+	})
+	waitFor(t, "the response", func() bool { return strings.Contains(body(), `"text": "a b"`) })
+	mainthread.Wait(func() {
+		if fieldValue(w.grpcResponse, fieldCode) != "0 OK" || !strings.Contains(body(), `"index": 2`) {
+			t.Errorf("status %q, body %s", fieldValue(w.grpcResponse, fieldCode), body())
+		}
+
+		// A method that takes one message is not sent two.
+		w.grpc.method.selectMethod("test.v1.Echo/Say")
+		w.grpc.invoke.Click()
+	})
+	waitFor(t, "the error", func() bool {
+		return strings.Contains(fieldValue(w.grpcResponse, fieldError), "takes one message, and 2 were given")
+	})
+}

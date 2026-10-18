@@ -29,14 +29,24 @@
 //	  rpc Forever(EchoRequest) returns (stream EchoResponse);
 //	  // Fail always fails with a not found status.
 //	  rpc Fail(EchoRequest) returns (EchoResponse);
+//	  // Gather returns the texts of the messages it is sent, joined by
+//	  // spaces, with how many there were as its index.
+//	  rpc Gather(stream EchoRequest) returns (EchoResponse);
+//	  // Talk answers each message it is sent with its text, as it comes.
+//	  rpc Talk(stream EchoRequest) returns (stream EchoResponse);
 //	}
+//
+// Only a server made by NewStreamingServer has Gather and Talk, the methods
+// which take a stream of messages.
 package rpctest
 
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 
 	"connectrpc.com/connect"
 	"connectrpc.com/grpcreflect"
@@ -66,7 +76,17 @@ const (
 // NewServer starts a server, which the caller must close. Its URL can be used
 // as the URL of a request.
 func NewServer(reflection Reflection) *httptest.Server {
-	files := descriptors()
+	return newServer(reflection, false)
+}
+
+// NewStreamingServer starts a server as NewServer does, which also has the
+// methods that take a stream of messages.
+func NewStreamingServer(reflection Reflection) *httptest.Server {
+	return newServer(reflection, true)
+}
+
+func newServer(reflection Reflection, streaming bool) *httptest.Server {
+	files := descriptors(streaming)
 	request := message(files, "test.v1.EchoRequest")
 	response := message(files, "test.v1.EchoResponse")
 
@@ -121,6 +141,10 @@ func NewServer(reflection Reflection) *httptest.Server {
 		return ctx.Err()
 	}))
 
+	if streaming {
+		addStreaming(mux, typed, text, reply)
+	}
+
 	reflector := grpcreflect.NewReflector(
 		grpcreflect.NamerFunc(func() []string { return []string{Service} }),
 		grpcreflect.WithDescriptorResolver(files),
@@ -144,8 +168,39 @@ func NewServer(reflection Reflection) *httptest.Server {
 	return server
 }
 
+// addStreaming adds the methods which take a stream of messages, which read
+// the text of a message with text and answer with reply.
+func addStreaming(mux *http.ServeMux, typed connect.HandlerOption, text func(*dynamicpb.Message) string, reply func(string, int, http.Header) *dynamicpb.Message) {
+	mux.Handle(clientStream("Gather", typed, func(_ context.Context, in *connect.ClientStream[dynamicpb.Message]) (*connect.Response[dynamicpb.Message], error) {
+		var texts []string
+		for in.Receive() {
+			texts = append(texts, text(in.Msg()))
+		}
+		if err := in.Err(); err != nil {
+			return nil, err
+		}
+		return connect.NewResponse(reply(strings.Join(texts, " "), len(texts), in.RequestHeader())), nil
+	}))
+
+	mux.Handle(bidiStream("Talk", typed, func(_ context.Context, chat *connect.BidiStream[dynamicpb.Message, dynamicpb.Message]) error {
+		for i := 0; ; i++ {
+			in, err := chat.Receive()
+			if errors.Is(err, io.EOF) {
+				return nil
+			} else if err != nil {
+				return err
+			}
+			if err := chat.Send(reply(text(in), i, chat.RequestHeader())); err != nil {
+				return err
+			}
+		}
+	}))
+}
+
 type unaryFunc = func(context.Context, *connect.Request[dynamicpb.Message]) (*connect.Response[dynamicpb.Message], error)
 type streamFunc = func(context.Context, *connect.Request[dynamicpb.Message], *connect.ServerStream[dynamicpb.Message]) error
+type clientStreamFunc = func(context.Context, *connect.ClientStream[dynamicpb.Message]) (*connect.Response[dynamicpb.Message], error)
+type bidiStreamFunc = func(context.Context, *connect.BidiStream[dynamicpb.Message, dynamicpb.Message]) error
 
 func unary(name string, option connect.HandlerOption, f unaryFunc) (string, http.Handler) {
 	path := "/" + Service + "/" + name
@@ -157,6 +212,16 @@ func stream(name string, option connect.HandlerOption, f streamFunc) (string, ht
 	return path, connect.NewServerStreamHandler(path, f, option)
 }
 
+func clientStream(name string, option connect.HandlerOption, f clientStreamFunc) (string, http.Handler) {
+	path := "/" + Service + "/" + name
+	return path, connect.NewClientStreamHandler(path, f, option)
+}
+
+func bidiStream(name string, option connect.HandlerOption, f bidiStreamFunc) (string, http.Handler) {
+	path := "/" + Service + "/" + name
+	return path, connect.NewBidiStreamHandler(path, f, option)
+}
+
 func message(files *protoregistry.Files, name protoreflect.FullName) protoreflect.MessageDescriptor {
 	desc, err := files.FindDescriptorByName(name)
 	if err != nil {
@@ -165,8 +230,9 @@ func message(files *protoregistry.Files, name protoreflect.FullName) protoreflec
 	return desc.(protoreflect.MessageDescriptor)
 }
 
-// descriptors builds the protobuf definition in the package documentation.
-func descriptors() *protoregistry.Files {
+// descriptors builds the protobuf definition in the package documentation,
+// with the methods which take a stream of messages if streaming is set.
+func descriptors(streaming bool) *protoregistry.Files {
 	field := func(name string, number int32, kind descriptorpb.FieldDescriptorProto_Type) *descriptorpb.FieldDescriptorProto {
 		return &descriptorpb.FieldDescriptorProto{
 			Name:   proto.String(name),
@@ -175,11 +241,12 @@ func descriptors() *protoregistry.Files {
 			Label:  descriptorpb.FieldDescriptorProto_LABEL_OPTIONAL.Enum(),
 		}
 	}
-	method := func(name string, serverStreaming bool) *descriptorpb.MethodDescriptorProto {
+	method := func(name string, clientStreaming, serverStreaming bool) *descriptorpb.MethodDescriptorProto {
 		return &descriptorpb.MethodDescriptorProto{
 			Name:            proto.String(name),
 			InputType:       proto.String(".test.v1.EchoRequest"),
 			OutputType:      proto.String(".test.v1.EchoResponse"),
+			ClientStreaming: proto.Bool(clientStreaming),
 			ServerStreaming: proto.Bool(serverStreaming),
 		}
 	}
@@ -220,12 +287,17 @@ func descriptors() *protoregistry.Files {
 		Service: []*descriptorpb.ServiceDescriptorProto{{
 			Name: proto.String("Echo"),
 			Method: []*descriptorpb.MethodDescriptorProto{
-				method("Say", false),
-				method("Repeat", true),
-				method("Forever", true),
-				method("Fail", false),
+				method("Say", false, false),
+				method("Repeat", false, true),
+				method("Forever", false, true),
+				method("Fail", false, false),
 			},
 		}},
+	}
+
+	if streaming {
+		service := file.Service[0]
+		service.Method = append(service.Method, method("Gather", true, false), method("Talk", true, true))
 	}
 
 	desc, err := protodesc.NewFile(file, nil)

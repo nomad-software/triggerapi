@@ -20,6 +20,14 @@ func server(t *testing.T, reflection rpctest.Reflection) *httptest.Server {
 	return srv
 }
 
+// streamingServer starts a server which has the methods that take a stream
+// of messages too.
+func streamingServer(t *testing.T) *httptest.Server {
+	srv := rpctest.NewStreamingServer(rpctest.ReflectionAll)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
 func TestTarget(t *testing.T) {
 	tests := []struct {
 		req     rpc.Request
@@ -117,7 +125,7 @@ func TestReflectUnreachable(t *testing.T) {
 }
 
 func TestExample(t *testing.T) {
-	srv := server(t, rpctest.ReflectionAll)
+	srv := streamingServer(t)
 
 	schema, err := rpc.Reflect(context.Background(), rpc.Request{URL: srv.URL})
 	if err != nil {
@@ -140,6 +148,12 @@ func TestExample(t *testing.T) {
 }`
 	if got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+
+	// A method that takes a stream of messages is given two.
+	got, err = schema.Example("test.v1.Echo/Gather")
+	if lines := strings.Split(want, "\n"); err != nil || got != "[\n  "+strings.Join(lines, "\n  ")+",\n  "+strings.Join(lines, "\n  ")+"\n]" {
+		t.Errorf("stream example %v:\n%s", err, got)
 	}
 
 	if _, err := schema.Example("test.v1.Echo/Missing"); err == nil {
@@ -222,6 +236,53 @@ func TestInvokeServerStream(t *testing.T) {
 
 	if !res.OK() || len(res.Messages) != 3 || !strings.Contains(res.Messages[2], `"index": 2`) {
 		t.Errorf("status %s, messages = %v", res.CodeName, res.Messages)
+	}
+}
+
+// TestInvokeClientStream checks that a method which takes a stream of
+// messages is sent each of those given, one after another or in an array.
+func TestInvokeClientStream(t *testing.T) {
+	srv := streamingServer(t)
+	schema, err := rpc.Reflect(context.Background(), rpc.Request{URL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, ok := schema.Method("test.v1.Echo/Talk"); !ok || !m.ServerStreaming || !m.ClientStreaming {
+		t.Errorf("Talk = %+v, %v", m, ok)
+	}
+	invoke := func(method, message string) (*rpc.Response, error) {
+		return rpc.Invoke(context.Background(), rpc.Request{URL: srv.URL, Method: "test.v1.Echo/" + method, Message: message}, schema)
+	}
+
+	for _, test := range []struct{ message, want string }{
+		{`{"text": "a"} {"text": "b"}` + "\n" + `{"text": "c"}`, `"text": "a b c"`},
+		{`[{"text": "a"}, {"text": "b"}]`, `"text": "a b"`},
+		{`{"text": "only"}`, `"text": "only"`},
+		{``, `"index": 1`},
+		{`[]`, `{}`},
+	} {
+		res, err := invoke("Gather", test.message)
+		if err != nil || !res.OK() || len(res.Messages) != 1 || !strings.Contains(res.Messages[0], test.want) {
+			t.Errorf("%q: %v %+v", test.message, err, res)
+		}
+	}
+
+	// A bidirectional method answers each.
+	res, err := invoke("Talk", `[{"text": "a"}, {"text": "b"}, {"text": "c"}]`)
+	if err != nil || !res.OK() || len(res.Messages) != 3 || !strings.Contains(res.Messages[2], `"text": "c"`) {
+		t.Errorf("chat: %v %+v", err, res)
+	}
+
+	// A method that takes one message is given one, and each message has
+	// to be valid.
+	if _, err := invoke("Say", `{"text": "a"} {"text": "b"}`); err == nil || !strings.Contains(err.Error(), "takes one message, and 2 were given") {
+		t.Errorf("two messages to Say: %v", err)
+	}
+	if _, err := invoke("Say", `[{"text": "a"}]`); err == nil {
+		t.Error("an array was sent to Say")
+	}
+	if _, err := invoke("Gather", `{"text": "a"} {"nope": 1}`); err == nil || !strings.Contains(err.Error(), "message 2 is not valid") {
+		t.Errorf("an invalid second message: %v", err)
 	}
 }
 

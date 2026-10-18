@@ -30,10 +30,13 @@ type grpcPanel struct {
 	// messageFold folds the objects and arrays of the message.
 	messageFold *folder
 	example     *qt.QPushButton
-	// format sets out the message.
-	format   *formatButton
-	auth     *authEditor
-	metadata *keyValueTable
+	// format sets out the message, or the messages.
+	format *formatButton
+	// streaming says that the method chosen takes a stream of messages,
+	// and how to give several.
+	streaming *qt.QLabel
+	auth      *authEditor
+	metadata  *keyValueTable
 	// captures are the variables to set from the response. See
 	// requestPanel.captures.
 	captures *keyValueTable
@@ -76,7 +79,10 @@ func newGRPCPanel() *grpcPanel {
 	p.save = qt.NewQPushButton3("Save")
 
 	p.method = newMethodCombo()
-	p.method.OnCurrentIndexChanged(func(int) { p.changed() })
+	p.method.OnCurrentIndexChanged(func(int) {
+		p.showStreaming()
+		p.changed()
+	})
 
 	p.reload = qt.NewQPushButton3("Reload")
 
@@ -108,8 +114,13 @@ func newGRPCPanel() *grpcPanel {
 	exampleBar := qt.NewQHBoxLayout2()
 	exampleBar.AddWidget(p.example.QWidget)
 	p.format = newFormatButton(p.message)
+	p.format.several = true
 	exampleBar.AddWidget(p.format.button.QWidget)
 	exampleBar.AddStretch()
+	p.streaming = qt.NewQLabel3("This method takes a stream of messages: give them one after another, or in an array.")
+	p.streaming.SetEnabled(false)
+	p.streaming.SetVisible(false)
+	exampleBar.AddWidget(p.streaming.QWidget)
 
 	messageTab := qt.NewQWidget2()
 	messageLayout := qt.NewQVBoxLayout(messageTab)
@@ -213,6 +224,18 @@ func (p *grpcPanel) load(r rpc.Request) {
 	p.endpoints.setMethods(nil)
 	p.described = nil
 	p.status.set("")
+	p.showStreaming()
+}
+
+// showStreaming says whether the method chosen takes a stream of messages,
+// which is known once the service definition has been loaded.
+func (p *grpcPanel) showStreaming() {
+	streaming := false
+	if p.described != nil {
+		m, ok := p.described.Method(p.method.current())
+		streaming = ok && m.ClientStreaming
+	}
+	p.streaming.SetVisible(streaming)
 }
 
 // completeMessage returns what can be typed at an offset of the message of
@@ -254,6 +277,7 @@ func (p *grpcPanel) setSchema(schema *rpc.Schema) {
 
 	// Only a failure to load the definition is reported.
 	p.status.set("")
+	p.showStreaming()
 
 	if p.method.current() != current {
 		p.changed()
@@ -265,4 +289,5 @@ func (p *grpcPanel) setSchemaError(err error) {
 	p.described = nil
 	p.endpoints.setMethods(nil)
 	p.status.set("The service definition could not be loaded: " + err.Error())
+	p.showStreaming()
 }

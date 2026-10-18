@@ -205,9 +205,10 @@ func (r Request) headers() http.Header {
 	return headers
 }
 
-// Invoke calls the method of the request, sending its message and collecting
-// the responses until the server ends the call. The schema describes the
-// server; if it is nil it is fetched first using reflection.
+// Invoke calls the method of the request, sending its message, or for a
+// method that takes a stream its messages (see splitMessages), and
+// collecting the responses until the server ends the call. The schema
+// describes the server; if it is nil it is fetched first using reflection.
 //
 // A call that the server rejects, or which is cancelled, is not an error: the
 // status and any messages received before it are in the response.
@@ -227,13 +228,21 @@ func Invoke(ctx context.Context, r Request, schema *Schema) (*Response, error) {
 		return nil, fmt.Errorf("the server does not have a method named %s", r.Method)
 	}
 
-	message := r.Message
-	if strings.TrimSpace(message) == "" {
-		message = "{}"
+	// A method that takes a stream of messages can be given several, and
+	// any other exactly one.
+	texts := splitMessages(r.Message, method.ClientStreaming)
+	if !method.ClientStreaming && len(texts) != 1 {
+		return nil, fmt.Errorf("%s takes one message, and %d were given", r.Method, len(texts))
 	}
-	in := dynamicpb.NewMessage(method.desc.Input())
-	if err := (protojson.UnmarshalOptions{Resolver: schema.types}).Unmarshal([]byte(message), in); err != nil {
-		return nil, fmt.Errorf("invalid message: %w", err)
+	ins := make([]*dynamicpb.Message, len(texts))
+	for i, text := range texts {
+		ins[i] = dynamicpb.NewMessage(method.desc.Input())
+		if err := (protojson.UnmarshalOptions{Resolver: schema.types}).Unmarshal([]byte(text), ins[i]); err != nil {
+			if len(texts) > 1 {
+				return nil, fmt.Errorf("message %d is not valid: %w", i+1, err)
+			}
+			return nil, fmt.Errorf("invalid message: %w", err)
+		}
 	}
 
 	target, httpClient, closer, err := r.client()
@@ -265,16 +274,20 @@ func Invoke(ctx context.Context, r Request, schema *Schema) (*Response, error) {
 	start := time.Now()
 
 	// A bidirectional stream lets one code path call every kind of method:
-	// a single message is sent and responses are read until the server
-	// finishes.
+	// the messages are sent, which for most methods is one, and responses
+	// are read until the server finishes.
 	stream := client.CallBidiStream(ctx)
 	maps.Copy(stream.RequestHeader(), r.headers())
 
 	err = func() error {
 		// A send fails with io.EOF if the server has already ended the
 		// call, in which case the receive below gives the real status.
-		if err := stream.Send(in); err != nil && !errors.Is(err, io.EOF) {
-			return err
+		for _, in := range ins {
+			if err := stream.Send(in); errors.Is(err, io.EOF) {
+				break
+			} else if err != nil {
+				return err
+			}
 		}
 		if err := stream.CloseRequest(); err != nil {
 			return err

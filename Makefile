@@ -4,7 +4,7 @@ BINARY := triggerapi
 # halves the size of the binary.
 LDFLAGS := -s -w
 
-.PHONY: build run test vet screenshot icons mcp-server rest-server appimage macos clean
+.PHONY: build run test vet screenshot icons mcp-server rest-server grpc-server appimage macos clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
@@ -40,6 +40,12 @@ mcp-server:
 # Options go in ARGS, as in make rest-server ARGS="-addr localhost:9001".
 rest-server:
 	go run ./test/restserver $(ARGS)
+
+# Starts the sample gRPC server at localhost:50051, without TLS, which has a
+# method of every kind, to try gRPC requests against by hand. Options go in
+# ARGS, as in make grpc-server ARGS="-addr localhost:9090".
+grpc-server:
+	go run ./test/grpcserver $(ARGS)
 
 # Packs the program and the Qt libraries it uses into one file that runs
 # without installing anything. Releases are made by the GitHub workflow, on

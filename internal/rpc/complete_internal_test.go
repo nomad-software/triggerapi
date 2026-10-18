@@ -86,9 +86,15 @@ func completionMessage(t *testing.T) protoreflect.MessageDescriptor {
 // complete returns the labels of what can be typed where the message has a
 // |, which is taken out.
 func complete(desc protoreflect.MessageDescriptor, message string) ([]string, completion.Completion) {
+	return completeStream(desc, false, message)
+}
+
+// completeStream is complete for the messages of a method which takes a
+// stream of them if stream is set.
+func completeStream(desc protoreflect.MessageDescriptor, stream bool, message string) ([]string, completion.Completion) {
 	offset := strings.Index(message, "|")
 	message = strings.Replace(message, "|", "", 1)
-	c := completeMessage(desc, message, offset)
+	c := completeMessage(desc, stream, message, offset)
 	var got []string
 	for _, item := range c.Items {
 		got = append(got, item.Label)
@@ -135,6 +141,31 @@ func TestCompleteMessage(t *testing.T) {
 	} {
 		if got, _ := complete(desc, test.message); !slices.Equal(got, test.want) {
 			t.Errorf("%s: %q, want %q", test.message, got, test.want)
+		}
+	}
+}
+
+func TestCompleteStream(t *testing.T) {
+	desc := completionMessage(t)
+	all := []string{"active", "at", "byId", "items", "role", "roles", "userName"}
+	for _, test := range []struct {
+		message string
+		stream  bool
+		want    []string
+	}{
+		// Messages one after another.
+		{`{"role": 1} {|`, true, all},
+		{`{"role": 1}, {"act|`, true, []string{"active"}},
+		// The messages of an array, which are each a message.
+		{`[{"ro|`, true, []string{"role", "roles"}},
+		{`[{"role": 1}, {"items": [{|`, true, []string{"flag", "role"}},
+		{`[{"role": 1}, {|`, true, all},
+		{`[|`, true, nil},
+		// An array is not a message of a method that takes one.
+		{`[{"ro|`, false, nil},
+	} {
+		if got, _ := completeStream(desc, test.stream, test.message); !slices.Equal(got, test.want) {
+			t.Errorf("%s (stream %v): %q, want %q", test.message, test.stream, got, test.want)
 		}
 	}
 }

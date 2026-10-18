@@ -15,6 +15,9 @@ import (
 //     there yet, by their JSON names;
 //   - where a value goes, the values of an enum, or true and false.
 //
+// A method that takes a stream of messages can be given several, one after
+// another or in an array, which are each completed as a message.
+//
 // The message is read as far as the offset, whether or not it is valid, as
 // it is being typed, following the keys into the messages, lists and maps
 // they are of. What has been typed of the key or value at the offset is
@@ -29,7 +32,7 @@ func (s *Schema) Complete(method, message string, offset int) completion.Complet
 	if !ok {
 		return c
 	}
-	return completeMessage(m.desc.Input(), message, offset)
+	return completeMessage(m.desc.Input(), m.ClientStreaming, message, offset)
 }
 
 // expectation is what comes next in an object of JSON.
@@ -46,10 +49,11 @@ const (
 // is read.
 type container struct {
 	array bool
-	// message is the message whose fields are the keys of an object, and
-	// field is the field the values of the object or array are of, which is
-	// of a map or a list. Both are nil where the schema says nothing of what
-	// is inside.
+	// message is the message whose fields are the keys of an object, or
+	// of the objects in the array of the messages of a stream, and field is
+	// the field the values of the object or array are of, which is of a map
+	// or a list. Both are nil where the schema says nothing of what is
+	// inside.
 	message protoreflect.MessageDescriptor
 	field   protoreflect.FieldDescriptor
 	// expect is what comes next, which in an array is a value while it is
@@ -96,8 +100,8 @@ func open(field protoreflect.FieldDescriptor, array bool) *container {
 }
 
 // completeMessage returns what can be typed at an offset of the JSON of a
-// message (see Schema.Complete).
-func completeMessage(desc protoreflect.MessageDescriptor, text string, offset int) completion.Completion {
+// message, or of several if stream is set (see Schema.Complete).
+func completeMessage(desc protoreflect.MessageDescriptor, stream bool, text string, offset int) completion.Completion {
 	c := completion.Completion{Start: offset, End: offset}
 	var stack []*container
 	// quote is where a string that does not end by the offset starts.
@@ -151,6 +155,11 @@ func completeMessage(desc protoreflect.MessageDescriptor, text string, offset in
 			switch {
 			case t == nil && ch == '{':
 				next = &container{message: desc, seen: map[string]bool{}}
+			case t == nil && stream:
+				// The array of the messages of a stream.
+				next = &container{array: true, message: desc, seen: map[string]bool{}}
+			case t != nil && t.array && t.message != nil && ch == '{':
+				next = &container{message: t.message, seen: map[string]bool{}}
 			case t != nil && t.array && ch == '{' && field != nil && field.Message() != nil && !isWellKnown(field.Message()):
 				// An element of a list of messages.
 				next = &container{message: field.Message(), seen: map[string]bool{}}
