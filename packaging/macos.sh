@@ -79,6 +79,19 @@ machO() {
 	find "$APP/Contents" -type f -exec sh -c 'file -b "$1" | grep -q Mach-O' _ {} \; -print
 }
 
+# A library copied in can keep the name it had as its own, which is where
+# Homebrew has it (macdeployqt leaves QtDBus so). That name only matters to
+# what is linked against it, but it is given its place in the app, as
+# macdeployqt names the others.
+machO | while read -r file; do
+	id="$(otool -D "$file" | sed -n 2p)"
+	case "$id" in
+	/opt/homebrew/* | /usr/local/*)
+		install_name_tool -id "@executable_path/../${file#"$APP"/Contents/}" "$file"
+		;;
+	esac
+done
+
 # Nothing in the app may still look outside it for what macOS does not
 # have itself, or it would only start on a Mac with Homebrew's Qt.
 outside="$(machO | while read -r file; do
