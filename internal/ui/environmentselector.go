@@ -16,7 +16,7 @@ const (
 const selectorMinWidth = 80
 
 // selectorIconSize is the size of the icons of the titles of the drop-downs.
-const selectorIconSize = 20
+const selectorIconSize = 24
 
 // environmentSelector selects the workspace and the environment in use, and
 // the set of requests whose tabs are open. It is on a line of its own above
