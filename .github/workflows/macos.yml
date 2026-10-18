@@ -1,0 +1,71 @@
+# Builds the macOS app for Apple Silicon, in a disk image.
+#
+# It runs when a tag starting with v is pushed, as the AppImage does, and
+# attaches the disk image to the release of that name. It can also be run by
+# hand from the Actions tab, in which case the disk image is only kept as an
+# artifact of the run to download.
+#
+# The app is signed ad hoc, not with a Developer ID, and is not notarised, so
+# macOS warns that it cannot check it the first time it is opened (see the
+# README for how to open it).
+name: macOS
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  # To make the release.
+  contents: write
+
+jobs:
+  macos:
+    # A Mac with Apple Silicon. The oldest macOS the app runs on is that of
+    # this machine, as Homebrew's Qt is built for it, so it is not the
+    # newest there is.
+    runs-on: macos-14
+    steps:
+      # Homebrew's Qt has the pkg-config files that the bindings are built
+      # with.
+      - name: Install Qt
+        run: |
+          brew install pkgconf qt
+          echo "Qt $(pkg-config --modversion Qt6Widgets)"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          # What is compiled is kept by the step below instead.
+          cache: false
+
+      # The Qt bindings take a long time to compile, so what is compiled is
+      # kept from one run to the next, for one version of Qt, as what was
+      # compiled for another names the place that one was in.
+      - name: Say where compiled code is kept
+        run: |
+          echo "GOCACHE=$RUNNER_TEMP/go-build" >> "$GITHUB_ENV"
+          echo "QT_VERSION=$(pkg-config --modversion Qt6Widgets)" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/go-build
+          key: go-build-macos-qt-${{ env.QT_VERSION }}-${{ hashFiles('go.sum') }}
+
+      - name: Build the app
+        env:
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+        run: packaging/macos.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TriggerAPI-macOS
+          path: build/*.dmg
+          if-no-files-found: error
+
+      - name: Attach it to the release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/*.dmg

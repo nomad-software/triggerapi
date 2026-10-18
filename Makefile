@@ -4,7 +4,7 @@ BINARY := triggerapi
 # halves the size of the binary.
 LDFLAGS := -s -w
 
-.PHONY: build run test vet screenshot mcp-server appimage clean
+.PHONY: build run test vet screenshot icons mcp-server appimage macos clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
@@ -23,6 +23,12 @@ vet:
 screenshot:
 	TRIGGERAPI_SCREENSHOT=$(CURDIR)/docs/screenshot.png go test -timeout 90s -run '^TestScreenshot$$' -count=1 ./internal/ui/
 
+# Draws the program's icon into the files the packages are made from:
+# packaging/triggerapi.png and packaging/macos/triggerapi.png. Run it again
+# whenever the icon changes.
+icons:
+	TRIGGERAPI_ICONS=$(CURDIR)/packaging go test -timeout 90s -run '^TestWriteIcons$$' -count=1 ./internal/ui/
+
 # Starts the sample MCP server at http://localhost:8000/mcp, to try MCP
 # requests against by hand. Options go in ARGS, as in
 # make mcp-server ARGS="-token secret" or ARGS="-legacy".
@@ -34,6 +40,12 @@ mcp-server:
 # an old distribution so that they run on more systems.
 appimage:
 	packaging/appimage.sh
+
+# Builds the macOS app for Apple Silicon, with Qt inside it, in a disk image.
+# It runs on a Mac with Homebrew's Qt; releases are made by the GitHub
+# workflow.
+macos:
+	packaging/macos.sh
 
 clean:
 	rm -f $(BINARY)

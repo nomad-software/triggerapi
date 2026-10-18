@@ -470,9 +470,9 @@ place of Ctrl.
 
 ## Requirements
 
-TriggerAPI is developed and tested on Linux. It has not been tested on macOS yet,
-and there is no macOS release, but the instructions below should build it
-there.
+TriggerAPI is developed and tested on Linux. There is a release for macOS
+on Apple Silicon (see [macOS app](#macos-app)), but it has not been tested on
+macOS by hand yet.
 
 Building needs:
 
@@ -588,6 +588,42 @@ Execute button of the curl command uses, is not in it either.
 
 `make appimage` runs the same script locally, but an AppImage built on a newer
 system only runs on systems at least as new.
+
+## macOS app
+
+Releases for macOS are a disk image, `TriggerAPI-*-arm64.dmg`, for Macs with
+Apple Silicon. Open it and drag TriggerAPI into Applications. Macs with Intel
+processors are not supported.
+
+The app is not signed with an Apple Developer ID or notarised by Apple, so
+the first time it is opened macOS says that it cannot check it for malicious
+software and will not open it. Either:
+
+- Open System Settings > Privacy & Security, where TriggerAPI is named
+  beneath Security, and choose Open Anyway, or
+- take away the mark macOS gives what is downloaded, in Terminal:
+
+  ```sh
+  xattr -dr com.apple.quarantine /Applications/TriggerAPI.app
+  ```
+
+Either is only needed once. It is signed ad hoc, which a Mac with Apple
+Silicon needs to run it at all.
+
+It is built by a GitHub workflow (`.github/workflows/macos.yml`), which runs
+`packaging/macos.sh` on a Mac with Apple Silicon and Homebrew's Qt, when a
+`v` tag is pushed, as the AppImage is, or by hand from the Actions tab (macOS
+> Run workflow). The script builds the program, makes `TriggerAPI.app` with
+its icon (from `packaging/macos/triggerapi.png`) and `Info.plist` (from
+`packaging/macos/Info.plist`), copies Qt into it with Qt's `macdeployqt`,
+checks that nothing in it still uses a library from outside it, signs it,
+checks that it starts, and makes the disk image. It needs the macOS the
+workflow builds on (macOS 14) or later, which the script works out from what
+is in the app and writes into its `Info.plist`.
+
+`make macos` runs the same script on a Mac with Apple Silicon and
+`brew install go pkgconf qt`. The icon files are drawn from the program's own
+icon by `make icons`.
 
 ## gRPC
 

@@ -4,10 +4,12 @@ import (
 	"os"
 	"path/filepath"
 
-	qt "github.com/mappu/miqt/qt6"
-
 	"github.com/nomad-software/triggerapi/internal/desktop"
 )
+
+// desktopIconSize is the size of the icon of the desktop entry, as
+// packaging/triggerapi.png is.
+const desktopIconSize = 256
 
 // InstallDesktopEntry writes the desktop entry and icon that let a Linux
 // desktop list TriggerAPI with its applications, so that it can be started
@@ -31,20 +33,5 @@ func InstallDesktopEntry() error {
 	if self, err := os.Executable(); err == nil {
 		class = filepath.Base(self)
 	}
-	return desktop.Write(data, exec, class, appIconPNG())
-}
-
-// appIconPNG returns the program's icon as a PNG of 256 pixels, as
-// packaging/triggerapi.png is.
-func appIconPNG() []byte {
-	pixmap := drawPixmap(256, appIconColour, drawRevolver)
-	buffer := qt.NewQBuffer()
-	defer buffer.Delete()
-	if !buffer.Open(qt.QIODeviceBase__WriteOnly) {
-		return nil
-	}
-	if !pixmap.Save4(buffer.QIODevice, "PNG") {
-		return nil
-	}
-	return buffer.Data()
+	return desktop.Write(data, exec, class, appIconPNG(desktopIconSize, 0))
 }

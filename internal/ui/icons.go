@@ -675,3 +675,29 @@ func appIcon() *qt.QIcon {
 	}
 	return appIconCache
 }
+
+// appIconPNG returns the program's icon as a PNG of a size, with a margin of
+// that many pixels on every side, or nil if it could not be made.
+func appIconPNG(size, margin int) []byte {
+	icon := drawPixmap(size-2*margin, appIconColour, drawRevolver)
+	defer icon.Delete()
+	pixmap := qt.NewQPixmap2(size, size)
+	defer pixmap.Delete()
+	transparent := qt.NewQColor2(qt.Transparent)
+	defer transparent.Delete()
+	pixmap.FillWithFillColor(transparent)
+	painter := qt.NewQPainter2(pixmap.QPaintDevice)
+	painter.DrawPixmap9(margin, margin, icon)
+	painter.End()
+	painter.Delete()
+
+	buffer := qt.NewQBuffer()
+	defer buffer.Delete()
+	if !buffer.Open(qt.QIODeviceBase__WriteOnly) {
+		return nil
+	}
+	if !pixmap.Save4(buffer.QIODevice, "PNG") {
+		return nil
+	}
+	return buffer.Data()
+}
