@@ -40,7 +40,12 @@ rm -rf "$APP" "$BUILD/$OUTPUT" "$BUILD/dmg"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 echo "Building TriggerAPI $VERSION"
-go build -ldflags "-s -w" -o "$APP/Contents/MacOS/triggerapi" .
+# The program is linked with room to name the libraries it uses by longer
+# paths, as macdeployqt names them by where they are in the app, which is
+# longer than where Homebrew has them; without it the last few are left as
+# they were. It is only given to the last link, so that the bindings are
+# not compiled again.
+go build -ldflags "-s -w -extldflags=-Wl,-headerpad_max_install_names" -o "$APP/Contents/MacOS/triggerapi" .
 
 # The icon is made from packaging/macos/triggerapi.png (make icons) at each
 # of the sizes macOS looks for, and those made into an .icns.
@@ -76,7 +81,9 @@ machO() {
 
 # Nothing in the app may still look outside it for what macOS does not
 # have itself, or it would only start on a Mac with Homebrew's Qt.
-outside="$(machO | while read -r file; do otool -L "$file"; done | grep -E '^[[:space:]]+/(opt/homebrew|usr/local)/' || true)"
+outside="$(machO | while read -r file; do
+	otool -L "$file" | grep -E '^[[:space:]]+/(opt/homebrew|usr/local)/' | sed "s|^[[:space:]]*|${file#"$APP"/}: |"
+done)"
 if [ -n "$outside" ]; then
 	echo "The app still uses libraries from outside it:" >&2
 	echo "$outside" >&2
