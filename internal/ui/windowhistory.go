@@ -72,6 +72,8 @@ func (w *Window) replayEntry(e *history.Entry) func() {
 	}
 	return func() {
 		show()
+		// It is saved under the name and time it was sent with.
+		r.entry = e
 		if e.Omitted > 0 {
 			r.noteOmitted(e.Omitted)
 		}

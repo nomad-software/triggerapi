@@ -4,6 +4,7 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/completion"
 	"github.com/nomad-software/triggerapi/internal/graphql"
 )
 
@@ -19,7 +20,8 @@ const (
 // graphqlPanel holds the widgets used to compose a GraphQL request: the
 // endpoint, the query and its variables, and the headers and authorization
 // of the HTTP request it is sent in. The Schema tab shows the schema of the
-// server, which it describes through introspection.
+// server, which it describes through introspection, and which what can be
+// typed in the query is offered from.
 type graphqlPanel struct {
 	root *qt.QWidget
 
@@ -30,8 +32,10 @@ type graphqlPanel struct {
 
 	tabs  *qt.QTabWidget
 	query *qt.QPlainTextEdit
-	// queryFold folds the selections and arguments of the query.
+	// queryFold folds the selections and arguments of the query, and
+	// completer offers what can be typed in it.
 	queryFold *folder
+	completer *completer
 	// variables are the values of the variables of the query, as JSON.
 	variables *qt.QPlainTextEdit
 	// variablesFold folds the objects and arrays of the variables.
@@ -44,9 +48,11 @@ type graphqlPanel struct {
 	// requestPanel.captures.
 	captures *keyValueTable
 
-	// schema is the schema of the server, in the schema definition
-	// language, and reload asks the server for it again.
-	schema *qt.QPlainTextEdit
+	// described is the schema of the server, or nil if it has not been
+	// loaded, and schema shows it in the schema definition language, and
+	// reload asks the server for it again.
+	described *graphql.Schema
+	schema    *qt.QPlainTextEdit
 	// schemaFold folds the definitions of the schema.
 	schemaFold *folder
 	reload     *qt.QPushButton
@@ -57,8 +63,9 @@ type graphqlPanel struct {
 	loaded string
 
 	// onSchema is called to load the schema of the server: when the Schema
-	// tab is shown, when the endpoint has been changed while it is, and on
-	// Reload, which sets force.
+	// tab is shown, when the query is given the keyboard, as what can be
+	// typed in it is offered from the schema, when the endpoint has been
+	// changed after either, and on Reload, which sets force.
 	onSchema func(force bool)
 
 	panelState
@@ -94,6 +101,11 @@ func newGraphQLPanel() *graphqlPanel {
 	// as JSON is, by its braces.
 	p.highlight.graphql(p.query.Document())
 	p.queryFold = newFolder(p.query, always)
+	p.completer = newCompleter(p.query, p.completeQuery)
+	p.query.OnFocusInEvent(func(super func(*qt.QFocusEvent), event *qt.QFocusEvent) {
+		super(event)
+		p.askSchema(false)
+	})
 
 	p.variables = qt.NewQPlainTextEdit2()
 	p.variables.SetFont(fixed)
@@ -215,33 +227,54 @@ func (p *graphqlPanel) load(r graphql.Request) {
 		setCaptureRules(p.captures, r.Captures)
 	})
 	p.loaded = ""
-	p.setSchema("")
+	p.setSchema(nil)
 }
 
-// loadSchema asks for the schema of the server, if the Schema tab is shown
-// and the endpoint is not the one it was last asked for, or always if force
-// is set.
+// loadSchema asks for the schema of the server where it is wanted: if the
+// Schema tab is shown, or it has been asked for since the request was shown,
+// as the query is completed from it. See askSchema.
 func (p *graphqlPanel) loadSchema(force bool) {
-	if p.tabs.CurrentIndex() != tabGraphQLSchema || p.onSchema == nil {
+	if p.tabs.CurrentIndex() != tabGraphQLSchema && p.loaded == "" {
 		return
 	}
-	if !force && p.loaded == p.url.Text() {
+	p.askSchema(force)
+}
+
+// askSchema asks for the schema of the server, if the endpoint is not the
+// one it was last asked for, or always if force is set.
+func (p *graphqlPanel) askSchema(force bool) {
+	if p.onSchema == nil || !force && p.loaded == p.url.Text() {
 		return
 	}
 	p.loaded = p.url.Text()
 	p.onSchema(force)
 }
 
-// setSchema shows the schema of the server.
-func (p *graphqlPanel) setSchema(sdl string) {
+// setSchema shows the schema of the server, which is nil if there is none,
+// and has what can be typed in the query offered from it.
+func (p *graphqlPanel) setSchema(schema *graphql.Schema) {
+	p.described = schema
+	sdl := ""
+	if schema != nil {
+		sdl = schema.SDL()
+	}
 	p.status.set("")
 	p.schema.SetPlainText(sdl)
 	p.schemaFold.reset()
 }
 
+// completeQuery returns what can be typed at an offset of the query, from
+// the schema of the server, which is nothing until it has been loaded.
+func (p *graphqlPanel) completeQuery(query string, offset int) completion.Completion {
+	if p.described == nil {
+		return completion.Completion{}
+	}
+	return p.described.Complete(query, offset)
+}
+
 // setSchemaError reports that the schema could not be loaded.
 func (p *graphqlPanel) setSchemaError(err error) {
-	p.setSchema("")
+	p.setSchema(nil)
 	p.status.set("The schema could not be loaded: " + err.Error())
 }
 

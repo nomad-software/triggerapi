@@ -59,25 +59,48 @@ fragment TypeRef on __Type {
   ofType { kind name ofType { kind name ofType { kind name ofType { kind name ofType { kind name ofType { kind name ofType { kind name } } } } } } }
 }`
 
+// Schema is the schema of a server, as it described itself.
+type Schema struct {
+	schema *schema
+	// types are the types of the schema, by name.
+	types map[string]*fullType
+}
+
+func newSchema(s *schema) *Schema {
+	types := map[string]*fullType{}
+	for i := range s.Types {
+		types[s.Types[i].Name] = &s.Types[i]
+	}
+	return &Schema{schema: s, types: types}
+}
+
+// SDL returns the schema in the schema definition language: the roots
+// first, as they are where a query starts, then the other types in
+// alphabetical order. The types of introspection itself and the built-in
+// scalars are left out.
+func (s *Schema) SDL() string {
+	return s.schema.sdl()
+}
+
 // Introspect asks the server of the request for its schema, with the
-// headers and authorization of the request, and returns it in the schema
-// definition language. The query and variables of the request are not used.
-func Introspect(ctx context.Context, client *http.Client, r Request) (string, error) {
+// headers and authorization of the request. The query and variables of the
+// request are not used.
+func Introspect(ctx context.Context, client *http.Client, r Request) (*Schema, error) {
 	r.Query, r.Variables = introspectionQuery, ""
 	req, err := r.HTTP()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	res, err := rest.Send(ctx, client, req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	return parseSchema(res.StatusCode, res.Status, res.Body)
 }
 
 // parseSchema reads the answer to the introspection query and returns the
-// schema it describes in the schema definition language.
-func parseSchema(code int, status string, body []byte) (string, error) {
+// schema it describes.
+func parseSchema(code int, status string, body []byte) (*Schema, error) {
 	var response struct {
 		Data *struct {
 			Schema *schema `json:"__schema"`
@@ -86,15 +109,15 @@ func parseSchema(code int, status string, body []byte) (string, error) {
 	err := json.Unmarshal(body, &response)
 	switch {
 	case err == nil && response.Data != nil && response.Data.Schema != nil:
-		return response.Data.Schema.sdl(), nil
+		return newSchema(response.Data.Schema), nil
 	case Errors(body) != "":
-		return "", errors.New(Errors(body))
+		return nil, errors.New(Errors(body))
 	case code >= 400:
-		return "", fmt.Errorf("the server answered %s", status)
+		return nil, fmt.Errorf("the server answered %s", status)
 	case err != nil:
-		return "", fmt.Errorf("the answer is not JSON: %w", err)
+		return nil, fmt.Errorf("the answer is not JSON: %w", err)
 	}
-	return "", errors.New("the answer has no schema")
+	return nil, errors.New("the answer has no schema")
 }
 
 // schema is the answer to the introspection query.
@@ -171,10 +194,8 @@ func (t typeRef) String() string {
 // builtInScalars are the scalars every schema has, which are not written.
 var builtInScalars = []string{"String", "Int", "Float", "Boolean", "ID"}
 
-// sdl returns the schema in the schema definition language: the roots
-// first, as they are where a query starts, then the other types in
-// alphabetical order. The types of introspection itself and the built-in
-// scalars are left out.
+// sdl returns the schema in the schema definition language (see
+// Schema.SDL).
 func (s *schema) sdl() string {
 	roots := map[string]int{}
 	var b strings.Builder

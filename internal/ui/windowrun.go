@@ -225,10 +225,10 @@ func (w *Window) sendGraphQL() {
 
 // loadGraphQLSchema loads the schema of the server the GraphQL request is
 // for in the background, with the headers and authorization of the request,
-// and shows it in its Schema tab. One loaded before is used again unless
-// force is set.
+// and shows it in its Schema tab, and has the query completed from it. One
+// loaded before is used again unless force is set.
 func (w *Window) loadGraphQLSchema(force bool) {
-	w.graphql.setSchema("")
+	w.graphql.setSchema(nil)
 	req := w.graphql.request().Expand(w.expand)
 	target := strings.TrimSpace(req.URL)
 	if target == "" {
@@ -238,17 +238,17 @@ func (w *Window) loadGraphQLSchema(force bool) {
 	}
 
 	authorize := w.backgroundAuthorizer()
-	w.graphSchemas.load(target, force, func(ctx context.Context) (string, error) {
+	w.graphSchemas.load(target, force, func(ctx context.Context) (*graphql.Schema, error) {
 		if err := authorize(ctx, &req.Auth); err != nil {
-			return "", err
+			return nil, err
 		}
 		return graphql.Introspect(ctx, w.client, req)
-	}, func(sdl string, err error) {
+	}, func(schema *graphql.Schema, err error) {
 		if err != nil {
 			w.graphql.setSchemaError(err)
 			return
 		}
-		w.graphql.setSchema(sdl)
+		w.graphql.setSchema(schema)
 	})
 }
 

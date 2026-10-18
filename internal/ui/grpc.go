@@ -6,12 +6,13 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
+	"github.com/nomad-software/triggerapi/internal/completion"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 )
 
 // grpcPanel holds the widgets used to compose a gRPC request. The methods the
 // user can choose from come from the server, which describes its services
-// through reflection.
+// through reflection, as do the fields offered as the message is typed.
 type grpcPanel struct {
 	root *qt.QWidget
 
@@ -38,6 +39,11 @@ type grpcPanel struct {
 	captures *keyValueTable
 	// endpoints lists the methods of the server, to make requests of.
 	endpoints *endpointTable
+	// described is the service definition of the server, or nil if it has
+	// not been loaded, which completer offers the fields of the message
+	// from.
+	described *rpc.Schema
+	completer *completer
 
 	panelState
 	// target is the server the service definition was last asked of.
@@ -95,6 +101,7 @@ func newGRPCPanel() *grpcPanel {
 	// The message is always JSON.
 	p.highlight.document(p.message.Document(), always)
 	p.messageFold = newFolder(p.message, always)
+	p.completer = newCompleter(p.message, p.completeMessage)
 
 	p.example = qt.NewQPushButton3("Use Example Message")
 
@@ -204,7 +211,18 @@ func (p *grpcPanel) load(r rpc.Request) {
 	p.auth.load(r.Auth)
 
 	p.endpoints.setMethods(nil)
+	p.described = nil
 	p.status.set("")
+}
+
+// completeMessage returns what can be typed at an offset of the message of
+// the method chosen, from the service definition, which is nothing until it
+// has been loaded.
+func (p *grpcPanel) completeMessage(message string, offset int) completion.Completion {
+	if p.described == nil {
+		return completion.Completion{}
+	}
+	return p.described.Complete(p.method.current(), message, offset)
 }
 
 // recolour shows Invoke, the placeholders and the status line in the colours
@@ -221,6 +239,7 @@ func (p *grpcPanel) recolour() {
 // not have it so that the request is not changed behind the user's back. A
 // request with no method takes the first one.
 func (p *grpcPanel) setSchema(schema *rpc.Schema) {
+	p.described = schema
 	names := make([]string, len(schema.Methods))
 	for i, m := range schema.Methods {
 		names[i] = m.Name
@@ -243,6 +262,7 @@ func (p *grpcPanel) setSchema(schema *rpc.Schema) {
 
 // setSchemaError reports that the service definition could not be loaded.
 func (p *grpcPanel) setSchemaError(err error) {
+	p.described = nil
 	p.endpoints.setMethods(nil)
 	p.status.set("The service definition could not be loaded: " + err.Error())
 }

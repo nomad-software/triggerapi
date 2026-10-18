@@ -14,6 +14,7 @@ import (
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/crypt"
+	"github.com/nomad-software/triggerapi/internal/graphql"
 	"github.com/nomad-software/triggerapi/internal/mcp"
 	"github.com/nomad-software/triggerapi/internal/network"
 	"github.com/nomad-software/triggerapi/internal/oauth"
@@ -162,10 +163,10 @@ type Window struct {
 
 	// schemas are the service definitions of the gRPC servers that have been
 	// asked for them, by target, graphSchemas the schemas of GraphQL ones,
-	// by endpoint, in the schema definition language, and mcpSchemas what
+	// by endpoint, and mcpSchemas what
 	// MCP servers have, by mcp.Request.Server.
 	schemas      serverCache[*rpc.Schema]
-	graphSchemas serverCache[string]
+	graphSchemas serverCache[*graphql.Schema]
 	mcpSchemas   serverCache[*mcp.Schema]
 
 	// tokens are the OAuth 2.0 tokens that have been got, which are kept

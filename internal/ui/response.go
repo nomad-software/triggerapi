@@ -13,13 +13,12 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf16"
-	"unicode/utf8"
 
 	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/graphql"
+	"github.com/nomad-software/triggerapi/internal/history"
 	"github.com/nomad-software/triggerapi/internal/mcp"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
@@ -56,9 +55,12 @@ type responsePanel struct {
 	fileName string
 	// requestName returns the name of the request the response is to,
 	// which is empty if it has not been saved, and now the time. The file
-	// is named after both.
+	// is named after both, unless the response is that of entry, of the
+	// history, when it is named after the request the entry was sent as and
+	// the time it was. Clearing the panel takes the entry away.
 	requestName func() string
 	now         func() time.Time
+	entry       *history.Entry
 	// captureDoc is the JSON that values are captured from, which the
 	// body ends with as it is shown: all of a REST response, and the last
 	// message of a gRPC one. It is empty if there is none.
@@ -206,11 +208,14 @@ func (p *responsePanel) saveBody() {
 	if len(p.content) == 0 {
 		return
 	}
-	request := ""
-	if p.requestName != nil {
+	request, at := "", p.now()
+	switch {
+	case p.entry != nil:
+		request, at = p.entry.Request.Name, p.entry.Time
+	case p.requestName != nil:
 		request = p.requestName()
 	}
-	path, ok := p.chooseSave(saveFileName(request, p.now(), filepath.Ext(p.fileName)))
+	path, ok := p.chooseSave(saveFileName(request, at.Local(), filepath.Ext(p.fileName)))
 	if !ok {
 		return
 	}
@@ -302,6 +307,7 @@ func (p *responsePanel) clear() {
 	p.setFields()
 	p.showCaptured(nil)
 	p.showTiming(nil, 0)
+	p.entry = nil
 }
 
 // maxHighlight is the size of response above which it is not treated as
@@ -331,16 +337,7 @@ func (p *responsePanel) capturePath(position int) (path, name string, ok bool) {
 	}
 
 	// The position is in UTF-16 code units, and the offset in bytes.
-	offset := 0
-	for _, r := range text {
-		if position <= 0 {
-			break
-		}
-		position -= utf16.RuneLen(r)
-		offset += utf8.RuneLen(r)
-	}
-
-	offset -= len(text) - len(p.captureDoc)
+	offset := byteOffset(text, position) - (len(text) - len(p.captureDoc))
 	if offset < 0 {
 		return "", "", false
 	}

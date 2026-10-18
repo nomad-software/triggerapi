@@ -88,6 +88,10 @@ bindings.
   protobuf files are needed, and an example message can be filled in for the
   method chosen.
 - A Format button sets out the JSON of the message, as it does a REST body.
+- The message is completed from the service definition as it is typed: the
+  fields of the message the cursor is in (following nested messages, lists
+  and maps), with their types, and the values of an enum or a boolean. Type
+  a quote or a name to see them, or press Ctrl+Space.
 - The Service Definitions tab lists the endpoints of the server under their
   services, each with a checkbox, and can be searched by the name of an
   endpoint or a service. Create Requests makes a folder of saved
@@ -105,11 +109,18 @@ bindings.
   sets out the variables.
 - The query and the schema are syntax highlighted in the colours of JSON, and
   the variables as JSON, and all three can be folded.
+- The query is completed from the schema of the server as it is typed: the
+  fields of the type of the selection the cursor is in, with their types, the
+  arguments of a field and the values of an enum or a boolean argument, the
+  types a fragment can be on, directives, and the kinds of operation. The
+  schema is asked for when the query is first given the keyboard. Type a
+  name to see what there is, or press Ctrl+Space.
 - The errors a GraphQL response reports are shown beneath it as its error,
   whatever its HTTP status.
 - The Schema tab shows the schema of the server, in the schema definition
   language, asked for through introspection with the request's headers and
-  authorization when the tab is shown; Reload asks again.
+  authorization when the tab is shown, or when the query is given the
+  keyboard to be completed; Reload asks again.
 
 **MCP**
 
@@ -176,7 +187,9 @@ bindings.
 - Save the body of a response to a file. JSON is saved formatted. The name
   offered for the file is that of the request and the time, such as
   `book_room_20261011_173005_resp.json`, in lower case with underscores for
-  anything that is not a letter or a digit.
+  anything that is not a letter or a digit. For a response opened from the
+  history, they are the name of the request it was sent as and the time it
+  was received.
 
 **History**
 
@@ -433,6 +446,15 @@ environment.
 | Return | The history | Open the entry. |
 | Space | The history | Tick or untick the entry. |
 | Delete | The history | Remove the ticked entries, or the entry if none is ticked. |
+
+**Completing a GraphQL query or a gRPC message**
+
+| Keys | Does |
+|---|---|
+| Ctrl+Space | Show what can be typed at the cursor. A name, or for a gRPC message a quote, shows it as it is typed. On macOS, it is Control+Space. |
+| Up, Down | Choose in the list. |
+| Return, Tab | Type what is chosen, in place of what has been typed of it. |
+| Escape | Close the list, as typing anything that does not match does. |
 
 **Finding text in a response**
 

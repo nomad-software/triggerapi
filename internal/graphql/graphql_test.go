@@ -170,11 +170,11 @@ func TestIntrospect(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	sdl, err := Introspect(context.Background(), srv.Client(), Request{URL: srv.URL, Auth: rest.Auth{Type: rest.AuthBearer, Token: "t"}, Query: "{ ignored }", Variables: "not json"})
+	schema, err := Introspect(context.Background(), srv.Client(), Request{URL: srv.URL, Auth: rest.Auth{Type: rest.AuthBearer, Token: "t"}, Query: "{ ignored }", Variables: "not json"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sdl != testSDL {
+	if sdl := schema.SDL(); sdl != testSDL {
 		t.Errorf("schema:\n%s", sdl)
 	}
 	if !strings.Contains(asked["query"].(string), "__schema") || auth != "Bearer t" {

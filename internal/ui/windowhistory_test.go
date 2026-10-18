@@ -390,3 +390,36 @@ func TestHistoryOfEachWorkspace(t *testing.T) {
 		t.Errorf("saved %+v, %v", saved, err)
 	}
 }
+
+// A response opened from the history is saved under the name of its request
+// and the time it was received, and one received now under the name of the
+// open request, which has none here as it is not saved, and the time it is
+// saved.
+func TestSaveEntryResponse(t *testing.T) {
+	received := time.Date(2026, 3, 4, 5, 6, 7, 0, time.Local)
+	e := &history.Entry{
+		Time:    received,
+		Request: collection.New(collection.TypeREST, "Book room"),
+		HTTP:    &rest.Response{Status: "200 OK", StatusCode: 200, Headers: http.Header{"Content-Type": {"application/json"}}, Body: []byte(`{"id": 1}`)},
+	}
+	mainthread.Wait(func() {
+		w := NewWindow(testFiles(t).Files)
+		var offered string
+		w.response.chooseSave = func(name string) (string, bool) { offered = name; return "", false }
+		w.response.now = func() time.Time { return time.Date(2026, 10, 18, 12, 0, 0, 0, time.Local) }
+
+		w.openEntry(e)
+		w.response.saveBody()
+		if offered != "book_room_20260304_050607_resp.json" {
+			t.Errorf("offered %q for the response of the history", offered)
+		}
+
+		// Cleared for another response, the time is that of saving.
+		w.response.clear()
+		w.response.show(e.HTTP)
+		w.response.saveBody()
+		if offered != "untitled_20261018_120000_resp.json" {
+			t.Errorf("offered %q for a response now", offered)
+		}
+	})
+}
