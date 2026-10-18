@@ -57,23 +57,55 @@ func (e Environment) Expand(s string) string {
 // Expander returns a function which does as Expand does to each text it is
 // given, with the values as they are now. A value that is a call of a
 // built-in function is worked out once, so it is the same wherever its
-// variable is used: in every part of one request, say.
+// variable is used: in every part of one request, say. The placeholders in
+// the text given to a function that takes text, such as base64, are
+// replaced with the other variables; one that would need the value being
+// made, directly or through others, is left as it is.
 func (e Environment) Expander() func(string) string {
 	at := now()
-	values := map[string]string{}
+	written := map[string]string{}
 	for _, v := range e.Variables {
 		if v.Enabled && v.Key != "" {
-			values[v.Key] = v.Value
-			if made, ok := Evaluate(v.Value, at); ok {
-				values[v.Key] = made
-			}
+			written[v.Key] = v.Value
 		}
+	}
+
+	// Every value is made before the expander is returned, so that it can
+	// be used from any goroutine.
+	values := map[string]string{}
+	making := map[string]bool{}
+	var resolve func(key string) (string, bool)
+	expand := func(s string) string {
+		return placeholder.ReplaceAllStringFunc(s, func(match string) string {
+			if value, ok := resolve(placeholder.FindStringSubmatch(match)[1]); ok {
+				return value
+			}
+			return match
+		})
+	}
+	resolve = func(key string) (string, bool) {
+		if value, ok := values[key]; ok {
+			return value, true
+		}
+		value, ok := written[key]
+		if !ok || making[key] {
+			return "", false
+		}
+		making[key] = true
+		if made, ok := Evaluate(value, at, expand); ok {
+			value = made
+		}
+		making[key] = false
+		values[key] = value
+		return value, true
+	}
+	for key := range written {
+		resolve(key)
 	}
 
 	return func(s string) string {
 		return placeholder.ReplaceAllStringFunc(s, func(match string) string {
-			key := placeholder.FindStringSubmatch(match)[1]
-			if value, ok := values[key]; ok {
+			if value, ok := values[placeholder.FindStringSubmatch(match)[1]]; ok {
 				return value
 			}
 			return match

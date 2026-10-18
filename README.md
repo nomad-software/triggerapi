@@ -389,15 +389,30 @@ value is the same everywhere the variable is used.
 | Value | Generates | Example |
 |---|---|---|
 | `random_uuid()` | A random UUID | `3f2b8c1e-9a4d-4e7b-b1c6-5d8e2f0a7c94` |
+| `random_int()` | A random whole number from 0 to 1000 | `417` |
+| `random_int(10)` | A random whole number from 0 to that number | `7` |
+| `random_int(5, 9)` | A random whole number from the first number to the second | `6` |
 | `iso_date()` | Today's date | `2026-10-11` |
 | `iso_date(1)` | The date that many days from today | `2026-10-12` |
 | `iso_timestamp()` | The time now, in UTC | `2026-10-11T15:04:05Z` |
 | `iso_timestamp(2)` | The same time that many days from now | `2026-10-13T15:04:05Z` |
 | `unix_timestamp()` | The time now, in seconds since 1970 | `1791731045` |
 | `unix_timestamp(2)` | The same time that many days from now | `1791903845` |
+| `base64(text)` | The text in base64 | `base64({{user}}:{{password}})` gives `YW5uOnNlY3JldA==` |
+| `sha256(text)` | The SHA-256 hash of the text, in lower case hex | `sha256(abc)` gives `ba7816bf…20015ad` |
 
 The number of days can be negative, so `iso_date(-1)` is yesterday. Dates are
-in the local time zone and timestamps in UTC.
+in the local time zone and timestamps in UTC. Both ends of the range of
+`random_int` are included.
+
+The text of `base64` and `sha256` is everything between the brackets, as it is
+written, spaces included. Placeholders in it are replaced with the other
+variables of the environment, including ones that are themselves functions,
+so a variable `signature` set to `sha256({{request_id}}{{secret}})` hashes the
+same UUID that `{{request_id}}` puts in the request. A variable whose text
+needs its own value, directly or through others, keeps that placeholder as it
+is. The value of a variable that is not a function is used as it is written,
+placeholders and all.
 
 For example, with a variable `request_id` set to `random_uuid()`, a header of
 `X-Request-Id: {{request_id}}` carries a new UUID on every request.

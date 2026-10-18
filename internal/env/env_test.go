@@ -1,11 +1,16 @@
 package env
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -170,6 +175,9 @@ func TestSetAmongDuplicates(t *testing.T) {
 	}
 }
 
+// noExpand leaves text as it is.
+func noExpand(s string) string { return s }
+
 func TestEvaluate(t *testing.T) {
 	// Late in the day in a zone behind UTC, so the date in UTC is the next.
 	zone := time.FixedZone("behind", -5*60*60)
@@ -189,23 +197,109 @@ func TestEvaluate(t *testing.T) {
 		"unix_timestamp(2)":  "1772422215",
 		"unix_timestamp(-1)": "1772163015",
 	} {
-		if got, ok := Evaluate(value, at); !ok || got != want {
+		if got, ok := Evaluate(value, at, noExpand); !ok || got != want {
 			t.Errorf("Evaluate(%q) = %q, %v, want %q", value, got, ok, want)
 		}
 	}
 
 	uuid := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
-	first, ok := Evaluate("random_uuid()", at)
-	second, _ := Evaluate(" random_uuid( ) ", at)
+	first, ok := Evaluate("random_uuid()", at, noExpand)
+	second, _ := Evaluate(" random_uuid( ) ", at, noExpand)
 	if !ok || !uuid.MatchString(first) || !uuid.MatchString(second) || first == second {
 		t.Errorf("random_uuid() = %q, then %q, %v", first, second, ok)
 	}
 
 	// Anything else is a value as it stands.
-	for _, value := range []string{"", "abc", "iso_date", "iso_date(x)", "iso_date(1.5)", "iso_date(1, 2)", "iso_date(99999999999999999999)", "random_uuid(1)", "other()", "ISO_DATE()", "id-random_uuid()", "iso_date() and more"} {
-		if got, ok := Evaluate(value, at); ok {
+	for _, value := range []string{"", "abc", "iso_date", "iso_date(x)", "iso_date(1.5)", "iso_date(1, 2)", "iso_date(99999999999999999999)", "random_uuid(1)", "random_uuid(1, 2)", "iso_date(1, 2, 3)", "random_int(5, 1)", "random_int(x)", "random_int(1, 2, 3)", "Base64(a)", "base64(a) b", "other()", "ISO_DATE()", "id-random_uuid()", "iso_date() and more"} {
+		if got, ok := Evaluate(value, at, noExpand); ok {
 			t.Errorf("Evaluate(%q) = %q, want it left alone", value, got)
 		}
+	}
+}
+
+func TestEvaluateText(t *testing.T) {
+	at := time.Now()
+	shout := func(s string) string { return strings.ToUpper(s) }
+	for value, want := range map[string]string{
+		"base64(user:pass)":  "dXNlcjpwYXNz",
+		"base64()":           "",
+		"base64( a b )":      "IGEgYiA=",
+		"base64(f(x))":       "Zih4KQ==",
+		"base64(two\nlines)": "dHdvCmxpbmVz",
+		"sha256(abc)":        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+		"sha256()":           "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		" sha256(abc) ":      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+	} {
+		if got, ok := Evaluate(value, at, noExpand); !ok || got != want {
+			t.Errorf("Evaluate(%q) = %q, %v, want %q", value, got, ok, want)
+		}
+	}
+	// What a function of text is given has its placeholders replaced.
+	if got, _ := Evaluate("base64(abc)", at, shout); got != "QUJD" {
+		t.Errorf("base64 of expanded text = %q", got)
+	}
+}
+
+func TestRandomInt(t *testing.T) {
+	at := time.Now()
+	for value, bounds := range map[string][2]int64{
+		"random_int()":                       {0, defaultRandomMax},
+		"random_int(5)":                      {0, 5},
+		"random_int(-3, 3)":                  {-3, 3},
+		"random_int( 7 , 7 )":                {7, 7},
+		"random_int(-10, -9)":                {-10, -9},
+		"random_int(0, 9223372036854775807)": {0, 9223372036854775807},
+	} {
+		seen := map[int64]bool{}
+		for range 200 {
+			got, ok := Evaluate(value, at, noExpand)
+			n, err := strconv.ParseInt(got, 10, 64)
+			if !ok || err != nil || n < bounds[0] || n > bounds[1] {
+				t.Fatalf("Evaluate(%q) = %q, %v", value, got, ok)
+			}
+			seen[n] = true
+		}
+		// Both ends of a small range come up.
+		if bounds[1]-bounds[0] <= 6 && (!seen[bounds[0]] || !seen[bounds[1]]) {
+			t.Errorf("%s gave only %v", value, seen)
+		}
+	}
+}
+
+// TestExpandTextFunctions checks that the text given to a function is
+// expanded with the other variables, which may be made by functions too, and
+// that a variable which needs itself is left alone.
+func TestExpandTextFunctions(t *testing.T) {
+	e := Environment{Variables: []Variable{
+		{Key: "user", Value: "ann", Enabled: true},
+		{Key: "password", Value: "secret", Enabled: true},
+		{Key: "basic", Value: "base64({{user}}:{{password}})", Enabled: true},
+		{Key: "hashed", Value: "sha256({{basic}})", Enabled: true},
+		{Key: "id", Value: "random_uuid()", Enabled: true},
+		{Key: "signed", Value: "sha256({{id}})", Enabled: true},
+		{Key: "loop", Value: "base64({{loop}})", Enabled: true},
+		{Key: "plain", Value: "{{user}}", Enabled: true},
+	}}
+	expand := e.Expander()
+	if got := expand("{{basic}}"); got != "YW5uOnNlY3JldA==" {
+		t.Errorf("basic = %q", got)
+	}
+	sum := sha256.Sum256([]byte("YW5uOnNlY3JldA=="))
+	if got := expand("{{hashed}}"); got != hex.EncodeToString(sum[:]) {
+		t.Errorf("hashed = %q", got)
+	}
+	// A value made by a function is the same where another uses it.
+	id := expand("{{id}}")
+	sum = sha256.Sum256([]byte(id))
+	if got := expand("{{signed}}"); got != hex.EncodeToString(sum[:]) {
+		t.Errorf("signed = %q for id %q", got, id)
+	}
+	if got := expand("{{loop}}"); got != base64.StdEncoding.EncodeToString([]byte("{{loop}}")) {
+		t.Errorf("loop = %q", got)
+	}
+	// A value which is not a function is not expanded, as before.
+	if got := expand("{{plain}}"); got != "{{user}}" {
+		t.Errorf("plain = %q", got)
 	}
 }
 
