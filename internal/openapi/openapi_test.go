@@ -387,3 +387,76 @@ func TestExampleOfSchemasThatReferToEachOther(t *testing.T) {
 		t.Errorf("p1 = %v", example["p1"])
 	}
 }
+
+// An OAuth 2.0 scheme with a flow the program has gets its token by that
+// flow, with the scopes the operation needs, and one with none is a bearer
+// token.
+func TestImportOAuth(t *testing.T) {
+	root, err := Import([]byte(`
+openapi: 3.2.0
+paths:
+  /client:
+    get:
+      summary: client
+      security: [{client: [read, write]}]
+  /code:
+    get:
+      summary: code
+      security: [{code: [read]}]
+  /device:
+    get:
+      summary: device
+      security: [{device: []}]
+  /implicit:
+    get:
+      summary: implicit
+      security: [{implicit: []}]
+components:
+  securitySchemes:
+    client:
+      type: oauth2
+      flows:
+        clientCredentials: {tokenUrl: 'https://idp/token', scopes: {read: r, write: w}}
+        authorizationCode: {authorizationUrl: 'https://idp/auth', tokenUrl: 'https://idp/token', scopes: {}}
+    code:
+      type: oauth2
+      flows:
+        authorizationCode: {authorizationUrl: 'https://idp/auth', tokenUrl: 'https://idp/token', scopes: {read: r}}
+    device:
+      type: oauth2
+      flows:
+        deviceAuthorization: {deviceAuthorizationUrl: 'https://idp/device', tokenUrl: 'https://idp/token', scopes: {}}
+    implicit:
+      type: oauth2
+      flows:
+        implicit: {authorizationUrl: 'https://idp/auth', scopes: {}}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := rest.OAuth{ClientID: "{{clientId}}", ClientSecret: "{{clientSecret}}"}
+	want := map[string]rest.Auth{
+		"client":   {Type: rest.AuthOAuth2, OAuth: &rest.OAuth{TokenURL: "https://idp/token", ClientID: client.ClientID, ClientSecret: client.ClientSecret, Scopes: "read write"}},
+		"code":     {Type: rest.AuthOAuth2, OAuth: &rest.OAuth{Grant: rest.GrantAuthorizationCode, TokenURL: "https://idp/token", AuthURL: "https://idp/auth", ClientID: client.ClientID, ClientSecret: client.ClientSecret, Scopes: "read"}},
+		"device":   {Type: rest.AuthOAuth2, OAuth: &rest.OAuth{Grant: rest.GrantDeviceCode, TokenURL: "https://idp/token", DeviceURL: "https://idp/device", ClientID: client.ClientID, ClientSecret: client.ClientSecret}},
+		"implicit": {Type: rest.AuthBearer, Token: "{{token}}"},
+	}
+	for _, r := range root.All() {
+		if got := r.Auth; !reflect.DeepEqual(got, want[r.Name]) {
+			t.Errorf("%s: %+v %+v", r.Name, got, got.OAuth)
+		}
+	}
+	if len(root.All()) != len(want) {
+		t.Errorf("%d requests", len(root.All()))
+	}
+
+	// Swagger 2 has one flow.
+	root, err = Import([]byte(`{"swagger": "2.0", "host": "h", "paths": {"/a": {"get": {"security": [{"o": ["x"]}]}}},
+		"securityDefinitions": {"o": {"type": "oauth2", "flow": "accessCode", "authorizationUrl": "https://idp/auth", "tokenUrl": "https://idp/token"}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := root.All()[0].Auth; got.Type != rest.AuthOAuth2 || got.OAuth.Grant != rest.GrantAuthorizationCode || got.OAuth.AuthURL != "https://idp/auth" || got.OAuth.Scopes != "x" {
+		t.Errorf("swagger: %+v %+v", got, got.OAuth)
+	}
+}

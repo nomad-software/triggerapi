@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
@@ -385,6 +386,12 @@ func setAuth(request *rest.Request, a *auth) {
 		request.Auth = rest.Auth{Type: rest.AuthBearer, Token: a.settings["token"]}
 
 	case "oauth2":
+		if o, ok := oauthSettings(a.settings); ok {
+			request.Auth = rest.Auth{Type: rest.AuthOAuth2, OAuth: o}
+			return
+		}
+		// A grant the program does not have, or one without its URLs, is
+		// taken for the token it gave.
 		token := a.settings["accessToken"]
 		if token == "" {
 			token = "{{token}}"
@@ -402,4 +409,42 @@ func setAuth(request *rest.Request, a *auth) {
 			request.Headers = append(request.Headers, key)
 		}
 	}
+}
+
+// oauthSettings returns how a token is got for Postman's settings of OAuth
+// 2.0, which are for the client credentials grant or the authorization code
+// one (which is Postman's default, and which the program always gives PKCE).
+// A redirect URL is kept only if it is of this machine, as that is where the
+// program is sent back to. It reports false for a grant the program does not
+// have, or settings without the URLs of their grant.
+func oauthSettings(settings map[string]string) (*rest.OAuth, bool) {
+	o := &rest.OAuth{
+		TokenURL:     settings["accessTokenUrl"],
+		ClientID:     settings["clientId"],
+		ClientSecret: settings["clientSecret"],
+		Scopes:       settings["scope"],
+	}
+	switch settings["client_authentication"] {
+	case "header":
+		o.ClientAuth = rest.ClientAuthHeader
+	case "body":
+		o.ClientAuth = rest.ClientAuthBody
+	}
+	switch settings["grant_type"] {
+	case "client_credentials":
+	case "", "authorization_code", "authorization_code_with_pkce":
+		o.Grant, o.AuthURL = rest.GrantAuthorizationCode, settings["authUrl"]
+		if redirect, err := url.Parse(settings["redirect_uri"]); err == nil && redirect.Scheme == "http" && rest.LocalHost(redirect.Hostname()) {
+			o.RedirectURL = settings["redirect_uri"]
+		}
+		if o.AuthURL == "" {
+			return nil, false
+		}
+	default:
+		return nil, false
+	}
+	if o.TokenURL == "" {
+		return nil, false
+	}
+	return o, true
 }

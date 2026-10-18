@@ -178,6 +178,8 @@ func (p *graphqlPanel) widget() *qt.QWidget { return p.root }
 
 func (p *graphqlPanel) saveButton() *qt.QPushButton { return p.save }
 
+func (p *graphqlPanel) authorization() *authEditor { return p.auth }
+
 // show shows a GraphQL request. See load.
 func (p *graphqlPanel) show(r *collection.Request) { p.load(*r.GraphQL) }
 

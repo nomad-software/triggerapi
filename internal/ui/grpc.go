@@ -156,6 +156,8 @@ func (p *grpcPanel) widget() *qt.QWidget { return p.root }
 
 func (p *grpcPanel) saveButton() *qt.QPushButton { return p.save }
 
+func (p *grpcPanel) authorization() *authEditor { return p.auth }
+
 // show shows a gRPC request. See load.
 func (p *grpcPanel) show(r *collection.Request) { p.load(*r.GRPC) }
 

@@ -106,6 +106,8 @@ func (p *wsPanel) widget() *qt.QWidget { return p.root }
 
 func (p *wsPanel) saveButton() *qt.QPushButton { return p.save }
 
+func (p *wsPanel) authorization() *authEditor { return p.auth }
+
 // show shows a WebSocket request. See load.
 func (p *wsPanel) show(r *collection.Request) { p.load(*r.WebSocket) }
 

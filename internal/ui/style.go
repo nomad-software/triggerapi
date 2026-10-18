@@ -15,11 +15,7 @@ import (
 func primaryStyle() string {
 	colour := qt.NewQColor6(themeColour(colourSend))
 	defer colour.Delete()
-
-	text := "#ffffff"
-	if colour.Lightness() > 140 {
-		text = "#000000"
-	}
+	text := readableOn(colour)
 
 	return fmt.Sprintf(`
 QPushButton {
@@ -36,6 +32,15 @@ QPushButton:pressed { background-color: %s; }
 QPushButton:focus { border: 1px solid %s; }
 QPushButton:disabled { background-color: #8a9aab; }
 `, colour.Name(), text, colour.LighterWithInt(112).Name(), colour.DarkerWithInt(112).Name(), colour.LighterWithInt(160).Name())
+}
+
+// readableOn returns the colour of text that can be read against a colour:
+// black on a light one, and white on a dark one.
+func readableOn(colour *qt.QColor) string {
+	if colour.Lightness() > 140 {
+		return "#000000"
+	}
+	return "#ffffff"
 }
 
 // makePrimary styles a button as the main action of its page. It is called

@@ -21,6 +21,8 @@ type requestEditor interface {
 	// saveButton returns the button which saves a request that is not
 	// saved yet.
 	saveButton() *qt.QPushButton
+	// authorization returns the editor of the authorization of the request.
+	authorization() *authEditor
 	// highlighter returns what colours the placeholders of the panel.
 	highlighter() *placeholderHighlighter
 	// setOnChange sets what is called after the user edits the request.

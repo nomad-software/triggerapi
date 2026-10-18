@@ -444,12 +444,9 @@ func (s *swatch) colour() string {
 func (s *swatch) show() {
 	colour := s.colour()
 
-	text := "#ffffff"
 	shown := qt.NewQColor6(colour)
 	defer shown.Delete()
-	if shown.Lightness() > 140 {
-		text = "#000000"
-	}
+	text := readableOn(shown)
 
 	s.button.SetText(colour)
 	s.button.SetStyleSheet(fmt.Sprintf(

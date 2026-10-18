@@ -39,6 +39,15 @@ func (w *Window) timeout() time.Duration {
 	return time.Duration(w.config.Timeout) * time.Second
 }
 
+// withLimit returns a context which is done when ctx is, or once limit has
+// passed, unless limit is zero, which is no limit.
+func withLimit(ctx context.Context, limit time.Duration) (context.Context, context.CancelFunc) {
+	if limit > 0 {
+		return context.WithTimeout(ctx, limit)
+	}
+	return context.WithCancel(ctx)
+}
+
 // outcome is what is done, on the main thread, with the result of the work
 // of a request that ended without an error.
 type outcome struct {
@@ -57,35 +66,44 @@ type outcome struct {
 // work returns what to do with its result, which is done on the main
 // thread. Unless it is cancelled, what came of it is kept in the entry of the
 // history, which is then added to the history; there is none if it is nil.
-func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *history.Entry, work func(context.Context) (outcome, error)) {
+// The request is first given its authorization by authorize, unless that is
+// nil (see Window.authorizer), and is not sent if it cannot be.
+func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *history.Entry, authorize func(context.Context) error, work func(context.Context) (outcome, error)) {
 	if w.cancel != nil {
 		w.cancel()
 		return
 	}
 
-	// The work is given up on when it has taken as long as the settings
-	// allow, which is the same for every kind of request.
-	limit := w.config.Timeout
-	var ctx context.Context
-	var cancel context.CancelFunc
-	if limit > 0 {
-		ctx, cancel = context.WithTimeout(context.Background(), w.timeout())
-	} else {
-		ctx, cancel = context.WithCancel(context.Background())
-	}
+	base, cancel := context.WithCancel(context.Background())
 	w.cancel = cancel
+	limit := w.config.Timeout
+	timeout := w.timeout()
 	shown := w.shown
 	tab := w.tabs.current()
 
 	label := button.Text()
 	button.SetText("Cancel")
 	response.clear()
-	start := time.Now()
 
 	// Qt widgets may only be touched from the main thread, so the result is
 	// handed back to it.
 	go func() {
-		done, err := work(ctx)
+		// Signing in takes as long as the user does, so the time of the
+		// request starts once it has its authorization.
+		var err error
+		if authorize != nil {
+			err = authorize(base)
+		}
+		start := time.Now()
+		var done outcome
+		if err == nil {
+			// The work is given up on when it has taken as long as the
+			// settings allow, which is the same for every kind of
+			// request.
+			ctx, stop := withLimit(base, timeout)
+			done, err = work(ctx)
+			stop()
+		}
 		err = network.Explain(err)
 		elapsed := time.Since(start)
 
@@ -146,7 +164,7 @@ func (w *Window) send() {
 	req.Options = w.options()
 	entry := w.historyEntry(w.requestUI(collection.TypeREST), rest.JoinURL(req.URL, req.Params))
 
-	w.run(w.request.send, w.response, entry, func(ctx context.Context) (outcome, error) {
+	w.run(w.request.send, w.response, entry, w.authorizer(w.requestUI(collection.TypeREST), &req.Auth), func(ctx context.Context) (outcome, error) {
 		res, err := rest.Send(ctx, w.client, req)
 		return w.restOutcome(res, request.Captures, w.response, w.response.show), err
 	})
@@ -161,7 +179,7 @@ func (w *Window) executeCurl() {
 	req := w.request.commanded
 	entry := w.historyEntry(w.requestUI(collection.TypeREST), rest.JoinURL(req.URL, req.Params))
 
-	w.run(w.request.execute, w.response, entry, func(ctx context.Context) (outcome, error) {
+	w.run(w.request.execute, w.response, entry, w.authorizer(w.requestUI(collection.TypeREST), &req.Auth), func(ctx context.Context) (outcome, error) {
 		res, err := rest.RunCurl(ctx, req)
 		return w.restOutcome(res, request.Captures, w.response, w.response.show), err
 	})
@@ -196,7 +214,7 @@ func (w *Window) sendGraphQL() {
 	req.Options = w.options()
 	entry := w.historyEntry(w.requestUI(collection.TypeGraphQL), expanded.URL)
 
-	w.run(w.graphql.send, w.graphqlResponse, entry, func(ctx context.Context) (outcome, error) {
+	w.run(w.graphql.send, w.graphqlResponse, entry, w.authorizer(w.requestUI(collection.TypeGraphQL), &req.Auth), func(ctx context.Context) (outcome, error) {
 		if err != nil {
 			return outcome{}, err
 		}
@@ -219,7 +237,11 @@ func (w *Window) loadGraphQLSchema(force bool) {
 		return
 	}
 
+	authorize := w.backgroundAuthorizer()
 	w.graphSchemas.load(target, force, func(ctx context.Context) (string, error) {
+		if err := authorize(ctx, &req.Auth); err != nil {
+			return "", err
+		}
 		return graphql.Introspect(ctx, w.client, req)
 	}, func(sdl string, err error) {
 		if err != nil {
@@ -244,7 +266,7 @@ func (w *Window) invoke() {
 
 	entry := w.historyEntry(w.requestUI(collection.TypeGRPC), req.URL)
 
-	w.run(w.grpc.invoke, w.grpcResponse, entry, func(ctx context.Context) (outcome, error) {
+	w.run(w.grpc.invoke, w.grpcResponse, entry, w.authorizer(w.requestUI(collection.TypeGRPC), &req.Auth), func(ctx context.Context) (outcome, error) {
 		res, err := rpc.Invoke(ctx, req, schema)
 
 		// Values are captured from the last message of a call that ended
@@ -339,7 +361,11 @@ func (w *Window) reflect(force bool) {
 		return
 	}
 
+	authorize := w.backgroundAuthorizer()
 	w.schemas.load(target, force, func(ctx context.Context) (*rpc.Schema, error) {
+		if err := authorize(ctx, &req.Auth); err != nil {
+			return nil, err
+		}
 		return rpc.Reflect(ctx, req)
 	}, func(schema *rpc.Schema, err error) {
 		if err != nil {

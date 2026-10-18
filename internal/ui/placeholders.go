@@ -94,13 +94,23 @@ func (h *placeholderHighlighter) setColours() {
 		return qt.NewQColor3(mix(colour.Red()), mix(colour.Green()), mix(colour.Blue()))
 	}
 
+	// The colours there were are freed, as they are replaced.
+	for _, colour := range []*qt.QColor{h.knownColour, h.unknownColour, h.knownSelected, h.unknownSelected} {
+		if colour != nil {
+			colour.Delete()
+		}
+	}
 	h.knownColour = qt.NewQColor6(themeColour(colourFound))
 	h.unknownColour = qt.NewQColor6(themeColour(colourNotFound))
 	h.knownSelected = pale(h.knownColour)
 	h.unknownSelected = pale(h.unknownColour)
 
-	h.known.SetForeground(qt.NewQBrush3(h.knownColour))
-	h.unknown.SetForeground(qt.NewQBrush3(h.unknownColour))
+	// The formats keep copies of the brushes.
+	known, unknown := qt.NewQBrush3(h.knownColour), qt.NewQBrush3(h.unknownColour)
+	defer known.Delete()
+	defer unknown.Delete()
+	h.known.SetForeground(known)
+	h.unknown.SetForeground(unknown)
 }
 
 func (h *placeholderHighlighter) format(r placeholderRange) *qt.QTextCharFormat {

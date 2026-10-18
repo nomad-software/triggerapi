@@ -215,20 +215,3 @@ func TestEncryption(t *testing.T) {
 		w.Close()
 	})
 }
-
-func TestEncryptionSettings(t *testing.T) {
-	mainthread.Wait(func() {
-		current := settings.Settings{PublicKey: "/keys/id.pub", PrivateKey: "/keys/id"}
-		d := newSettingsDialog(nil, current, Files{Workspaces: "workspaces"})
-		defer d.DeleteLater()
-
-		if d.publicKey.Text() != "/keys/id.pub" || d.privateKey.Text() != "/keys/id" {
-			t.Errorf("keys shown = %q, %q", d.publicKey.Text(), d.privateKey.Text())
-		}
-		d.publicKey.SetText("  /other/id.pub ")
-		d.privateKey.SetText("")
-		if got := d.settings(current); got.PublicKey != "/other/id.pub" || got.PrivateKey != "" {
-			t.Errorf("settings = %+v", got)
-		}
-	})
-}

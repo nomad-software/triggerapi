@@ -56,14 +56,21 @@ func (w *Window) toggleWS() {
 	w.wsResponse.setFields(field{label: fieldCode, value: "Connecting"})
 
 	limit := w.timeout()
+	authorize := w.authorizer(w.requestUI(collection.TypeWebSocket), &request.Auth)
 	go func() {
-		dial, stop := ctx, context.CancelFunc(func() {})
-		if limit > 0 {
-			dial, stop = context.WithTimeout(ctx, limit)
+		// The handshake is given the time limit once there is a token,
+		// which can take the user signing in.
+		var err error
+		if authorize != nil {
+			err = authorize(ctx)
 		}
-		conn, err := ws.Dial(dial, w.client, request)
+		var conn *ws.Conn
+		if err == nil {
+			dial, stop := withLimit(ctx, limit)
+			conn, err = ws.Dial(dial, w.client, request)
+			stop()
+		}
 		err = network.Explain(err)
-		stop()
 		mainthread.Start(func() {
 			if w.socket != s {
 				// It was closed, or another request shown, meanwhile.

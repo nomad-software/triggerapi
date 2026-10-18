@@ -3,9 +3,12 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,7 +18,7 @@ import (
 
 func testClient(t *testing.T, r Request) *Client {
 	t.Helper()
-	c := NewClient(&http.Client{}, r)
+	c := NewClient(&http.Client{}, r, nil)
 	t.Cleanup(func() { c.Close() })
 	return c
 }
@@ -243,5 +246,49 @@ func TestExpandAndServer(t *testing.T) {
 	other.Auth.Token = "2"
 	if r.Server() == other.Server() {
 		t.Error("the authorization did not change the server")
+	}
+}
+
+// recorder is a transport that records the Authorization header of every
+// request it makes.
+type recorder struct {
+	mu   sync.Mutex
+	seen []string
+}
+
+func (r *recorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.mu.Lock()
+	r.seen = append(r.seen, req.Header.Get("Authorization"))
+	r.mu.Unlock()
+	return http.DefaultTransport.RoundTrip(req)
+}
+
+// The authorizer completes the authorization of every HTTP request, so a
+// token that changes is followed.
+func TestAuthorizer(t *testing.T) {
+	srv := mcptest.NewServer(t)
+	r := Request{URL: srv.URL + "/mcp", Auth: rest.Auth{Type: rest.AuthOAuth2}, Name: "echo", Arguments: `{"text": "x"}`}
+	token := 0
+	authorize := func(ctx context.Context, a *rest.Auth) error {
+		token++
+		a.Access = fmt.Sprintf("t%d", token)
+		return nil
+	}
+	rec := &recorder{}
+	c := NewClient(&http.Client{Transport: rec}, r, authorize)
+	t.Cleanup(func() { c.Close() })
+	if _, err := c.Call(testContext(t), r); err != nil {
+		t.Fatal(err)
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.seen) < 2 || rec.seen[0] != "Bearer t1" || rec.seen[len(rec.seen)-1] != fmt.Sprintf("Bearer t%d", token) {
+		t.Errorf("seen %q", rec.seen)
+	}
+
+	failing := NewClient(&http.Client{}, r, func(context.Context, *rest.Auth) error { return errors.New("no token") })
+	t.Cleanup(func() { failing.Close() })
+	if res, err := failing.Call(testContext(t), r); err == nil || !strings.Contains(err.Error(), "no token") {
+		t.Errorf("err = %v, res %+v %s", err, res, res.Result)
 	}
 }

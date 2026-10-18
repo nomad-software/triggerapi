@@ -11,6 +11,7 @@ require (
 	github.com/mappu/miqt v0.15.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	golang.org/x/crypto v0.55.0
+	golang.org/x/oauth2 v0.35.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	software.sslmate.com/src/go-pkcs12 v0.7.4
@@ -22,7 +23,6 @@ require (
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/time v0.15.0 // indirect

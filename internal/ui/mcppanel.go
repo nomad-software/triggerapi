@@ -222,6 +222,8 @@ func (p *mcpPanel) widget() *qt.QWidget { return p.root }
 
 func (p *mcpPanel) saveButton() *qt.QPushButton { return p.save }
 
+func (p *mcpPanel) authorization() *authEditor { return p.auth }
+
 // show shows an MCP request. See load.
 func (p *mcpPanel) show(r *collection.Request) { p.load(*r.MCP) }
 

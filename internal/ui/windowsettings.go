@@ -158,6 +158,7 @@ func (w *Window) applyColours() {
 
 	for _, ui := range w.uis {
 		ui.editor.recolour()
+		ui.editor.authorization().recolour()
 		ui.response.recolour()
 	}
 }

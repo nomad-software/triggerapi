@@ -24,7 +24,9 @@ func (w *Window) mcpClientFor(r mcp.Request) *mcp.Client {
 		return w.mcpClient
 	}
 	w.closeMCP()
-	w.mcpClient, w.mcpServer = mcp.NewClient(w.client, r), server
+	// The token of OAuth 2.0 is given to each HTTP request, as it can be
+	// refreshed while the client is in use.
+	w.mcpClient, w.mcpServer = mcp.NewClient(w.client, r, w.backgroundAuthorizer()), server
 	return w.mcpClient
 }
 
@@ -46,7 +48,9 @@ func (w *Window) callMCP() {
 	client := w.mcpClientFor(req)
 	entry := w.historyEntry(w.requestUI(collection.TypeMCP), req.URL)
 
-	w.run(w.mcp.call, w.mcpResponse, entry, func(ctx context.Context) (outcome, error) {
+	// A token that needs the user to sign in is got before the call, which
+	// the client then finds.
+	w.run(w.mcp.call, w.mcpResponse, entry, w.authorizer(w.requestUI(collection.TypeMCP), &req.Auth), func(ctx context.Context) (outcome, error) {
 		res, err := client.Call(ctx, req)
 
 		// Values are captured from the result of a call that succeeded.

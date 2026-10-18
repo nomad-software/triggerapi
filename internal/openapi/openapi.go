@@ -147,6 +147,49 @@ type securityScheme struct {
 	Scheme string `yaml:"scheme"`
 	Name   string `yaml:"name"`
 	In     string `yaml:"in"`
+	// Flows are the ways of getting an OAuth 2.0 token of OpenAPI 3.
+	Flows struct {
+		ClientCredentials   *oauthFlow `yaml:"clientCredentials"`
+		AuthorizationCode   *oauthFlow `yaml:"authorizationCode"`
+		DeviceAuthorization *oauthFlow `yaml:"deviceAuthorization"`
+	} `yaml:"flows"`
+	// Flow, AuthorizationURL and TokenURL are the one way of getting an
+	// OAuth 2.0 token of Swagger 2.
+	Flow             string `yaml:"flow"`
+	AuthorizationURL string `yaml:"authorizationUrl"`
+	TokenURL         string `yaml:"tokenUrl"`
+}
+
+// oauthFlow is a way of getting an OAuth 2.0 token.
+type oauthFlow struct {
+	AuthorizationURL       string `yaml:"authorizationUrl"`
+	DeviceAuthorizationURL string `yaml:"deviceAuthorizationUrl"`
+	TokenURL               string `yaml:"tokenUrl"`
+}
+
+// oauth returns how a token is got for an OAuth 2.0 scheme, with the
+// scopes an operation needs, by the first of the flows the program has which
+// the scheme says how to use: the client credentials, the authorization code
+// or the device code grant. The client is left as placeholders. It reports
+// false if there is none.
+func (s *securityScheme) oauth(scopes []string) (*rest.OAuth, bool) {
+	o := &rest.OAuth{ClientID: "{{clientId}}", ClientSecret: "{{clientSecret}}", Scopes: strings.Join(scopes, " ")}
+	flows := s.Flows
+	switch {
+	case flows.ClientCredentials != nil && flows.ClientCredentials.TokenURL != "":
+		o.TokenURL = flows.ClientCredentials.TokenURL
+	case flows.AuthorizationCode != nil && flows.AuthorizationCode.TokenURL != "" && flows.AuthorizationCode.AuthorizationURL != "":
+		o.Grant, o.TokenURL, o.AuthURL = rest.GrantAuthorizationCode, flows.AuthorizationCode.TokenURL, flows.AuthorizationCode.AuthorizationURL
+	case flows.DeviceAuthorization != nil && flows.DeviceAuthorization.TokenURL != "" && flows.DeviceAuthorization.DeviceAuthorizationURL != "":
+		o.Grant, o.TokenURL, o.DeviceURL = rest.GrantDeviceCode, flows.DeviceAuthorization.TokenURL, flows.DeviceAuthorization.DeviceAuthorizationURL
+	case s.Flow == "application" && s.TokenURL != "":
+		o.TokenURL = s.TokenURL
+	case s.Flow == "accessCode" && s.TokenURL != "" && s.AuthorizationURL != "":
+		o.Grant, o.TokenURL, o.AuthURL = rest.GrantAuthorizationCode, s.TokenURL, s.AuthorizationURL
+	default:
+		return nil, false
+	}
+	return o, true
 }
 
 // Import reads an OpenAPI document and returns a folder of requests for it:
@@ -621,7 +664,12 @@ func (d *document) addSecurity(request *rest.Request, op *operation) {
 				continue
 			}
 
-			switch kind := strings.ToLower(scheme.Type); {
+			kind := strings.ToLower(scheme.Type)
+			if o, ok := scheme.oauth(requirement[name]); kind == "oauth2" && ok {
+				request.Auth = rest.Auth{Type: rest.AuthOAuth2, OAuth: o}
+				return
+			}
+			switch {
 			case kind == "basic" || (kind == "http" && strings.EqualFold(scheme.Scheme, "basic")):
 				request.Auth = rest.Auth{Type: rest.AuthBasic, Username: "{{username}}", Password: "{{password}}"}
 			case kind == "http" || kind == "oauth2" || kind == "openidconnect":

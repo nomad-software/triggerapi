@@ -322,13 +322,15 @@ func (f *findBar) highlight(line string) {
 func (f *findBar) recolour() {
 	colour := qt.NewQColor6(themeColour(colourMatch))
 	defer colour.Delete()
+	text := qt.NewQColor6(readableOn(colour))
+	defer text.Delete()
 
-	text := "#ffffff"
-	if colour.Lightness() > 140 {
-		text = "#000000"
-	}
-	f.format.SetBackground(qt.NewQBrush3(colour))
-	f.format.SetForeground(qt.NewQBrush3(qt.NewQColor6(text)))
+	// The format keeps copies of the brushes.
+	background, foreground := qt.NewQBrush3(colour), qt.NewQBrush3(text)
+	defer background.Delete()
+	defer foreground.Delete()
+	f.format.SetBackground(background)
+	f.format.SetForeground(foreground)
 
 	if f.query != "" {
 		f.highlighter.Rehighlight()

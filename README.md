@@ -56,8 +56,8 @@ bindings.
 **REST**
 
 - Send GET, POST, PUT, PATCH, DELETE, HEAD and OPTIONS requests with query
-  params, headers, basic or bearer authorization, and a JSON, text, XML or
-  form body.
+  params, headers, basic, bearer or [OAuth 2.0](#oauth-20) authorization,
+  and a JSON, text, XML or form body.
 - Params are shown in the URL and kept in step with it both ways. Params,
   headers and form fields can each be switched off without being removed.
 - A long URL is wrapped, with the field growing to show all of it.
@@ -83,7 +83,7 @@ bindings.
 **gRPC**
 
 - Call unary and server-streaming methods, sending the message as JSON with
-  metadata and basic or bearer authorization.
+  metadata and basic, bearer or OAuth 2.0 authorization.
 - The methods of a server are discovered using gRPC server reflection, so no
   protobuf files are needed, and an example message can be filled in for the
   method chosen.
@@ -98,7 +98,7 @@ bindings.
 **GraphQL**
 
 - Send a query or mutation to a GraphQL endpoint, with its variables as a
-  JSON object, headers, and basic or bearer authorization. It is sent as a
+  JSON object, headers, and basic, bearer or OAuth 2.0 authorization. It is sent as a
   POST of JSON, with the time limit and redirect setting of a REST request.
 - Placeholders can go anywhere in the query and the variables, including
   where a value goes without quotes, as in `{"id": {{id}}}`. A Format button
@@ -115,7 +115,7 @@ bindings.
 
 - Call the tools, read the resources and get the prompts of a
   [Model Context Protocol](https://modelcontextprotocol.io) server, over the
-  Streamable HTTP transport, with headers and basic or bearer authorization.
+  Streamable HTTP transport, with headers and basic, bearer or OAuth 2.0 authorization.
   See [MCP](#mcp) for why local servers that only speak stdio need a bridge.
 - What the server has is loaded when a request is opened, and offered under
   Tools, Resources and Prompts headings with what the server says of each.
@@ -130,7 +130,7 @@ bindings.
 **WebSocket**
 
 - Connect to a WebSocket server (`ws://` or `wss://`, which is assumed when
-  there is no scheme), with headers and basic or bearer authorization on the
+  there is no scheme), with headers and basic, bearer or OAuth 2.0 authorization on the
   handshake. The connection stays open until Disconnect is pressed, the
   server closes it or another request is shown.
 - Send the message as often as wanted while connected, with Send or
@@ -269,6 +269,8 @@ bindings.
   collection, to create a folder of requests. Only requests with one of the
   methods above are imported; others, such as TRACE or PURGE, are left out.
   A Postman request with a GraphQL body is imported as a GraphQL request.
+  OAuth 2.0 is imported with its token URL and the rest when it is by a
+  grant TriggerAPI has, and as a `{{token}}` bearer token otherwise.
 
 **Environments**
 
@@ -334,6 +336,50 @@ For example, with a variable `request_id` set to `random_uuid()`, a header of
 A function is only recognised when it is the whole value: `id-random_uuid()`
 is used as it is written. To put a generated value inside other text, do it
 where the variable is used, as in `id-{{request_id}}`.
+
+## OAuth 2.0
+
+Choose OAuth 2.0 as the type of authorization, of a request of any kind, and
+TriggerAPI gets the access token and sends it as a bearer token. Every field
+can hold placeholders, so the client ID and secret can be kept in an
+environment.
+
+| Grant | Fields it uses | What you do |
+|---|---|---|
+| Client Credentials | Token URL, client ID and secret | Nothing |
+| Authorization Code (PKCE) | Authorization URL and token URL, client ID, and the secret if the client has one | Sign in once, in your browser |
+| Device Code | Device authorization URL and token URL, client ID | Enter the code shown, at the page opened in your browser |
+
+- Scopes are separated by spaces. Extra Parameters are sent with every
+  request for a token, and when you sign in, in the form of a query string,
+  such as `audience=https://api.example.com` for Auth0 or
+  `resource=https://api.example.com` for Entra ID.
+- Client Authentication is how the client ID and secret are given to the
+  token endpoint: in a basic `Authorization` header, in the body, or Detect,
+  which tries the header and then the body.
+- To sign in, the browser is opened at the authorization URL, and is sent
+  back to TriggerAPI at `http://127.0.0.1/callback` on a free port, unless the
+  Redirect URL says otherwise: it must be `http` to `127.0.0.1`, `[::1]` or
+  `localhost`, with a port if the server only accepts the one you registered
+  with it. The token is got with PKCE (S256) and checked against the `state`
+  sent.
+- A token is got when a request needs one, and used again until it expires;
+  one that has expired is refreshed with its refresh token, and you sign in
+  again only if that fails. Requests with the same token URL, client, scopes
+  and parameters share a token. Tokens are kept in memory for as long as
+  TriggerAPI runs, never in a file, and are shared by every workspace.
+- The Authorization tab says what token there is and for how long. Get Token
+  gets a new one, and Clear Token forgets it. While a request waits for you
+  to sign in, its button reads Cancel; the time limit of the settings applies
+  to each request for a token, and to the request once it has one, but not
+  to the time you take to sign in.
+- What is asked of a server in the background, such as the service
+  definition of a gRPC server or the capabilities of an MCP one, uses the
+  token there is, or one of client credentials, but never opens the browser:
+  without one it says that you have to sign in.
+- The curl command has the token once there is one, and says so when there
+  is not; Execute gets it first.
+- Requests to the token endpoint go as the [network settings](#network) say.
 
 ## Keyboard shortcuts
 

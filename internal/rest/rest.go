@@ -45,6 +45,7 @@ const (
 	AuthNone   AuthType = "none"
 	AuthBasic  AuthType = "basic"
 	AuthBearer AuthType = "bearer"
+	AuthOAuth2 AuthType = "oauth2"
 )
 
 // Auth holds the credentials for a request.
@@ -53,6 +54,15 @@ type Auth struct {
 	Username string   `json:"username,omitempty"`
 	Password string   `json:"password,omitempty"`
 	Token    string   `json:"token,omitempty"`
+	// OAuth says how a token is got for AuthOAuth2. It is nil if none of
+	// it has been filled in, as in a file from before there was OAuth.
+	OAuth *OAuth `json:"oauth,omitempty"`
+
+	// Access is the access token OAuth 2.0 gave, which is sent as a bearer
+	// token. It is never saved: whoever sends the request fills it in
+	// (see the oauth package), and until then there is no Authorization
+	// header.
+	Access string `json:"-"`
 }
 
 // BodyType selects what is sent as the request body. The zero value means
@@ -140,7 +150,20 @@ func (a Auth) Expand(f func(string) string) Auth {
 	a.Username = f(a.Username)
 	a.Password = f(a.Password)
 	a.Token = f(a.Token)
+	if a.OAuth != nil {
+		o := a.OAuth.Expand(f)
+		a.OAuth = &o
+	}
 	return a
+}
+
+// Settings returns how an OAuth 2.0 token is got, which is nothing if none
+// of it has been filled in.
+func (a Auth) Settings() OAuth {
+	if a.OAuth == nil {
+		return OAuth{}
+	}
+	return *a.OAuth
 }
 
 // Header returns the value of the Authorization header for the credentials.
@@ -152,6 +175,10 @@ func (a Auth) Header() (string, bool) {
 		return "Basic " + credentials, true
 	case AuthBearer:
 		return "Bearer " + a.Token, true
+	case AuthOAuth2:
+		if a.Access != "" {
+			return "Bearer " + a.Access, true
+		}
 	}
 	return "", false
 }

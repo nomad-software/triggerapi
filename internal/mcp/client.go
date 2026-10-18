@@ -30,19 +30,25 @@ import (
 // It connects the first time it is used, and is safe to use from more than
 // one goroutine.
 type Client struct {
-	client  *http.Client
-	request Request
+	client    *http.Client
+	request   Request
+	authorize Authorizer
 
 	mu   sync.Mutex
 	conn *sdk.ClientSession
 }
 
+// Authorizer completes an authorization before each HTTP request is made
+// with it, as an OAuth 2.0 one is given its token, which can change while a
+// client is in use.
+type Authorizer func(context.Context, *rest.Auth) error
+
 // NewClient returns a client of the server of a request, which has had its
 // placeholders replaced. It does not connect until it is used. The HTTP
 // requests are made with client, with the headers and authorization of the
-// request.
-func NewClient(client *http.Client, r Request) *Client {
-	return &Client{client: client, request: r}
+// request, which authorize completes for each, unless it is nil.
+func NewClient(client *http.Client, r Request, authorize Authorizer) *Client {
+	return &Client{client: client, request: r, authorize: authorize}
 }
 
 // connected returns the connection to the server, connecting first if
@@ -62,7 +68,7 @@ func (c *Client) connected(ctx context.Context) (*sdk.ClientSession, error) {
 	// The server is told the name of the program, and no version.
 	client := sdk.NewClient(&sdk.Implementation{Name: "TriggerAPI"}, nil)
 	httpClient := *c.client
-	httpClient.Transport = &headers{base: c.client.Transport, request: c.request}
+	httpClient.Transport = &headers{base: c.client.Transport, request: c.request, authorize: c.authorize}
 	transport := &sdk.StreamableClientTransport{
 		Endpoint:   endpoint,
 		HTTPClient: &httpClient,
@@ -104,20 +110,38 @@ func (c *Client) Close() error {
 }
 
 // with does something with the connection, connecting first if need be,
-// and once more if an older server has ended its session.
+// and once more if an older server has ended its session. An authorization
+// that could not be completed is the error, whatever the SDK made of it.
 func (c *Client) with(ctx context.Context, do func(*sdk.ClientSession) error) error {
 	for attempt := 0; ; attempt++ {
 		conn, err := c.connected(ctx)
 		if err != nil {
-			return err
+			return unauthorised(err)
 		}
 		err = do(conn)
 		if errors.Is(err, sdk.ErrSessionMissing) && attempt == 0 {
 			c.forget(conn)
 			continue
 		}
-		return err
+		return unauthorised(err)
 	}
+}
+
+// authError is the error of an authorization that could not be completed
+// for an HTTP request. The SDK takes an error of the transport for one of
+// JSON-RPC, so it is told apart by this.
+type authError struct{ err error }
+
+func (e *authError) Error() string { return e.err.Error() }
+func (e *authError) Unwrap() error { return e.err }
+
+// unauthorised returns the error of the authorization an error came of, if
+// it did, and otherwise the error.
+func unauthorised(err error) error {
+	if auth, ok := errors.AsType[*authError](err); ok {
+		return auth.err
+	}
+	return err
 }
 
 // Call calls what the request is for, which is for the server of the
@@ -201,14 +225,21 @@ func describe(info *sdk.InitializeResult) (protocol, server string) {
 // gives them the headers and authorization of the request, and records the
 // status and headers of the answer to a call.
 type headers struct {
-	base    http.RoundTripper
-	request Request
+	base      http.RoundTripper
+	request   Request
+	authorize Authorizer
 }
 
 func (h *headers) RoundTrip(req *http.Request) (*http.Response, error) {
+	auth := h.request.Auth
+	if h.authorize != nil {
+		if err := h.authorize(req.Context(), &auth); err != nil {
+			return nil, &authError{err}
+		}
+	}
 	// Building the request of a REST request gives the headers the same
 	// precedence: the authorization, then the headers of the request.
-	built, err := rest.Request{Method: req.Method, URL: req.URL.String(), Headers: h.request.Headers, Auth: h.request.Auth}.Build(req.Context())
+	built, err := rest.Request{Method: req.Method, URL: req.URL.String(), Headers: h.request.Headers, Auth: auth}.Build(req.Context())
 	if err != nil {
 		return nil, err
 	}

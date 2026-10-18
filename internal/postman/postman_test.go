@@ -205,6 +205,24 @@ func TestImportAuth(t *testing.T) {
 	if got := request(`{"type": "oauth2", "oauth2": [{"key": "accessToken", "value": "abc"}]}`).Auth; got != (rest.Auth{Type: rest.AuthBearer, Token: "abc"}) {
 		t.Errorf("oauth2 = %+v", got)
 	}
+	// Settings with the URLs of a grant the program has are kept as they
+	// are, for the token to be got by that grant.
+	code := request(`{"type": "oauth2", "oauth2": [{"key": "authUrl", "value": "{{idp}}/auth"}, {"key": "accessTokenUrl", "value": "{{idp}}/token"},
+		{"key": "clientId", "value": "app"}, {"key": "scope", "value": "read"}, {"key": "redirect_uri", "value": "http://localhost:9000/cb"},
+		{"key": "client_authentication", "value": "body"}, {"key": "accessToken", "value": "old"}]}`).Auth
+	wantCode := rest.OAuth{Grant: rest.GrantAuthorizationCode, AuthURL: "{{idp}}/auth", TokenURL: "{{idp}}/token", ClientID: "app", Scopes: "read",
+		RedirectURL: "http://localhost:9000/cb", ClientAuth: rest.ClientAuthBody}
+	if code.Type != rest.AuthOAuth2 || code.OAuth == nil || *code.OAuth != wantCode {
+		t.Errorf("authorization code = %+v %+v", code, code.OAuth)
+	}
+	client := request(`{"type": "oauth2", "oauth2": {"grant_type": "client_credentials", "accessTokenUrl": "https://idp/token", "clientSecret": "s",
+		"redirect_uri": "https://oauth.pstmn.io/v1/callback"}}`).Auth
+	if client.Type != rest.AuthOAuth2 || client.OAuth == nil || *client.OAuth != (rest.OAuth{TokenURL: "https://idp/token", ClientSecret: "s"}) {
+		t.Errorf("client credentials = %+v %+v", client, client.OAuth)
+	}
+	if got := request(`{"type": "oauth2", "oauth2": {"grant_type": "password_credentials", "accessTokenUrl": "https://idp/token"}}`).Auth; got != (rest.Auth{Type: rest.AuthBearer, Token: "{{token}}"}) {
+		t.Errorf("password = %+v", got)
+	}
 	if got := request(`{"type": "apikey", "apikey": [{"key": "key", "value": "X-Key"}, {"key": "value", "value": "{{k}}"}]}`); !reflect.DeepEqual(got.Headers, []rest.KeyValue{{Key: "X-Key", Value: "{{k}}", Enabled: true}}) || got.Auth != (rest.Auth{}) {
 		t.Errorf("apikey in a header = %+v", got)
 	}

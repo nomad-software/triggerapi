@@ -700,3 +700,67 @@ func TestFindAndRemoveSets(t *testing.T) {
 		t.Errorf("after removing again: %+v", s.Sets)
 	}
 }
+
+// A file from before there was OAuth 2.0 loads and saves as it did, and the
+// settings of OAuth are kept by every type of request that has an
+// authorization.
+func TestOAuthSettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "requests.json")
+	old := `{"folders": [{"name": "a", "requests": [
+		{"name": "bearer", "method": "GET", "url": "example.com", "auth": {"type": "bearer", "token": "t"}}
+	]}]}`
+	os.WriteFile(path, []byte(old), 0o644)
+	s, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := s.Folders[0].Requests[0]; r.Auth != (rest.Auth{Type: rest.AuthBearer, Token: "t"}) {
+		t.Errorf("bearer = %+v", r.Auth)
+	}
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); strings.Contains(string(data), "oauth") {
+		t.Errorf("saved %s", data)
+	}
+
+	o := &rest.OAuth{Grant: rest.GrantAuthorizationCode, TokenURL: "{{idp}}/token", AuthURL: "{{idp}}/auth", ClientID: "app", Scopes: "read write", Params: "audience=api", ClientAuth: rest.ClientAuthBody}
+	auth := rest.Auth{Type: rest.AuthOAuth2, OAuth: o, Access: "never saved"}
+	want := &Store{}
+	f := want.AddFolder("b")
+	f.Add(NewREST("rest", rest.Request{Method: "GET", URL: "example.com", Auth: auth}))
+	f.Add(NewGRPC("grpc", rpc.Request{URL: "localhost:1", Auth: auth}))
+	f.Add(NewGraphQL("graphql", graphql.Request{URL: "example.com", Auth: auth}))
+	f.Add(NewMCP("mcp", mcp.Request{URL: "example.com", Auth: auth}))
+	f.Add(NewWebSocket("ws", ws.Request{URL: "example.com", Auth: auth}))
+	if err := want.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); strings.Contains(string(data), "never saved") {
+		t.Errorf("the access token was saved: %s", data)
+	}
+	saved := auth
+	saved.Access = ""
+	for _, r := range got.Folders[0].Requests {
+		var a rest.Auth
+		switch r.Type {
+		case TypeREST:
+			a = r.Auth
+		case TypeGRPC:
+			a = r.GRPC.Auth
+		case TypeGraphQL:
+			a = r.GraphQL.Auth
+		case TypeMCP:
+			a = r.MCP.Auth
+		case TypeWebSocket:
+			a = r.WebSocket.Auth
+		}
+		if !reflect.DeepEqual(a, saved) {
+			t.Errorf("%s: %+v %+v", r.Name, a, a.OAuth)
+		}
+	}
+}

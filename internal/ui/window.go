@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/mcp"
 	"github.com/nomad-software/triggerapi/internal/network"
+	"github.com/nomad-software/triggerapi/internal/oauth"
 	"github.com/nomad-software/triggerapi/internal/rpc"
 	"github.com/nomad-software/triggerapi/internal/settings"
 )
@@ -168,6 +168,10 @@ type Window struct {
 	graphSchemas serverCache[string]
 	mcpSchemas   serverCache[*mcp.Schema]
 
+	// tokens are the OAuth 2.0 tokens that have been got, which are kept
+	// for the session, whatever workspace is in use. See windowoauth.go.
+	tokens *oauth.Cache
+
 	// diffDirs are the folders of the files the responses of the history
 	// were compared in, which are deleted when the window closes.
 	diffDirs []string
@@ -187,6 +191,7 @@ func NewWindow(files Files) *Window {
 		ws:          newWSPanel(),
 		graphql:     newGraphQLPanel(),
 		mcp:         newMCPPanel(),
+		tokens:      oauth.NewCache(),
 		editor:      newEnvEditor(),
 		tabs:        newRequestTabs(),
 		environment: newEnvironmentSelector(),
@@ -373,6 +378,10 @@ func NewWindow(files Files) *Window {
 			ui.endpoints.table.onCreate = func(endpoints []string) { w.createRequests(ui, endpoints) }
 		}
 		ui.editor.saveButton().OnClicked(w.saveRequest)
+		auth := ui.editor.authorization()
+		auth.getToken.OnClicked(func() { w.getToken(ui) })
+		auth.clearToken.OnClicked(func() { w.clearToken(ui) })
+		auth.onEdited = func() { w.showToken(ui) }
 		ui.editor.setCodeFont(w.config.ResponseFont)
 		// Every edit of a saved request is written back to it and saved.
 		ui.editor.setOnChange(func() {
@@ -386,6 +395,7 @@ func NewWindow(files Files) *Window {
 	w.request.expand = w.expand
 	w.request.expander = w.expander
 	w.request.options = w.options
+	w.request.authorize = w.keptToken
 	w.request.send.OnClicked(w.send)
 	w.request.execute.OnClicked(w.executeCurl)
 
@@ -553,97 +563,6 @@ func (w *Window) newMenuBar() {
 	w.about.OnTriggered(func() { showAbout(w.QWidget) })
 }
 
-// saveRequest saves the request being composed in the tab that holds no
-// saved request, which it shows in that tab, and adds it to the sidebar.
-func (w *Window) saveRequest() {
-	if w.open != nil {
-		return
-	}
-	w.requests.insert(w.composed("New Request"))
-}
-
-// composed returns the request that is not saved, as it is in the request
-// UI, with a name. It is not in the store.
-func (w *Window) composed(name string) *collection.Request {
-	w.request.url.commit()
-	return w.requestUI(w.unsaved).editor.compose(name)
-}
-
-// newRequest asks for the type of a request, and shows an empty request of
-// that type in the tab that is not pinned, without saving it: it is added to
-// the sidebar only once it is saved.
-func (w *Window) newRequest() {
-	typ, ok := askRequestType(w.QWidget)
-	if !ok {
-		return
-	}
-	draft := collection.New(typ, "")
-
-	w.stash(w.tabs.current())
-	tab := w.tabs.open(nil)
-	tab.draft, tab.replay = draft, nil
-	w.showTab(tab, true)
-	w.closeEditor()
-}
-
-// chooseSet replaces the tabs with those of a set, and shows the first.
-// Choosing no set, by deselecting the one chosen, takes the tabs away and
-// leaves one empty tab.
-func (w *Window) chooseSet(set *collection.Set) {
-	w.closeEditor()
-	w.stash(w.tabs.current())
-	var requests []*collection.Request
-	if set != nil {
-		requests = set.Requests
-	}
-	w.tabs.reset(requests)
-	w.showTab(w.tabs.current(), true)
-}
-
-// restoreTabs opens a tab for each request of the set that was chosen in
-// the workspace in use when it was left, and shows the first. With no set,
-// as at startup, there is only a request that is not saved and nothing is
-// selected: tabs are only remembered in sets.
-func (w *Window) restoreTabs() {
-	if name, ok := w.chosenSets[w.config.Workspace]; ok {
-		if set := w.requests.store.FindSet(name); set != nil {
-			w.requests.sets.load(set)
-			w.tabs.reset(set.Requests)
-			w.showTab(w.tabs.current(), true)
-			return
-		}
-	}
-
-	w.tabs.reset(nil)
-	w.showTab(w.tabs.current(), true)
-}
-
-// stash keeps the request being composed in a tab, if it is one that is not
-// saved, so that it is still there when the tab is shown again.
-func (w *Window) stash(tab *requestTab) {
-	if tab != nil && tab.request == nil {
-		tab.draft = w.composed("")
-	} else {
-		w.request.url.commit()
-	}
-}
-
-// showTab shows the request of a tab in the request UI, with the response
-// it was last given. The request is selected in the sidebar too if sync is
-// set.
-func (w *Window) showTab(tab *requestTab, sync bool) {
-	w.show(tab.request)
-	if tab.request == nil && tab.draft != nil {
-		w.showDraft(tab.draft)
-	}
-	if tab.replay != nil {
-		tab.replay()
-	}
-	if sync {
-		w.requests.selectRequest(tab.request)
-	}
-}
-
 // later runs f once the events already waiting have been handled, by which
 // time a widget that has just been shown has been given its size.
 func (w *Window) later(f func()) {
@@ -687,6 +606,7 @@ func (w *Window) environmentChanged() {
 	w.updateHeaders()
 	for _, ui := range w.uis {
 		ui.editor.refreshPlaceholders()
+		w.showToken(ui)
 	}
 }
 
@@ -814,22 +734,13 @@ func (w *Window) show(r *collection.Request) {
 	}
 }
 
-// showDraft shows a request that is not saved, which show(nil) has made way
-// for, in the request UI of its type.
-func (w *Window) showDraft(draft *collection.Request) {
-	w.unsaved = draft.Type
-	w.load(draft)
-	if w.stack.CurrentIndex() != pageEditor {
-		w.stack.SetCurrentIndex(w.requestPage())
-	}
-}
-
 // load fills the request UI of the type of a request with it, with no
 // response.
 func (w *Window) load(r *collection.Request) {
 	ui := w.requestUI(r.Type)
 	ui.editor.show(r)
 	ui.response.clear()
+	w.showToken(ui)
 	if ui.shown != nil {
 		ui.shown()
 	}
@@ -852,25 +763,6 @@ func (w *Window) editEnvironment() {
 		w.sidebar.SetCurrentIndex(tabEnvironments)
 	}
 	w.environments.edit()
-}
-
-// showSets shows the sets in the sidebar, with the keyboard in their list,
-// where the one chosen is selected.
-func (w *Window) showSets() {
-	w.sidebar.SetCurrentIndex(tabRequests)
-	w.requests.showView(viewSets)
-	w.requests.sets.list.SetFocus()
-}
-
-// updateSets lists the sets of requests in the selector above the tabs, with
-// the one chosen selected.
-func (w *Window) updateSets() {
-	store := w.requests.store
-	names := make([]string, len(store.Sets))
-	for i, set := range store.Sets {
-		names[i] = set.Name
-	}
-	w.environment.setSets(names, slices.Index(store.Sets, w.requests.sets.active))
 }
 
 // status shows a message in the status bar until another replaces it. Line

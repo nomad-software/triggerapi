@@ -13,10 +13,7 @@ import (
 
 // bodyTypes are the entries of the body type selector, in the order they are
 // shown.
-var bodyTypes = []struct {
-	label string
-	typ   rest.BodyType
-}{
+var bodyTypes = []bodyTypeEntry{
 	{"None", rest.BodyNone},
 	{"JSON", rest.BodyJSON},
 	{"Text", rest.BodyText},
@@ -109,6 +106,9 @@ type requestPanel struct {
 	// commanded is the request that the command on show was made from,
 	// which is the one that Execute is to run.
 	commanded rest.Request
+	// authorize gives an authorization of OAuth 2.0 the token there is for
+	// it, as the window keeps them, to be shown in the curl command.
+	authorize func(*rest.Auth)
 
 	panelState
 	// unsaved is set while the request on show is not saved, when a curl
@@ -343,12 +343,18 @@ func (p *requestPanel) updateCurl() {
 	if p.options != nil {
 		request.Options = p.options()
 	}
+	if p.authorize != nil {
+		p.authorize(&request.Auth)
+	}
 	p.commanded = request
 
 	command, err := request.Curl()
-	if err != nil {
+	switch {
+	case err != nil:
 		// A comment, so that nothing happens if it is run all the same.
 		command = "# The request cannot be made into a command: " + err.Error()
+	case request.Auth.Type == rest.AuthOAuth2 && request.Auth.Access == "":
+		command = "# There is no OAuth 2.0 token yet, so the command has none. One is got when it is executed.\n" + command
 	}
 	p.copy.SetEnabled(err == nil)
 	p.execute.SetEnabled(err == nil)
@@ -417,6 +423,18 @@ func newSelectorTab(label string, selector *qt.QComboBox, stack *qt.QStackedWidg
 	return plainPage(tab)
 }
 
+type bodyTypeEntry struct {
+	label string
+	typ   rest.BodyType
+}
+
+// selectorIndex returns the index in the entries of a selector of the first
+// one that is reports true of, or of the first entry if there is none, as a
+// value that is not known is shown.
+func selectorIndex[T any](entries []T, is func(T) bool) int {
+	return max(slices.IndexFunc(entries, is), 0)
+}
+
 // newHint returns a page which says why it has nothing else on it, set out
 // as the editor it takes the place of.
 func newHint(text string) *qt.QWidget {
@@ -471,6 +489,8 @@ func (p *requestPanel) recolour() {
 func (p *requestPanel) widget() *qt.QWidget { return p.root }
 
 func (p *requestPanel) saveButton() *qt.QPushButton { return p.save }
+
+func (p *requestPanel) authorization() *authEditor { return p.auth }
 
 // show shows a REST request. See load.
 func (p *requestPanel) show(r *collection.Request) { p.load(*r.Request) }
@@ -537,13 +557,7 @@ func (p *requestPanel) load(r rest.Request) {
 
 	p.auth.load(r.Auth)
 
-	bodyIndex := 0
-	for i, t := range bodyTypes {
-		if t.typ == r.BodyType {
-			bodyIndex = i
-		}
-	}
-	p.bodyType.SetCurrentIndex(bodyIndex)
+	p.bodyType.SetCurrentIndex(selectorIndex(bodyTypes, func(t bodyTypeEntry) bool { return t.typ == r.BodyType }))
 	p.bodyRaw.SetPlainText(r.Body)
 	p.bodyFold.reset()
 	p.bodyForm.setItems(r.Form)
