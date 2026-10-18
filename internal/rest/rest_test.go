@@ -281,12 +281,16 @@ func TestSendOptions(t *testing.T) {
 
 func TestCurlOptions(t *testing.T) {
 	r := Request{Method: "GET", URL: "http://example.com/a"}
-	for options, want := range map[Options]string{
-		{}:                          "curl --location http://example.com/a",
-		{NoRedirects: true}:         "curl http://example.com/a",
-		{Timeout: 30 * time.Second}: "curl --location --max-time 30 http://example.com/a",
-		{Timeout: 1500 * time.Millisecond, NoRedirects: true}: "curl --max-time 1.5 http://example.com/a",
+	for _, test := range []struct {
+		options Options
+		want    string
+	}{
+		{Options{}, "curl --location http://example.com/a"},
+		{Options{NoRedirects: true}, "curl http://example.com/a"},
+		{Options{Timeout: 30 * time.Second}, "curl --location --max-time 30 http://example.com/a"},
+		{Options{Timeout: 1500 * time.Millisecond, NoRedirects: true}, "curl --max-time 1.5 http://example.com/a"},
 	} {
+		options, want := test.options, test.want
 		r.Options = options
 		if got, err := r.Curl(); err != nil || got != want {
 			t.Errorf("%+v: %q, %v, want %q", options, got, err, want)

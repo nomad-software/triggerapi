@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/nomad-software/triggerapi/internal/capture"
@@ -121,7 +122,9 @@ type Request struct {
 // Options say how a request is sent, whatever the request is.
 type Options struct {
 	// Timeout is how long the request can take, to the end of its
-	// response. There is no limit if it is zero.
+	// response, or for a stream of server-sent events, which can go on for
+	// as long as the server likes, to its headers. There is no limit if it
+	// is zero.
 	Timeout time.Duration
 	// NoRedirects has a response that redirects to another address
 	// returned as it is, where the address would otherwise be followed.
@@ -130,6 +133,11 @@ type Options struct {
 	// follows too, and which says what proxy it went through. Send is
 	// given the client that uses it. Nil is the default of each.
 	Network *network.Client
+	// Stream is given a stream of server-sent events as it comes: the
+	// response so far once its headers have come, and again after each
+	// event. It is called on the goroutine of Send, and the response is not
+	// changed after. It is not called if it is nil.
+	Stream func(*Response)
 }
 
 // Response is the result of sending a request. It is kept in the history
@@ -143,7 +151,19 @@ type Response struct {
 	Duration   time.Duration `json:"duration"`
 	// Timing says where the time went, if it is known.
 	Timing *Timing `json:"timing,omitempty"`
+	// Events are those of a stream of server-sent events, in the order
+	// they came, and nil for any other response. The body is the stream as
+	// it was received.
+	Events []Event `json:"events,omitempty"`
+	// Interrupted says why a stream of events ended before the server
+	// ended it: StreamStopped if it was stopped, or the error there was. It
+	// is empty otherwise.
+	Interrupted string `json:"interrupted,omitempty"`
 }
+
+// StreamStopped is the Interrupted of a stream of events that was stopped
+// before the server ended it.
+const StreamStopped = "Stopped"
 
 // Expand returns a copy of the credentials with f applied to each of them.
 func (a Auth) Expand(f func(string) string) Auth {
@@ -336,11 +356,30 @@ func encode(pairs []KeyValue) string {
 // Timing says how it was spent. The options of the request say how long it
 // can take and if redirects are followed; a request that takes too long fails
 // with context.DeadlineExceeded.
+//
+// A stream of server-sent events is read as it comes, and given to the
+// Stream of the options, until the server ends it or ctx is done, when it is
+// returned as it is, with how it ended as its Interrupted. Its time limit is
+// on its headers alone.
 func Send(ctx context.Context, client *http.Client, r Request) (*Response, error) {
+	// The time limit is kept by a timer rather than the context, so that it
+	// can be stopped once the headers of a stream have come.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var timedOut atomic.Bool
+	var timer *time.Timer
 	if r.Options.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, r.Options.Timeout)
-		defer cancel()
+		timer = time.AfterFunc(r.Options.Timeout, func() {
+			timedOut.Store(true)
+			cancel()
+		})
+		defer timer.Stop()
+	}
+	limited := func(err error) error {
+		if timedOut.Load() {
+			return context.DeadlineExceeded
+		}
+		return err
 	}
 
 	start := time.Now()
@@ -359,25 +398,71 @@ func Send(ctx context.Context, client *http.Client, r Request) (*Response, error
 
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, limited(err)
 	}
 	defer res.Body.Close()
 
+	response := func(body []byte, end time.Time) *Response {
+		return &Response{
+			Status:     res.Status,
+			StatusCode: res.StatusCode,
+			Proto:      res.Proto,
+			Headers:    res.Header,
+			Body:       body,
+			Duration:   end.Sub(start),
+			Timing:     r.Options.annotate(trace.timing(end, res), res.Request),
+		}
+	}
+
+	if isEventStream(res.Header) {
+		// The limit was on the headers, which have come, unless it was
+		// reached just as they did.
+		if timer != nil && !timer.Stop() {
+			return nil, context.DeadlineExceeded
+		}
+		return readStream(ctx, res.Body, start, response, r.Options.Stream), nil
+	}
+
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, err
+		return nil, limited(err)
 	}
-	end := time.Now()
+	return response(body, time.Now()), nil
+}
 
-	return &Response{
-		Status:     res.Status,
-		StatusCode: res.StatusCode,
-		Proto:      res.Proto,
-		Headers:    res.Header,
-		Body:       body,
-		Duration:   end.Sub(start),
-		Timing:     r.Options.annotate(trace.timing(end, res), res.Request),
-	}, nil
+// readStream reads a stream of server-sent events until it ends, or ctx is
+// done, giving the response so far to stream, unless it is nil, once at the
+// start and again after each event. response makes a response of the body
+// read by a time.
+func readStream(ctx context.Context, body io.Reader, start time.Time, response func([]byte, time.Time) *Response, stream func(*Response)) *Response {
+	var raw bytes.Buffer
+	var events []Event
+	// Each response given is a slice of the events up to then, which are
+	// not changed after, as appending puts the next beyond its length.
+	snapshot := func(end time.Time) *Response {
+		res := response(bytes.Clone(raw.Bytes()), end)
+		res.Events = events[:len(events):len(events)]
+		return res
+	}
+	if stream != nil {
+		stream(snapshot(time.Now()))
+	}
+	err := readEvents(io.TeeReader(body, &raw), func(e Event) {
+		e.At = time.Since(start)
+		events = append(events, e)
+		if stream != nil {
+			stream(snapshot(time.Now()))
+		}
+	})
+
+	res := snapshot(time.Now())
+	switch {
+	case ctx.Err() != nil:
+		res.Interrupted = StreamStopped
+	case err != nil:
+		res.Interrupted = err.Error()
+	}
+	return res
 }
 
 // IsJSON reports if the response declares a JSON content type.
@@ -386,8 +471,12 @@ func (r *Response) IsJSON() bool {
 	return strings.Contains(ct, "json")
 }
 
-// Text returns the body for display, indenting it if it is valid JSON.
+// Text returns the body for display, indenting it if it is valid JSON, or
+// the events of a stream of server-sent events.
 func (r *Response) Text() string {
+	if r.IsEventStream() {
+		return EventLog(r.StreamEvents())
+	}
 	if r.IsJSON() {
 		var out bytes.Buffer
 		if err := json.Indent(&out, r.Body, "", "  "); err == nil {

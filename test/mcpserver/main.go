@@ -1,6 +1,12 @@
+//lint:file-ignore SA1019 Sampling and logging are deprecated since protocol version 2026-07-28, but servers still use them while they are, and the client handles them.
+
 // Command mcpserver is a small MCP server to try the MCP requests of
 // TriggerAPI against by hand. It serves Streamable HTTP at /mcp, with a few
-// tools, resources and a prompt, and logs every call it is given.
+// tools, resources and a prompt, and logs every call it is given. Some of
+// the tools send their progress and log messages while they work, ask the
+// user to fill in a form (elicitation) or ask for the message of a language
+// model (sampling), which TriggerAPI shows in the Events tab of the response
+// and asks in a dialog.
 //
 //	go run ./test/mcpserver                  # http://localhost:8000/mcp
 //	go run ./test/mcpserver -token secret    # needs Authorization: Bearer secret
@@ -23,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -56,6 +63,11 @@ func newServer() *sdk.Server {
 	sdk.AddTool(server, &sdk.Tool{Name: "echo", Description: "Says the text back, as many times as asked."}, echo)
 	sdk.AddTool(server, &sdk.Tool{Name: "headers", Description: "Lists the HTTP headers the call came with, to check headers, authorization and placeholders."}, headers)
 	sdk.AddTool(server, &sdk.Tool{Name: "time", Description: "Gives the time now in a time zone, such as Europe/London."}, now)
+	sdk.AddTool(server, &sdk.Tool{Name: "progress", Description: "Works through a number of steps, a moment each, sending its progress and logging each step."}, progress)
+	sdk.AddTool(server, &sdk.Tool{Name: "log", Description: "Logs a message at every level, from debug to emergency."}, logLevels)
+	sdk.AddTool(server, &sdk.Tool{Name: "book_flight", Description: "Asks the user for the details of a flight to book, in a form with a field of every kind."}, bookFlight)
+	sdk.AddTool(server, &sdk.Tool{Name: "confirm_delete", Description: "Asks the user to confirm deleting a file, in a form with no fields."}, confirmDelete)
+	sdk.AddTool(server, &sdk.Tool{Name: "summarise", Description: "Asks a language model, which is the user, to summarise some text."}, summarise)
 	server.AddTool(&sdk.Tool{Name: "fail", Description: "Always reports an error, to see how a failed tool is shown.", InputSchema: map[string]any{"type": "object"}},
 		func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 			return &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: "this tool always fails"}}}, nil
@@ -138,6 +150,140 @@ func now(_ context.Context, _ *sdk.CallToolRequest, args timeArgs) (*sdk.CallToo
 		return nil, timeResult{}, fmt.Errorf("%q is not a time zone", zone)
 	}
 	return nil, timeResult{Time: time.Now().In(location).Format(time.RFC3339), Zone: zone}, nil
+}
+
+type progressArgs struct {
+	Steps int `json:"steps,omitempty" jsonschema:"how many steps to work through, 5 if not given"`
+	Delay int `json:"delay,omitempty" jsonschema:"how long each step takes, in milliseconds, 500 if not given"`
+}
+
+type progressResult struct {
+	Steps int `json:"steps"`
+}
+
+// progress sends a notification of its progress, and logs a message, for
+// each step. A client is only sent its progress if it gave a progress
+// token, and messages logged at the level it asked for and above.
+func progress(ctx context.Context, req *sdk.CallToolRequest, args progressArgs) (*sdk.CallToolResult, progressResult, error) {
+	steps, delay := args.Steps, time.Duration(args.Delay)*time.Millisecond
+	if steps <= 0 {
+		steps = 5
+	}
+	if delay <= 0 {
+		delay = 500 * time.Millisecond
+	}
+	token := req.Params.GetProgressToken()
+	for step := 1; step <= steps; step++ {
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			log.Printf("progress given up at step %d", step)
+			return nil, progressResult{}, ctx.Err()
+		}
+		message := fmt.Sprintf("Step %d of %d done", step, steps)
+		if token != nil {
+			req.Session.NotifyProgress(ctx, &sdk.ProgressNotificationParams{ProgressToken: token, Progress: float64(step), Total: float64(steps), Message: message})
+		}
+		req.Session.Log(ctx, &sdk.LoggingMessageParams{Level: "info", Logger: "progress", Data: message})
+	}
+	return nil, progressResult{Steps: steps}, nil
+}
+
+// logLevels logs a message at each level, the last as JSON.
+func logLevels(ctx context.Context, req *sdk.CallToolRequest, _ struct{}) (*sdk.CallToolResult, map[string]int, error) {
+	levels := []sdk.LoggingLevel{"debug", "info", "notice", "warning", "error", "critical", "alert"}
+	for _, level := range levels {
+		req.Session.Log(ctx, &sdk.LoggingMessageParams{Level: level, Logger: "levels", Data: "a message at the level " + string(level)})
+	}
+	req.Session.Log(ctx, &sdk.LoggingMessageParams{Level: "emergency", Logger: "levels", Data: map[string]any{"structured": true, "level": "emergency"}})
+	return nil, map[string]int{"logged": len(levels) + 1}, nil
+}
+
+// bookFlight asks the user for the details of a flight in a form with a
+// field of each kind there is, and says what they answered. A stateless
+// server asks by returning what it wants from the user, and is called again
+// with the answer.
+func bookFlight(_ context.Context, req *sdk.CallToolRequest, _ struct{}) (*sdk.CallToolResult, map[string]any, error) {
+	answer, ok := req.Params.InputResponses["flight"].(*sdk.ElicitResult)
+	if !ok {
+		one, nine, three := 1.0, 9.0, 3
+		return &sdk.CallToolResult{InputRequests: sdk.InputRequestMap{"flight": &sdk.ElicitParams{
+			Message: "Where would you like to fly to, and how?",
+			RequestedSchema: &jsonschema.Schema{
+				Type: "object",
+				Properties: map[string]*jsonschema.Schema{
+					"destination": {Type: "string", Title: "Destination", Description: "A city or the code of an airport", MinLength: &three},
+					"email":       {Type: "string", Title: "Email", Format: "email", Description: "Where the tickets are sent"},
+					"date":        {Type: "string", Title: "Date", Format: "date"},
+					"passengers":  {Type: "integer", Title: "Passengers", Minimum: &one, Maximum: &nine, Default: json.RawMessage("1")},
+					"budget":      {Type: "number", Title: "Budget", Description: "The most to spend, in pounds"},
+					"class": {Type: "string", Title: "Class", Default: json.RawMessage(`"economy"`),
+						Enum: []any{"economy", "premium", "business", "first"}, Extra: map[string]any{"enumNames": []any{"Economy", "Premium economy", "Business", "First"}}},
+					"window": {Type: "boolean", Title: "Window seat", Default: json.RawMessage("true")},
+					"extras": {Type: "array", Title: "Extras", Items: &jsonschema.Schema{AnyOf: []*jsonschema.Schema{
+						{Const: constant("bag"), Title: "Checked bag"},
+						{Const: constant("meal"), Title: "Meal"},
+						{Const: constant("lounge"), Title: "Lounge"},
+					}}},
+				},
+				Required: []string{"destination", "email"},
+			},
+		}}}, nil, nil
+	}
+	log.Printf("book_flight answered %s with %v", answer.Action, answer.Content)
+	return nil, map[string]any{"action": answer.Action, "booking": answer.Content}, nil
+}
+
+// constant returns a value for the const of a schema.
+func constant(v any) *any { return &v }
+
+// confirmDelete asks the user to say yes or no, with a form of no fields.
+func confirmDelete(_ context.Context, req *sdk.CallToolRequest, _ struct{}) (*sdk.CallToolResult, map[string]any, error) {
+	answer, ok := req.Params.InputResponses["confirm"].(*sdk.ElicitResult)
+	if !ok {
+		return &sdk.CallToolResult{InputRequests: sdk.InputRequestMap{"confirm": &sdk.ElicitParams{
+			Message:         "Delete report-2026.pdf? This cannot be undone.",
+			RequestedSchema: &jsonschema.Schema{Type: "object"},
+		}}}, nil, nil
+	}
+	deleted := answer.Action == "accept"
+	return nil, map[string]any{"action": answer.Action, "deleted": deleted}, nil
+}
+
+type summariseArgs struct {
+	Text string `json:"text,omitempty" jsonschema:"the text to summarise; a paragraph of its own if not given"`
+}
+
+// summarise asks for a summary from the client's language model, which in
+// TriggerAPI is the user, and gives back what it said. Declining fails the
+// call.
+func summarise(_ context.Context, req *sdk.CallToolRequest, args summariseArgs) (*sdk.CallToolResult, map[string]any, error) {
+	answer, ok := req.Params.InputResponses["summary"].(*sdk.CreateMessageWithToolsResult)
+	if !ok {
+		text := args.Text
+		if text == "" {
+			text = "TriggerAPI is a desktop client for REST, GraphQL, gRPC, MCP and WebSocket APIs, written in Go with a Qt 6 interface. " +
+				"It keeps requests in workspaces, encrypts them with SSH keys, and records what was sent in a history."
+		}
+		return &sdk.CallToolResult{InputRequests: sdk.InputRequestMap{"summary": &sdk.CreateMessageParams{
+			SystemPrompt: "You summarise text in one sentence.",
+			Messages:     []*sdk.SamplingMessage{{Role: "user", Content: &sdk.TextContent{Text: "Summarise this:\n\n" + text}}},
+			MaxTokens:    100,
+			Temperature:  0.2,
+			ModelPreferences: &sdk.ModelPreferences{
+				Hints:         []*sdk.ModelHint{{Name: "claude-haiku-5-5"}, {Name: "claude"}},
+				SpeedPriority: 0.8,
+			},
+		}}}, nil, nil
+	}
+	var said []string
+	for _, content := range answer.Content {
+		if text, ok := content.(*sdk.TextContent); ok {
+			said = append(said, text.Text)
+		}
+	}
+	log.Printf("summarise was answered by %s", answer.Model)
+	return nil, map[string]any{"summary": strings.Join(said, ""), "model": answer.Model}, nil
 }
 
 // text returns a handler of a resource which is the text given.

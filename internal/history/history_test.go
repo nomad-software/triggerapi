@@ -288,3 +288,54 @@ func TestText(t *testing.T) {
 		}
 	}
 }
+
+// TestEvents checks that a history from before streams of events and the
+// events of MCP calls loads as it did, and that their events are kept, and
+// counted with the body against MaxBody.
+func TestEvents(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.json")
+	old := `{"entries": [
+		{"time": "2026-10-01T10:00:00Z", "request": {"name": "a", "type": "rest", "method": "GET", "url": "x", "auth": {}},
+		 "http": {"status": "200 OK", "statusCode": 200, "headers": {"Content-Type": ["text/event-stream"]}, "body": "ZGF0YTogaGkKCg==", "duration": 5}},
+		{"time": "2026-10-01T09:00:00Z", "request": {"name": "b", "type": "mcp", "mcp": {"url": "x", "auth": {}}},
+		 "mcp": {"result": {"content": []}, "duration": 5}}
+	]}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := LoadWith(path, nil)
+	if err != nil || len(store.Entries) != 2 {
+		t.Fatalf("%v, %d entries", err, len(store.Entries))
+	}
+	// The events of an old stream are read from its body.
+	if e := store.Entries[0]; e.HTTP.Events != nil || e.HTTP.Interrupted != "" || e.Text() != "← message\nhi" {
+		t.Errorf("an old stream has events %v, text %q", e.HTTP.Events, e.Text())
+	}
+	if e := store.Entries[1]; e.MCP.Events != nil || e.Text() != "{\n  \"content\": []\n}" {
+		t.Errorf("an old call has events %v, text %q", e.MCP.Events, e.Text())
+	}
+
+	// Events are saved and read again.
+	store.Entries[0].HTTP.Events = []rest.Event{{At: time.Second, Data: "hi"}}
+	store.Entries[1].MCP.Events = []mcp.Event{{Kind: mcp.EventProgress, Progress: 1}}
+	if err := store.SaveWith(path, nil); err != nil {
+		t.Fatal(err)
+	}
+	again, err := LoadWith(path, nil)
+	if err != nil || !reflect.DeepEqual(again.Entries[0].HTTP.Events, store.Entries[0].HTTP.Events) || !reflect.DeepEqual(again.Entries[1].MCP.Events, store.Entries[1].MCP.Events) {
+		t.Errorf("events after loading %+v %+v, %v", again.Entries[0].HTTP, again.Entries[1].MCP, err)
+	}
+
+	// The events count towards the size of the body, and go with it.
+	half := strings.Repeat("x", MaxBody/2+1)
+	stream := &Entry{Request: collection.New(collection.TypeREST, ""), HTTP: &rest.Response{Body: []byte(half), Events: []rest.Event{{Data: half}}}}
+	stream.trim()
+	if stream.HTTP.Body != nil || stream.HTTP.Events != nil || stream.Omitted != 2*len(half) {
+		t.Errorf("a stream over MaxBody kept %d bytes and %d events", len(stream.HTTP.Body), len(stream.HTTP.Events))
+	}
+	call := &Entry{Request: collection.New(collection.TypeMCP, ""), MCP: &mcp.Response{Result: []byte(`{}`), Events: []mcp.Event{{Kind: mcp.EventLogged, Message: strings.Repeat("x", MaxBody)}}}}
+	call.trim()
+	if call.MCP.Result != nil || call.MCP.Events != nil || call.Omitted != MaxBody+2 {
+		t.Errorf("a call over MaxBody kept %s and %d events", call.MCP.Result, len(call.MCP.Events))
+	}
+}

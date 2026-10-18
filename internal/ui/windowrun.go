@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	qt "github.com/mappu/miqt/qt6"
@@ -67,8 +68,11 @@ type outcome struct {
 // thread. Unless it is cancelled, what came of it is kept in the entry of the
 // history, which is then added to the history; there is none if it is nil.
 // The request is first given its authorization by authorize, unless that is
-// nil (see Window.authorizer), and is not sent if it cannot be.
-func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *history.Entry, authorize func(context.Context) error, work func(context.Context) (outcome, error)) {
+// nil (see Window.authorizer), and is not sent if it cannot be. The work is
+// then given up once it has taken as long as limit, unless that is zero,
+// when it keeps to the time limit of the settings itself, as rest.Send does
+// to the headers of a stream of events.
+func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *history.Entry, authorize func(context.Context) error, limit time.Duration, work func(context.Context) (outcome, error)) {
 	if w.cancel != nil {
 		w.cancel()
 		return
@@ -76,8 +80,7 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *his
 
 	base, cancel := context.WithCancel(context.Background())
 	w.cancel = cancel
-	limit := w.config.Timeout
-	timeout := w.timeout()
+	seconds := w.config.Timeout
 	shown := w.shown
 	tab := w.tabs.current()
 
@@ -97,10 +100,9 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *his
 		start := time.Now()
 		var done outcome
 		if err == nil {
-			// The work is given up on when it has taken as long as the
-			// settings allow, which is the same for every kind of
-			// request.
-			ctx, stop := withLimit(base, timeout)
+			// The work is given up on when it has taken as long as it
+			// is allowed, which is the time limit of the settings.
+			ctx, stop := withLimit(base, limit)
 			done, err = work(ctx)
 			stop()
 		}
@@ -122,7 +124,7 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *his
 				entry.Duration = elapsed
 				switch {
 				case errors.Is(err, context.DeadlineExceeded):
-					entry.Error = timeoutError(limit).Error()
+					entry.Error = timeoutError(seconds).Error()
 				case err != nil:
 					entry.Error = err.Error()
 				default:
@@ -140,7 +142,7 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *his
 			case errors.Is(err, context.Canceled):
 				result = func() { response.showCancelled(elapsed) }
 			case errors.Is(err, context.DeadlineExceeded):
-				timedOut := timeoutError(limit)
+				timedOut := timeoutError(seconds)
 				result = func() { response.showError(timedOut, elapsed) }
 			case err != nil:
 				result = func() { response.showError(err, elapsed) }
@@ -162,9 +164,10 @@ func (w *Window) send() {
 	request := w.request.request()
 	req := request.Expand(w.expander())
 	req.Options = w.options()
+	req.Options.Stream = w.streamer(w.response)
 	entry := w.historyEntry(w.requestUI(collection.TypeREST), rest.JoinURL(req.URL, req.Params))
 
-	w.run(w.request.send, w.response, entry, w.authorizer(w.requestUI(collection.TypeREST), &req.Auth), func(ctx context.Context) (outcome, error) {
+	w.run(w.request.send, w.response, entry, w.authorizer(w.requestUI(collection.TypeREST), &req.Auth), 0, func(ctx context.Context) (outcome, error) {
 		res, err := rest.Send(ctx, w.client, req)
 		return w.restOutcome(res, request.Captures, w.response, w.response.show), err
 	})
@@ -179,22 +182,44 @@ func (w *Window) executeCurl() {
 	req := w.request.commanded
 	entry := w.historyEntry(w.requestUI(collection.TypeREST), rest.JoinURL(req.URL, req.Params))
 
-	w.run(w.request.execute, w.response, entry, w.authorizer(w.requestUI(collection.TypeREST), &req.Auth), func(ctx context.Context) (outcome, error) {
+	w.run(w.request.execute, w.response, entry, w.authorizer(w.requestUI(collection.TypeREST), &req.Auth), w.timeout(), func(ctx context.Context) (outcome, error) {
 		res, err := rest.RunCurl(ctx, req)
 		return w.restOutcome(res, request.Captures, w.response, w.response.show), err
 	})
 }
 
+// streamer returns what shows a stream of server-sent events in a response
+// panel as it comes, while the request on show is the one sent (see
+// rest.Options.Stream). Events can come faster than they can be shown, so
+// only the latest of what came while the main thread was busy is.
+func (w *Window) streamer(response *responsePanel) func(*rest.Response) {
+	shown := w.shown
+	var pending atomic.Bool
+	var latest atomic.Pointer[rest.Response]
+	return func(res *rest.Response) {
+		latest.Store(res)
+		if !pending.CompareAndSwap(false, true) {
+			return
+		}
+		mainthread.Start(func() {
+			pending.Store(false)
+			if shown == w.shown {
+				response.showStream(latest.Load(), true)
+			}
+		})
+	}
+}
+
 // restOutcome returns what to do with the response to a request sent over
 // HTTP, which is nil if there was an error instead: show shows it in the
 // response panel. Values are captured from a response with a status that is
-// a success.
+// a success, or for a stream of events from the last event.
 func (w *Window) restOutcome(res *rest.Response, captures []capture.Rule, response *responsePanel, show func(*rest.Response)) outcome {
 	var captured []captureResult
 	return outcome{
 		capture: func() {
 			if res.StatusCode >= 200 && res.StatusCode < 300 {
-				captured = w.capture(captures, string(res.Body))
+				captured = w.capture(captures, res.Document())
 			}
 		},
 		show: func() {
@@ -212,9 +237,10 @@ func (w *Window) sendGraphQL() {
 	expanded := request.Expand(w.expander())
 	req, err := expanded.HTTP()
 	req.Options = w.options()
+	req.Options.Stream = w.streamer(w.graphqlResponse)
 	entry := w.historyEntry(w.requestUI(collection.TypeGraphQL), expanded.URL)
 
-	w.run(w.graphql.send, w.graphqlResponse, entry, w.authorizer(w.requestUI(collection.TypeGraphQL), &req.Auth), func(ctx context.Context) (outcome, error) {
+	w.run(w.graphql.send, w.graphqlResponse, entry, w.authorizer(w.requestUI(collection.TypeGraphQL), &req.Auth), 0, func(ctx context.Context) (outcome, error) {
 		if err != nil {
 			return outcome{}, err
 		}
@@ -266,7 +292,7 @@ func (w *Window) invoke() {
 
 	entry := w.historyEntry(w.requestUI(collection.TypeGRPC), req.URL)
 
-	w.run(w.grpc.invoke, w.grpcResponse, entry, w.authorizer(w.requestUI(collection.TypeGRPC), &req.Auth), func(ctx context.Context) (outcome, error) {
+	w.run(w.grpc.invoke, w.grpcResponse, entry, w.authorizer(w.requestUI(collection.TypeGRPC), &req.Auth), w.timeout(), func(ctx context.Context) (outcome, error) {
 		res, err := rpc.Invoke(ctx, req, schema)
 
 		// Values are captured from the last message of a call that ended

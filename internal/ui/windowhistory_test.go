@@ -260,7 +260,7 @@ func TestHistoryRecordsGraphQLAndMCP(t *testing.T) {
 		w.mcp.url.SetText(tools.URL + "/mcp")
 		w.mcp.reload.Click()
 	})
-	waitFor(t, "the capabilities", func() bool { return mainthread.Wait2(w.mcp.endpoint.count) == 4 })
+	waitFor(t, "the capabilities", func() bool { return mainthread.Wait2(w.mcp.endpoint.count) == 7 })
 	mainthread.Wait(func() {
 		w.mcp.arguments.SetPlainText(`{"text": "hi", "times": 2}`)
 		w.mcp.call.Click()

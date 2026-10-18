@@ -79,6 +79,15 @@ bindings.
   anyway, and a bearer `Authorization` header becomes the authorization.
   Options that only say how curl runs (`-s`, `-L`, `-o`, ...) are left out,
   and a command which sends a file or a multipart form is refused.
+- A response of server-sent events (`Content-Type: text/event-stream`), as
+  the APIs of language models stream their answers, is shown as it comes:
+  each event with when it came, its type and its ID, followed as it grows.
+  The bar beneath says whether the stream is open, has ended or was stopped,
+  how many events there were and how long the first took. The time limit of
+  the settings is on the headers alone, so a stream can stay open as long as
+  the server keeps it; Cancel stops it, keeping what had come. Values are
+  captured from the data of the last event, and Save writes the stream as it
+  was received. GraphQL responses are shown the same way.
 
 **gRPC**
 
@@ -135,6 +144,15 @@ bindings.
 - The result is shown as JSON, with the server's name and the protocol
   version beneath. A tool that reports an error, or a JSON-RPC error, is
   shown as a failure.
+- What the server sends while a call is under way is listed in the Events
+  tab as it comes: its progress, which is also shown beneath the response,
+  and the messages it logs, at every level.
+- A server that asks the user for something (elicitation) has its form shown
+  in a dialog, with a field for each value it asks for, to accept, decline
+  or cancel. A server that asks for the message of a language model
+  (sampling) has its messages shown in a dialog, in which the reply to give
+  it is written by hand, or declined. What was asked, and how it was
+  answered, is listed in the Events tab too. See [MCP](#mcp).
 - The Capabilities tab makes a saved request of each tool, resource and
   prompt ticked, as the Service Definitions tab of a gRPC request does.
 
@@ -157,9 +175,10 @@ bindings.
 **Responses**
 
 - How a request went is shown beneath its response: the status, any error,
-  and the time it took, with the size and protocol of an HTTP response, the
-  number of messages of a gRPC call, or the server and protocol version of an
-  MCP call. Failures are in red. The headers of the response, and the
+  and the time it took, with the size and protocol of an HTTP response
+  (and whether a stream of events is open, how many events there were and
+  when the first came), the number of messages of a gRPC call, or the server
+  and protocol version of an MCP call. Failures are in red. The headers of the response, and the
   trailers of a gRPC call, are in a tab of their own.
 - The Timing tab of a REST or GraphQL response shows where the time went:
   the redirects, DNS lookup, TCP connect, TLS handshake, sending the request,
@@ -307,7 +326,8 @@ File > Settings has five tabs:
   encrypted with (see [Encryption](#encryption)), and exporting and
   importing them (see [Sharing workspaces](#sharing-workspaces)).
 - Requests: how long a request of any kind can take before it is given up
-  on, and whether a REST or GraphQL request follows redirects or shows the
+  on (for a stream of server-sent events, how long its headers can take),
+  and whether a REST or GraphQL request follows redirects or shows the
   response that redirects.
 - Network: how every kind of request reaches its server (see
   [Network](#network)).
@@ -702,6 +722,31 @@ The Capabilities tab works as the Service Definitions tab of a gRPC request
 (see [Creating requests from a server](#creating-requests-from-a-server)),
 with a folder for each of Tools, Resources and Prompts.
 
+While a call is under way the server can send its progress and log messages,
+which the Events tab of the response lists with when each came, and ask
+things of the client. TriggerAPI asks for every message logged, and gives
+each call a progress token. A stateless server asks by answering a call with
+what it needs, and is called again with the answers; an older one asks
+through its session. Either way TriggerAPI asks you:
+
+- An elicitation is a form: strings (with their format, such as an email
+  address or a date, shown in the field), numbers, whole numbers, booleans,
+  one of a list of options, or any of them. A field marked `*` has to be
+  filled in, and numbers and lengths are checked against what the server
+  allows. Accept sends what is filled in, Decline says no, and Cancel, or
+  closing the dialog, says that you did not answer. A request to go to a page
+  instead is declined.
+- Sampling asks for the message a language model would answer the
+  server's messages with. There is no model in TriggerAPI, so you write the
+  reply yourself, which is how to try what a server does with it, and name
+  the model it is from (the first the server would like, by default).
+  Declining fails the call, as the specification has it.
+
+Sampling and logging are deprecated since protocol version 2026-07-28, but
+servers still use them while they are. A dialog is closed, unanswered, if the
+call is cancelled or another request is shown, and the time it is open counts
+towards the time limit of the settings.
+
 ## Running
 
 ```sh
@@ -867,11 +912,36 @@ to check headers, authorization and placeholders), `time` and `fail` (which
 always reports an error), the resources `sample://readme` and
 `sample://config`, and the prompt `review`. It logs every call it is given.
 
+Other tools send what a server can while a call is under way: `progress`
+works through a number of steps (`{"steps": 10, "delay": 1000}`, a delay in
+milliseconds), sending its progress and logging each step, `log` logs a
+message at every level, `book_flight` asks for a form with a field of every
+kind, `confirm_delete` asks for a form with no fields, and `summarise` asks
+for the message of a language model.
+
 | Option | Does |
 |---|---|
 | `ARGS="-token secret"` | Refuse requests without `Authorization: Bearer secret` |
 | `ARGS="-legacy"` | Behave as a server from before protocol version 2026-07-28, with sessions |
 | `ARGS="-addr localhost:9000"` | Listen elsewhere |
+
+### A sample REST server
+
+`test/restserver` is a small HTTP server to try streams of server-sent
+events against by hand. Start it with:
+
+```sh
+make rest-server
+```
+
+and open `http://localhost:8001/` to see its endpoints. `/events` sends a
+number of events and ends (`?count=20&interval=200ms`), `/clock` never ends,
+`/broken` breaks off part way, `/slow` takes its time to answer
+(`?delay=10s`), and `/json` answers as an ordinary API does. POST
+`{"messages": [{"role": "user", "content": "Hello"}], "stream": true}` to
+`/v1/chat/completions` or `/v1/messages` to have it answered a word at a
+time, as OpenAI's API and Anthropic's Messages API stream. It logs every
+request it is given; `ARGS="-addr localhost:9001"` has it listen elsewhere.
 
 ## License
 

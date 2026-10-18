@@ -202,6 +202,10 @@ func RunCurl(ctx context.Context, r Request) (*Response, error) {
 	if !head {
 		res.Body = body.Bytes()
 	}
+	// curl reads a stream of events to its end, so they have no times.
+	if res.IsEventStream() {
+		res.Events = ParseEvents(res.Body)
+	}
 	res.Duration = duration
 	// curl does not say where it was redirected to, so the proxy and the
 	// checking of the certificate are those of the address asked for.

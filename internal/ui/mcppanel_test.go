@@ -48,9 +48,9 @@ func TestMCPRequest(t *testing.T) {
 	})
 
 	// What the server has is offered under headings, the first chosen.
-	waitFor(t, "the capabilities", func() bool { return mainthread.Wait2(w.mcp.endpoint.count) == 4 })
+	waitFor(t, "the capabilities", func() bool { return mainthread.Wait2(w.mcp.endpoint.count) == 7 })
 	mainthread.Wait(func() {
-		if w.mcp.endpoint.current() != "Tools/echo" || w.mcp.endpoints.count() != 4 || w.mcp.description.Text() != "Says the text back." {
+		if w.mcp.endpoint.current() != "Tools/echo" || w.mcp.endpoints.count() != 7 || w.mcp.description.Text() != "Says the text back." {
 			t.Errorf("chosen %q, description %q", w.mcp.endpoint.current(), w.mcp.description.Text())
 		}
 		if w.open.MCP.Kind != mcp.KindTool || w.open.MCP.Name != "echo" {
@@ -115,7 +115,7 @@ func TestMCPRequest(t *testing.T) {
 				}
 			}
 		}
-		if want := []string{"Prompts/greet prompt", "Resources/test://greeting resource", "Tools/echo tool", "Tools/fail tool"}; !reflect.DeepEqual(made, want) {
+		if want := []string{"Prompts/greet prompt", "Resources/test://greeting resource", "Tools/echo tool", "Tools/fail tool", "Tools/progress tool", "Tools/sample tool", "Tools/who tool"}; !reflect.DeepEqual(made, want) {
 			t.Errorf("made %q", made)
 		}
 		w.Close()

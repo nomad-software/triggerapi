@@ -79,7 +79,7 @@ func testDiscover(t *testing.T, c *Client, legacy bool) {
 	for _, item := range schema.Items {
 		names = append(names, string(item.Kind)+" "+item.Name)
 	}
-	if strings.Join(names, ", ") != "tool echo, tool fail, resource test://greeting, prompt greet" {
+	if strings.Join(names, ", ") != "tool echo, tool fail, tool progress, tool sample, tool who, resource test://greeting, prompt greet" {
 		t.Errorf("items %q", names)
 	}
 	if schema.Server != "test-server 1.2.3" {
@@ -127,7 +127,7 @@ func testCall(t *testing.T, server Request, legacy bool) {
 		t.Helper()
 		r := server
 		r.Kind, r.Name, r.Arguments = kind, name, arguments
-		res, err := c.Call(ctx, r)
+		res, err := c.Call(ctx, r, nil)
 		if err != nil {
 			t.Fatalf("%s %s: %v", kind, name, err)
 		}
@@ -177,11 +177,11 @@ func testCall(t *testing.T, server Request, legacy bool) {
 
 	// Arguments that are not an object are not sent.
 	for _, arguments := range []string{"[1]", "{", `"a"`} {
-		if _, err := c.Call(ctx, Request{URL: server.URL, Kind: KindTool, Name: "echo", Arguments: arguments}); err == nil || !strings.Contains(err.Error(), "JSON object") {
+		if _, err := c.Call(ctx, Request{URL: server.URL, Kind: KindTool, Name: "echo", Arguments: arguments}, nil); err == nil || !strings.Contains(err.Error(), "JSON object") {
 			t.Errorf("arguments %s: %v", arguments, err)
 		}
 	}
-	if _, err := c.Call(ctx, Request{URL: server.URL}); err == nil {
+	if _, err := c.Call(ctx, Request{URL: server.URL}, nil); err == nil {
 		t.Error("nothing was called")
 	}
 }
@@ -206,7 +206,7 @@ func TestLegacySessionEnded(t *testing.T) {
 	} else {
 		res.Body.Close()
 	}
-	if res, err := c.Call(ctx, Request{URL: srv.URL + "/mcp", Name: "echo", Arguments: `{"text": "x"}`}); err != nil || !res.OK() {
+	if res, err := c.Call(ctx, Request{URL: srv.URL + "/mcp", Name: "echo", Arguments: `{"text": "x"}`}, nil); err != nil || !res.OK() {
 		t.Errorf("after the session ended: %v", err)
 	}
 }
@@ -277,7 +277,7 @@ func TestAuthorizer(t *testing.T) {
 	rec := &recorder{}
 	c := NewClient(&http.Client{Transport: rec}, r, authorize)
 	t.Cleanup(func() { c.Close() })
-	if _, err := c.Call(testContext(t), r); err != nil {
+	if _, err := c.Call(testContext(t), r, nil); err != nil {
 		t.Fatal(err)
 	}
 	rec.mu.Lock()
@@ -288,7 +288,7 @@ func TestAuthorizer(t *testing.T) {
 
 	failing := NewClient(&http.Client{}, r, func(context.Context, *rest.Auth) error { return errors.New("no token") })
 	t.Cleanup(func() { failing.Close() })
-	if res, err := failing.Call(testContext(t), r); err == nil || !strings.Contains(err.Error(), "no token") {
+	if res, err := failing.Call(testContext(t), r, nil); err == nil || !strings.Contains(err.Error(), "no token") {
 		t.Errorf("err = %v, res %+v %s", err, res, res.Result)
 	}
 }

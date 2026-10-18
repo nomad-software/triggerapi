@@ -120,10 +120,8 @@ func (r Request) endpoint() (string, error) {
 }
 
 // Response is what came of a call: its result, or the error the server
-// answered with. What the server sends while a call is under way, such as
-// its progress, is not kept: the SDK hands it over apart from the answer, so
-// it cannot be told when all of it has come. It is kept in the history as
-// JSON.
+// answered with, and what the server sent and asked while it was under way.
+// It is kept in the history as JSON.
 type Response struct {
 	// Result is the result of the call as JSON, or nil if Error is set.
 	Result json.RawMessage `json:"result,omitempty"`
@@ -137,6 +135,10 @@ type Response struct {
 	// Server the name and version the server gave.
 	Protocol string `json:"protocol,omitempty"`
 	Server   string `json:"server,omitempty"`
+	// Events are what the server sent, and asked and was answered, while
+	// the call was under way, in the order they came. The server sends
+	// them in the stream of its answer, ahead of it (see call.settle).
+	Events []Event `json:"events,omitempty"`
 }
 
 // ToolError returns what a tool said went wrong, if the result is that of a

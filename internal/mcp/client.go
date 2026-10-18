@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
@@ -36,6 +37,12 @@ type Client struct {
 
 	mu   sync.Mutex
 	conn *sdk.ClientSession
+
+	// calls are those under way, which what the server sends is given to,
+	// and tokens numbers their progress tokens.
+	live   sync.Mutex
+	calls  []*call
+	tokens atomic.Int64
 }
 
 // Authorizer completes an authorization before each HTTP request is made
@@ -66,7 +73,7 @@ func (c *Client) connected(ctx context.Context) (*sdk.ClientSession, error) {
 	}
 
 	// The server is told the name of the program, and no version.
-	client := sdk.NewClient(&sdk.Implementation{Name: "TriggerAPI"}, nil)
+	client := sdk.NewClient(&sdk.Implementation{Name: "TriggerAPI"}, c.options())
 	httpClient := *c.client
 	httpClient.Transport = &headers{base: c.client.Transport, request: c.request, authorize: c.authorize}
 	transport := &sdk.StreamableClientTransport{
@@ -81,6 +88,7 @@ func (c *Client) connected(ctx context.Context) (*sdk.ClientSession, error) {
 	if err != nil {
 		return nil, err
 	}
+	askToLog(ctx, conn)
 	c.conn = conn
 	return conn, nil
 }
@@ -145,8 +153,11 @@ func unauthorised(err error) error {
 }
 
 // Call calls what the request is for, which is for the server of the
-// client. A JSON-RPC error is returned as a Response, not an error.
-func (c *Client) Call(ctx context.Context, r Request) (*Response, error) {
+// client. A JSON-RPC error is returned as a Response, not an error. What the
+// server sends while the call is under way, and what it asks, goes to the
+// listener, unless it is nil, when what is asked is declined; either way it is
+// kept in the Events of the response.
+func (c *Client) Call(ctx context.Context, r Request, listener *Listener) (*Response, error) {
 	if r.Name == "" {
 		return nil, errors.New("no tool, resource or prompt is chosen")
 	}
@@ -157,14 +168,18 @@ func (c *Client) Call(ctx context.Context, r Request) (*Response, error) {
 
 	answer := &answer{}
 	ctx = context.WithValue(ctx, answerKey{}, answer)
-	start := time.Now()
+	call := c.begin(ctx, listener)
+	defer c.end(call)
+	ctx = context.WithValue(ctx, callKey{}, call)
 
 	var result any
 	err = c.with(ctx, func(conn *sdk.ClientSession) error {
 		var err error
 		switch r.Kind {
 		case KindTool, "":
-			result, err = conn.CallTool(ctx, &sdk.CallToolParams{Name: r.Name, Arguments: arguments})
+			params := &sdk.CallToolParams{Name: r.Name, Arguments: arguments}
+			call.prepare(params)
+			result, err = conn.CallTool(ctx, params)
 		case KindPrompt:
 			params := &sdk.GetPromptParams{Name: r.Name}
 			if arguments != nil {
@@ -172,16 +187,21 @@ func (c *Client) Call(ctx context.Context, r Request) (*Response, error) {
 					return fmt.Errorf("the arguments of a prompt are not all text: %w", err)
 				}
 			}
+			call.prepare(params)
 			result, err = conn.GetPrompt(ctx, params)
 		case KindResource:
-			result, err = conn.ReadResource(ctx, &sdk.ReadResourceParams{URI: r.Name})
+			params := &sdk.ReadResourceParams{URI: r.Name}
+			call.prepare(params)
+			result, err = conn.ReadResource(ctx, params)
 		default:
 			err = fmt.Errorf("%q is not a kind of thing to call", r.Kind)
 		}
 		return err
 	})
 
-	res := &Response{Duration: time.Since(start)}
+	duration := time.Since(call.start)
+	call.settle()
+	res := &Response{Duration: duration, Events: call.kept()}
 	res.Status, res.Headers = answer.get()
 	if conn := c.current(); conn != nil {
 		res.Protocol, res.Server = describe(conn.InitializeResult())

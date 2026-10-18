@@ -4,7 +4,7 @@ BINARY := triggerapi
 # halves the size of the binary.
 LDFLAGS := -s -w
 
-.PHONY: build run test vet screenshot icons mcp-server appimage macos clean
+.PHONY: build run test vet screenshot icons mcp-server rest-server appimage macos clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
@@ -34,6 +34,12 @@ icons:
 # make mcp-server ARGS="-token secret" or ARGS="-legacy".
 mcp-server:
 	go run ./test/mcpserver $(ARGS)
+
+# Starts the sample REST server at http://localhost:8001, which lists its
+# endpoints at /, to try streams of server-sent events against by hand.
+# Options go in ARGS, as in make rest-server ARGS="-addr localhost:9001".
+rest-server:
+	go run ./test/restserver $(ARGS)
 
 # Packs the program and the Qt libraries it uses into one file that runs
 # without installing anything. Releases are made by the GitHub workflow, on

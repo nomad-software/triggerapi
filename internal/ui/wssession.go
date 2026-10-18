@@ -256,8 +256,7 @@ func (w *Window) showWSMessages(messages []ws.Message) {
 	r.setBody(log, false)
 	r.setContent([]byte(log), "messages.txt")
 	// The newest message is the one wanted.
-	bar := r.body.VerticalScrollBar()
-	bar.SetValue(bar.Maximum())
+	scrollToEnd(r.body)
 }
 
 // showWSFields fills the bar beneath the messages: the state of the

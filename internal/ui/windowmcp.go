@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 
+	"github.com/mappu/miqt/qt6/mainthread"
+
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/history"
 	"github.com/nomad-software/triggerapi/internal/mcp"
@@ -48,10 +50,12 @@ func (w *Window) callMCP() {
 	client := w.mcpClientFor(req)
 	entry := w.historyEntry(w.requestUI(collection.TypeMCP), req.URL)
 
+	listener := w.mcpListener(strings.TrimSpace(req.URL))
+
 	// A token that needs the user to sign in is got before the call, which
 	// the client then finds.
-	w.run(w.mcp.call, w.mcpResponse, entry, w.authorizer(w.requestUI(collection.TypeMCP), &req.Auth), func(ctx context.Context) (outcome, error) {
-		res, err := client.Call(ctx, req)
+	w.run(w.mcp.call, w.mcpResponse, entry, w.authorizer(w.requestUI(collection.TypeMCP), &req.Auth), w.timeout(), func(ctx context.Context) (outcome, error) {
+		res, err := client.Call(ctx, req, listener)
 
 		// Values are captured from the result of a call that succeeded.
 		var captured []captureResult
@@ -68,6 +72,68 @@ func (w *Window) callMCP() {
 			record: func(e *history.Entry) { e.MCP = res },
 		}, err
 	})
+}
+
+// mcpListener returns what is told what the server sends while a call is
+// under way, which is shown while the request on show is the one called, and
+// asks the user what the server asks, naming the server as it is addressed.
+// What is asked is given up with the call.
+func (w *Window) mcpListener(server string) *mcp.Listener {
+	shown := w.shown
+	return &mcp.Listener{
+		Event: func(e mcp.Event) {
+			mainthread.Start(func() {
+				if shown == w.shown {
+					w.mcpResponse.noteEvent(e)
+				}
+			})
+		},
+		Elicit: func(ctx context.Context, e *mcp.Elicitation) (*mcp.ElicitAnswer, error) {
+			answer, ok := askUser(ctx, func(done func(*mcp.ElicitAnswer)) func() {
+				return askElicitation(w.QWidget, server, e, done)
+			})
+			if !ok {
+				return &mcp.ElicitAnswer{Action: mcp.ActionCancel}, nil
+			}
+			return answer, nil
+		},
+		Sample: func(ctx context.Context, s *mcp.Sampling) (*mcp.SampleAnswer, error) {
+			answer, ok := askUser(ctx, func(done func(*mcp.SampleAnswer)) func() {
+				return askSampling(w.QWidget, server, s, done)
+			})
+			switch {
+			case !ok:
+				return nil, ctx.Err()
+			case answer == nil:
+				return nil, mcp.ErrDeclined
+			}
+			return answer, nil
+		},
+	}
+}
+
+// askUser opens what asks the user something, on the main thread, and waits
+// for the answer it is given, or for ctx to be done, when it is closed with
+// the function it returned and false is reported.
+func askUser[T any](ctx context.Context, open func(done func(T)) (close func())) (T, bool) {
+	answers := make(chan T, 1)
+	var shut func()
+	mainthread.Wait(func() {
+		shut = open(func(answer T) {
+			select {
+			case answers <- answer:
+			default:
+			}
+		})
+	})
+	select {
+	case answer := <-answers:
+		return answer, true
+	case <-ctx.Done():
+		mainthread.Start(shut)
+		var none T
+		return none, false
+	}
 }
 
 // discoverMCP loads what the server of the MCP request has, to offer its

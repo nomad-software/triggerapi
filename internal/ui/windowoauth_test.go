@@ -188,7 +188,7 @@ func TestOAuthInBackground(t *testing.T) {
 	mainthread.Wait(func() { w.mcp.auth.getToken.Click() })
 	waitFor(t, "the token", func() bool { return strings.Contains(tokenState(w, w.mcp.auth), "There is a token") })
 	mainthread.Wait(func() { w.mcp.reload.Click() })
-	waitFor(t, "the capabilities", func() bool { return mainthread.Wait2(w.mcp.endpoint.count) == 4 })
+	waitFor(t, "the capabilities", func() bool { return mainthread.Wait2(w.mcp.endpoint.count) == 7 })
 }
 
 func TestOAuthWebSocket(t *testing.T) {

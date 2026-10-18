@@ -237,6 +237,8 @@ func NewWindow(files Files) *Window {
 	w.grpcResponse.setCaptureTable(w.grpc.captures)
 	w.graphqlResponse.setCaptureTable(w.graphql.captures)
 	w.mcpResponse.setCaptureTable(w.mcp.captures)
+	// What an MCP server sends while a call is under way is beside it.
+	w.mcpResponse.addEventsTab()
 	for _, ui := range w.uis {
 		if ui.timing {
 			ui.response.addTimingTab()

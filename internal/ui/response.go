@@ -47,6 +47,9 @@ type responsePanel struct {
 	// timing is the Timing tab, which only the panels of requests sent over
 	// HTTP have, and is otherwise nil.
 	timing *timingTab
+	// events is the Events tab, which only the panel of MCP requests has,
+	// and is otherwise nil.
+	events *eventsTab
 	// content is the body as it is saved: JSON formatted as it is shown,
 	// and any other HTTP response as it was received. fileName is a name
 	// for the file with the extension for what the content is, of which
@@ -62,9 +65,15 @@ type responsePanel struct {
 	now         func() time.Time
 	entry       *history.Entry
 	// captureDoc is the JSON that values are captured from, which the
-	// body ends with as it is shown: all of a REST response, and the last
-	// message of a gRPC one. It is empty if there is none.
+	// body ends with as it is shown: all of a REST response, the data of the
+	// last event of a stream of them, and the last message of a gRPC one. It
+	// is empty if there is none.
 	captureDoc string
+	// streamed is how many events of a stream of server-sent events are
+	// on show, and streaming records that more are coming (see
+	// showStream).
+	streamed  int
+	streaming bool
 	// chooseSave asks the user where to save a file, offering a name. It
 	// reports false if they decide against saving.
 	chooseSave func(name string) (string, bool)
@@ -288,6 +297,9 @@ func (p *responsePanel) setJSONColours(colours map[tokenKind]string) {
 // supplies the size.
 func (p *responsePanel) setBodyFont(family string) {
 	p.body.SetFont(fixedFont(family))
+	if p.events != nil {
+		p.events.log.SetFont(fixedFont(family))
+	}
 }
 
 // fixedFont returns the font of a family, falling back to the fixed width
@@ -308,6 +320,8 @@ func (p *responsePanel) clear() {
 	p.showCaptured(nil)
 	p.showTiming(nil, 0)
 	p.entry = nil
+	p.streamed, p.streaming = 0, false
+	p.showEvents(nil)
 }
 
 // maxHighlight is the size of response above which it is not treated as
@@ -370,7 +384,8 @@ func (p *responsePanel) addCapture(path, name string) {
 
 // Tabs of a response panel. Capture is the one on which what to capture from
 // the response is set, and Timing, which comes after it, says where the time
-// of the response went.
+// of the response went. The panel of MCP requests has Events in place of
+// Timing (see eventsTab).
 const (
 	tabResponse = iota
 	tabResponseHeaders
@@ -506,8 +521,12 @@ func (p *responsePanel) showError(err error, elapsed time.Duration) {
 
 // show shows the response to a REST request. Only its body goes in the
 // response; its status goes in the bar beneath, as a failure if it is an
-// error status.
+// error status. A stream of server-sent events is shown by showStream.
 func (p *responsePanel) show(res *rest.Response) {
+	if res.IsEventStream() {
+		p.showStream(res, false)
+		return
+	}
 	text := res.Text()
 	p.setBody(text, res.IsJSON())
 	// Values are captured from any body that is JSON, whatever it says it
@@ -524,13 +543,18 @@ func (p *responsePanel) show(res *rest.Response) {
 	}
 	p.setContent(content, responseFileName(res.Headers.Get("Content-Type")))
 	p.setHeaders(headerRows(res.Headers, ""))
-	p.setFields(
-		field{fieldCode, res.Status, res.StatusCode >= 400},
-		field{label: "Time", value: formatDuration(res.Duration)},
-		field{label: "Size", value: formatSize(len(res.Body))},
-		field{label: "Protocol", value: res.Proto},
-	)
+	p.setFields(append([]field{{fieldCode, res.Status, res.StatusCode >= 400}}, httpFields(res)...)...)
 	p.showTiming(res.Timing, res.Duration)
+}
+
+// httpFields returns the fields of the bar beneath an HTTP response that are
+// at its right: how long it took, its size and its protocol.
+func httpFields(res *rest.Response) []field {
+	return []field{
+		{label: "Time", value: formatDuration(res.Duration)},
+		{label: "Size", value: formatSize(len(res.Body))},
+		{label: "Protocol", value: res.Proto},
+	}
 }
 
 // showGraphQL shows the response to a GraphQL request as that to a REST
@@ -570,7 +594,8 @@ func (p *responsePanel) showRPC(res *rpc.Response) {
 // showMCP shows the result of a call to an MCP server as JSON, or the error
 // the server answered with. Values are captured from the result. The bar
 // beneath says how it went, as a failure if the server answered with an
-// error or the tool reported one.
+// error or the tool reported one, and the Events tab what the server sent
+// while it was under way.
 func (p *responsePanel) showMCP(res *mcp.Response) {
 	status, problem, failed := res.Outcome()
 	p.setBody(res.Text(), true)
@@ -586,6 +611,7 @@ func (p *responsePanel) showMCP(res *mcp.Response) {
 		field{label: "Server", value: res.Server},
 		field{label: "Protocol", value: res.Protocol},
 	)
+	p.showEvents(res.Events)
 }
 
 // noteOmitted says in the bar beneath a response from the history that its

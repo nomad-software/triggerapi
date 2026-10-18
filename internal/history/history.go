@@ -175,7 +175,12 @@ func (e *Entry) Text() string {
 func (e *Entry) size() int {
 	switch {
 	case e.HTTP != nil:
-		return len(e.HTTP.Body)
+		// A stream of events is kept as it came and as its events.
+		n := len(e.HTTP.Body)
+		for _, event := range e.HTTP.Events {
+			n += len(event.Data)
+		}
+		return n
 	case e.GRPC != nil:
 		n := 0
 		for _, m := range e.GRPC.Messages {
@@ -183,7 +188,11 @@ func (e *Entry) size() int {
 		}
 		return n
 	case e.MCP != nil:
-		return len(e.MCP.Result)
+		n := len(e.MCP.Result)
+		for _, event := range e.MCP.Events {
+			n += event.Size()
+		}
+		return n
 	case e.WebSocket != nil:
 		n := 0
 		for _, m := range e.WebSocket.Messages {
@@ -205,7 +214,7 @@ func (e *Entry) trim() {
 	switch {
 	case e.HTTP != nil:
 		res := *e.HTTP
-		res.Body = nil
+		res.Body, res.Events = nil, nil
 		e.HTTP = &res
 	case e.GRPC != nil:
 		res := *e.GRPC
@@ -213,7 +222,7 @@ func (e *Entry) trim() {
 		e.GRPC = &res
 	case e.MCP != nil:
 		res := *e.MCP
-		res.Result = nil
+		res.Result, res.Events = nil, nil
 		e.MCP = &res
 	case e.WebSocket != nil:
 		res := *e.WebSocket
