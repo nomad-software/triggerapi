@@ -144,11 +144,22 @@ wait "$pid" 2>/dev/null || true
 rm -rf "$scratch"
 
 # The disk image holds the app beside a link to Applications, to drag it
-# onto.
+# onto. hdiutil can fail with "Resource busy" while the system is still
+# looking at the files just copied (as it is on GitHub's runners, which
+# scan them), so it is tried a few times before giving up.
 mkdir -p "$BUILD/dmg"
 cp -R "$APP" "$BUILD/dmg/"
 ln -s /Applications "$BUILD/dmg/Applications"
-hdiutil create -volname TriggerAPI -srcfolder "$BUILD/dmg" -fs HFS+ -format UDZO -ov "$BUILD/$OUTPUT"
+tries=0
+until hdiutil create -volname TriggerAPI -srcfolder "$BUILD/dmg" -fs HFS+ -format UDZO -ov "$BUILD/$OUTPUT"; do
+	tries=$((tries + 1))
+	if [ "$tries" -ge 5 ]; then
+		echo "The disk image could not be made" >&2
+		exit 1
+	fi
+	echo "Trying to make the disk image again" >&2
+	sleep 5
+done
 rm -rf "$BUILD/dmg"
 
 echo "Made $BUILD/$OUTPUT"
