@@ -622,7 +622,9 @@ workflow builds on (macOS 14) or later, which the script works out from what
 is in the app and writes into its `Info.plist`.
 
 `make macos` runs the same script on a Mac with Apple Silicon and
-`brew install go pkgconf qt`. The icon files are drawn from the program's own
+`brew install go pkgconf qtbase`: the base of Qt alone, which is all
+TriggerAPI uses, as with the whole of Homebrew's `qt` the plugins of its
+other modules go into the app too, with what they use. The icon files are drawn from the program's own
 icon by `make icons`.
 
 ## gRPC

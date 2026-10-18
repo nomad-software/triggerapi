@@ -27,10 +27,12 @@ jobs:
     runs-on: macos-14
     steps:
       # Homebrew's Qt has the pkg-config files that the bindings are built
-      # with.
+      # with. Only its base is installed, which is all TriggerAPI uses, as
+      # macdeployqt would put the plugins of the other modules in the app
+      # too (see packaging/macos.sh).
       - name: Install Qt
         run: |
-          brew install pkgconf qt
+          brew install pkgconf qtbase
           echo "Qt $(pkg-config --modversion Qt6Widgets)"
 
       - uses: actions/checkout@v4

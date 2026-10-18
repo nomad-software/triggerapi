@@ -4,10 +4,13 @@
 # result is build/TriggerAPI-<version>-arm64.dmg.
 #
 # It runs on a Mac with Apple Silicon, with Go, the Xcode command line tools
-# and Homebrew's Qt (brew install go pkgconf qt), as the GitHub workflow has.
-# The Qt that pkg-config finds is the one built with, and MACDEPLOYQT, if
-# set, names its macdeployqt (the one on the path otherwise, or in the
-# folder of Homebrew's qt).
+# and the base of Homebrew's Qt (brew install go pkgconf qtbase), as the
+# GitHub workflow has. Only the base: macdeployqt puts in the app every
+# plugin of the kinds it uses that the Qt it is given has, and with all of
+# Homebrew's qt that is those of other modules too (the virtual keyboard,
+# PDF, SVG, WebP), with what they use. The Qt that pkg-config finds is the
+# one built with, and MACDEPLOYQT, if set, names its macdeployqt (the one on
+# the path otherwise, or in the folder of Homebrew's qtbase).
 #
 # The app is signed ad hoc, which Apple Silicon needs to run it at all, and
 # not with a Developer ID, so macOS warns that it cannot check it the first
@@ -21,8 +24,13 @@ ARCH=arm64
 BUILD=build
 APP="$BUILD/TriggerAPI.app"
 OUTPUT="TriggerAPI-$VERSION-$ARCH.dmg"
-MACDEPLOYQT="${MACDEPLOYQT:-$(command -v macdeployqt || echo "$(brew --prefix qt)/bin/macdeployqt")}"
+MACDEPLOYQT="${MACDEPLOYQT:-$(command -v macdeployqt || echo "$(brew --prefix qtbase)/bin/macdeployqt")}"
+BREW_LIB="$(brew --prefix)/lib"
 
+if [ ! -x "$MACDEPLOYQT" ]; then
+	echo "There is no macdeployqt at $MACDEPLOYQT: install Homebrew's qtbase, or qttools if it is not in that." >&2
+	exit 1
+fi
 if [ "$(uname -m)" != "$ARCH" ]; then
 	echo "This builds for Apple Silicon, and has to run on it." >&2
 	exit 1
@@ -46,10 +54,20 @@ for size in 16 32 128 256 512; do
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/triggerapi.icns"
 
+# The version is that of the tag, without its v, which macOS wants as
+# numbers; a build of no tag is 0.0.0. The app is given its Info.plist
+# before macdeployqt signs it, and the oldest macOS it runs on once what is
+# in it is known, below.
+SHORT="$(echo "$VERSION" | sed -n 's/^v\{0,1\}\([0-9][0-9.]*\)$/\1/p')"
+SHORT="${SHORT:-0.0.0}"
+sed -e "s/VERSION/$SHORT/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
+
 # macdeployqt copies into the app the Qt frameworks and plugins the program
 # uses, and the libraries of Homebrew those use in turn, and has the program
-# find them there instead of where they were built with.
-"$MACDEPLOYQT" "$APP" -verbose=1
+# find them there instead of where they were built with. Some of Homebrew's
+# libraries name others through @rpath, which it finds in Homebrew's folder
+# of libraries, where all of them are linked.
+"$MACDEPLOYQT" "$APP" -verbose=1 -libpath="$BREW_LIB"
 
 # machO lists the programs and libraries in the app, one to a line.
 machO() {
@@ -65,21 +83,18 @@ if [ -n "$outside" ]; then
 	exit 1
 fi
 
-# The version is that of the tag, without its v, which macOS wants as
-# numbers; a build of no tag is 0.0.0. The oldest macOS the app runs on is
-# the oldest that what is in it was built for, which for Homebrew's Qt is
-# the macOS of the machine it was built on.
-SHORT="$(echo "$VERSION" | sed -n 's/^v\{0,1\}\([0-9][0-9.]*\)$/\1/p')"
-SHORT="${SHORT:-0.0.0}"
+# The oldest macOS the app runs on is the oldest that what is in it was built
+# for, which for Homebrew's Qt is the macOS of the machine it was built on.
 MINIMUM="$(machO | while read -r file; do otool -l "$file"; done |
 	awk '$1 == "minos" { print $2 }' | sort -t . -k1,1n -k2,2n | tail -n 1)"
 MINIMUM="${MINIMUM:-14.0}"
-sed -e "s/VERSION/$SHORT/g" -e "s/MINIMUM/$MINIMUM/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
+plutil -replace LSMinimumSystemVersion -string "$MINIMUM" "$APP/Contents/Info.plist"
 plutil -lint "$APP/Contents/Info.plist"
 echo "The app needs macOS $MINIMUM or later"
 
 # Signed ad hoc, everything in it and then the app as a whole, after the
-# last change to it.
+# last change to it, in place of the signature macdeployqt gave it before
+# the minimum was put in.
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict "$APP"
 
