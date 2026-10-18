@@ -45,7 +45,15 @@ echo "Building TriggerAPI $VERSION"
 # longer than where Homebrew has them; without it the last few are left as
 # they were. It is only given to the last link, so that the bindings are
 # not compiled again.
-go build -ldflags "-s -w -extldflags=-Wl,-headerpad_max_install_names" -o "$APP/Contents/MacOS/triggerapi" .
+#
+# It is also built with the asynchronous preemption of goroutines off
+# (GODEBUG=asyncpreemptoff=1, made its default), as the signal Go preempts
+# them with, SIGURG, crashed it on macOS: something in the process other
+# than Go installs the handler of it again without SA_ONSTACK, and the
+# runtime gives up ("non-Go code set up signal handler without SA_ONSTACK
+# flag") when it arrives while Go code runs on the main thread. Goroutines
+# are still preempted where they call functions, which is all a GUI needs.
+go build -ldflags "-s -w -X=runtime.godebugDefault=asyncpreemptoff=1 -extldflags=-Wl,-headerpad_max_install_names" -o "$APP/Contents/MacOS/triggerapi" .
 
 # The icon is made from packaging/macos/triggerapi.png (make icons) at each
 # of the sizes macOS looks for, and those made into an .icns.
