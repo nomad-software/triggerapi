@@ -48,7 +48,8 @@ func (w *Window) toggleWS() {
 	request := w.ws.request().Expand(w.expander())
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &wsSession{ctx: ctx, cancel: cancel, start: time.Now()}
-	s.entry = w.historyEntry(w.requestUI(collection.TypeWebSocket), request.URL)
+	ui := w.requestUI(collection.TypeWebSocket)
+	s.entry = w.historyEntry(ui, request.URL)
 	w.socket = s
 
 	w.ws.connect.SetText("Cancel")
@@ -56,7 +57,7 @@ func (w *Window) toggleWS() {
 	w.wsResponse.setFields(field{label: fieldCode, value: "Connecting"})
 
 	limit := w.timeout()
-	authorize := w.authorizer(w.requestUI(collection.TypeWebSocket), &request.Auth)
+	authorize := w.authorizer(ui, &request.Auth)
 	go func() {
 		// The handshake is given the time limit once there is a token,
 		// which can take the user signing in.

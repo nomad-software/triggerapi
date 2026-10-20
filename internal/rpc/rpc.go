@@ -12,6 +12,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strings"
 	"time"
@@ -70,6 +71,11 @@ type Response struct {
 	// "gRPC (proto)", as its Content-Type header says. It is empty if there
 	// was no answer.
 	Protocol string `json:"protocol,omitempty"`
+	// Timing says where the time of the call went, as for a REST request:
+	// sending is that of every message, and the download that of the
+	// response from its headers to the end of the call. A response kept in
+	// the history from before has none.
+	Timing *rest.Timing `json:"timing,omitempty"`
 }
 
 // Protocol returns the RPC protocol, and the encoding of its messages, that
@@ -168,10 +174,7 @@ func (r Request) client() (target string, client *http.Client, closer func(), er
 	} else {
 		protocols.SetUnencryptedHTTP2(true)
 	}
-	settings := r.Network
-	if settings == nil {
-		settings = network.Default()
-	}
+	settings := r.network()
 	u, err := url.Parse(target)
 	if err != nil {
 		return "", nil, nil, err
@@ -182,6 +185,15 @@ func (r Request) client() (target string, client *http.Client, closer func(), er
 	}
 
 	return target, &http.Client{Transport: transport}, transport.CloseIdleConnections, nil
+}
+
+// network returns what the server is reached with, the default if the
+// caller gave nothing.
+func (r Request) network() *network.Client {
+	if r.Network == nil {
+		return network.Default()
+	}
+	return r.Network
 }
 
 // headers returns the metadata and authorization of the request as HTTP
@@ -276,11 +288,12 @@ func Invoke(ctx context.Context, r Request, schema *Schema) (*Response, error) {
 
 	res := &Response{}
 	start := time.Now()
+	trace := rest.NewTracer(start)
 
 	// A bidirectional stream lets one code path call every kind of method:
 	// the messages are sent, which for most methods is one, and responses
 	// are read until the server finishes.
-	stream := client.CallBidiStream(ctx)
+	stream := client.CallBidiStream(httptrace.WithClientTrace(ctx, trace.Trace()))
 	maps.Copy(stream.RequestHeader(), r.headers())
 
 	err = func() error {
@@ -313,7 +326,12 @@ func Invoke(ctx context.Context, r Request, schema *Schema) (*Response, error) {
 		}
 	}()
 
-	res.Duration = time.Since(start)
+	end := time.Now()
+	res.Duration = end.Sub(start)
+	// The HTTP request is connect's own, so one of the same address stands
+	// for it in saying what the network settings made of it.
+	req, _ := http.NewRequest(http.MethodPost, target+"/"+method.Name, nil)
+	res.Timing = trace.Timing(end, nil).Annotate(r.network(), req)
 	res.Headers = stream.ResponseHeader()
 	res.Protocol = Protocol(res.Headers.Get("Content-Type"))
 	res.Trailers = stream.ResponseTrailer()

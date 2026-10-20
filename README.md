@@ -185,7 +185,7 @@ bindings.
   when the first came), the number of messages of a gRPC call, or the server
   and protocol version of an MCP call. Failures are in red. The headers of the response, and the
   trailers of a gRPC call, are in a tab of their own.
-- The Timing tab of a REST or GraphQL response shows where the time went:
+- The Timing tab of a REST, GraphQL or gRPC response shows where the time went:
   the redirects, DNS lookup, TCP connect, TLS handshake, sending the request,
   waiting for the first byte of the response (mostly the server's own time)
   and downloading it, each with a bar on the time of the whole (in a colour
@@ -193,7 +193,9 @@ bindings.
   address, whether the connection was new or reused, and the TLS version and
   cipher. A request run with curl gives the times curl measures;
   after a redirect, curl adds up the times of each request, so only the
-  redirects, the wait and the download are shown.
+  redirects, the wait and the download are shown. For a gRPC call, sending
+  is that of every message, and the download from the response's headers to
+  the end of the call.
 - Capture values from a response into variables of the selected environment,
   such as a token from a login to use in later requests. The Capture tab of
   the response lists the variables to set, each with the path of its value in

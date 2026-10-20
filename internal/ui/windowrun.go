@@ -179,9 +179,10 @@ func (w *Window) send() {
 	req := request.Expand(w.expander())
 	req.Options = w.options()
 	req.Options.Stream = w.streamer(w.response)
-	entry := w.historyEntry(w.requestUI(collection.TypeREST), rest.JoinURL(req.URL, req.Params))
+	ui := w.requestUI(collection.TypeREST)
+	entry := w.historyEntry(ui, rest.JoinURL(req.URL, req.Params))
 
-	w.run(w.request.send, w.response, entry, w.authorizer(w.requestUI(collection.TypeREST), &req.Auth), 0, func(ctx context.Context) (outcome, error) {
+	w.run(w.request.send, w.response, entry, w.authorizer(ui, &req.Auth), 0, func(ctx context.Context) (outcome, error) {
 		res, err := rest.Send(ctx, w.client, req)
 		return w.restOutcome(res, request.Captures, request.Assertions, w.response, w.response.show), err
 	})
@@ -194,9 +195,10 @@ func (w *Window) executeCurl() {
 	// What runs is the command as it is shown: a value made by a function
 	// would not be the same if it were made again.
 	req := w.request.commanded
-	entry := w.historyEntry(w.requestUI(collection.TypeREST), rest.JoinURL(req.URL, req.Params))
+	ui := w.requestUI(collection.TypeREST)
+	entry := w.historyEntry(ui, rest.JoinURL(req.URL, req.Params))
 
-	w.run(w.request.execute, w.response, entry, w.authorizer(w.requestUI(collection.TypeREST), &req.Auth), w.timeout(), func(ctx context.Context) (outcome, error) {
+	w.run(w.request.execute, w.response, entry, w.authorizer(ui, &req.Auth), w.timeout(), func(ctx context.Context) (outcome, error) {
 		res, err := rest.RunCurl(ctx, req)
 		return w.restOutcome(res, request.Captures, request.Assertions, w.response, w.response.show), err
 	})
@@ -231,14 +233,9 @@ func (w *Window) streamer(response *responsePanel) func(*rest.Response) {
 // are of any response.
 func (w *Window) restOutcome(res *rest.Response, captures []capture.Rule, checks []assert.Check, response *responsePanel, show func(*rest.Response)) outcome {
 	var captured []captureResult
-	var facts *assert.Facts
-	if res != nil {
-		f := httpFacts(res)
-		facts = &f
-	}
 	return outcome{
 		checks: checks,
-		facts:  facts,
+		facts:  factsOf(res, httpFacts),
 		capture: func() {
 			if res.StatusCode >= 200 && res.StatusCode < 300 {
 				captured = w.capture(captures, res.Document())
@@ -260,9 +257,10 @@ func (w *Window) sendGraphQL() {
 	req, err := expanded.HTTP()
 	req.Options = w.options()
 	req.Options.Stream = w.streamer(w.graphqlResponse)
-	entry := w.historyEntry(w.requestUI(collection.TypeGraphQL), expanded.URL)
+	ui := w.requestUI(collection.TypeGraphQL)
+	entry := w.historyEntry(ui, expanded.URL)
 
-	w.run(w.graphql.send, w.graphqlResponse, entry, w.authorizer(w.requestUI(collection.TypeGraphQL), &req.Auth), 0, func(ctx context.Context) (outcome, error) {
+	w.run(w.graphql.send, w.graphqlResponse, entry, w.authorizer(ui, &req.Auth), 0, func(ctx context.Context) (outcome, error) {
 		if err != nil {
 			return outcome{}, err
 		}
@@ -312,15 +310,11 @@ func (w *Window) invoke() {
 		schema, _ = w.schemas.get(target)
 	}
 
-	entry := w.historyEntry(w.requestUI(collection.TypeGRPC), req.URL)
+	ui := w.requestUI(collection.TypeGRPC)
+	entry := w.historyEntry(ui, req.URL)
 
-	w.run(w.grpc.invoke, w.grpcResponse, entry, w.authorizer(w.requestUI(collection.TypeGRPC), &req.Auth), w.timeout(), func(ctx context.Context) (outcome, error) {
+	w.run(w.grpc.invoke, w.grpcResponse, entry, w.authorizer(ui, &req.Auth), w.timeout(), func(ctx context.Context) (outcome, error) {
 		res, err := rpc.Invoke(ctx, req, schema)
-		var grpcFacts *assert.Facts
-		if res != nil {
-			f := rpcFacts(res)
-			grpcFacts = &f
-		}
 
 		// Values are captured from the last message of a call that ended
 		// with OK, which is the only message of a unary method.
@@ -341,7 +335,7 @@ func (w *Window) invoke() {
 			},
 			record: func(e *history.Entry) { e.GRPC = res },
 			checks: request.Assertions,
-			facts:  grpcFacts,
+			facts:  factsOf(res, rpcFacts),
 		}, err
 	})
 }

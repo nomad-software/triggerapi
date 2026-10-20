@@ -11,6 +11,8 @@ import (
 	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/rest"
+	"github.com/nomad-software/triggerapi/internal/rpc"
+	"github.com/nomad-software/triggerapi/internal/rpc/rpctest"
 )
 
 // timingRows returns the stages and times of the rows of a Timing tab that
@@ -48,16 +50,16 @@ func TestTimingTab(t *testing.T) {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
-		// Only the panels of requests sent over HTTP have the tab, after
-		// the Capture tab.
-		for _, p := range []*responsePanel{w.response, w.graphqlResponse} {
+		// Only the panels of requests that are traced have the tab, after
+		// the Assertions tab.
+		for _, p := range []*responsePanel{w.response, w.graphqlResponse, w.grpcResponse} {
 			if p.timing == nil || p.tabs.Count() != tabTiming+1 || p.tabs.TabText(tabTiming) != "Timing" || p.tabs.IndexOf(p.timing.root) != tabTiming {
 				t.Errorf("the tabs are %d, the timing %v", p.tabs.Count(), p.timing)
 			}
 		}
-		for _, p := range []*responsePanel{w.grpcResponse, w.wsResponse, w.mcpResponse} {
+		for _, p := range []*responsePanel{w.wsResponse, w.mcpResponse} {
 			if p.timing != nil {
-				t.Error("a panel of a request not sent over HTTP has a Timing tab")
+				t.Error("a panel of a request that is not traced has a Timing tab")
 			}
 		}
 
@@ -128,6 +130,52 @@ func TestTimingTab(t *testing.T) {
 		w.response.showError(http.ErrHandlerTimeout, time.Second)
 		if w.response.timing.pages.CurrentIndex() != timingPageHint {
 			t.Error("the hint is not shown for an error")
+		}
+	})
+}
+
+// TestTimingTabGRPC checks that a gRPC call says where its time went, and
+// that one kept in the history from before there were timings has the hint.
+func TestTimingTabGRPC(t *testing.T) {
+	srv := rpctest.NewServer(rpctest.ReflectionAll)
+	defer srv.Close()
+
+	var w *Window
+	mainthread.Wait(func() {
+		w = NewWindow(testFiles(t).Files)
+		w.Show()
+		w.requests.addFolder()
+		addGRPCRequest(w)
+		w.grpc.url.SetText(srv.URL)
+		w.grpc.targetChanged()
+	})
+	waitFor(t, "the methods", func() bool { return w.grpc.method.count() == 4 })
+
+	mainthread.Wait(func() {
+		w.grpc.method.selectMethod("test.v1.Echo/Say")
+		w.grpc.message.SetPlainText(`{"text": "hello"}`)
+		w.grpc.invoke.Click()
+	})
+	waitFor(t, "the response", func() bool { return strings.Contains(w.grpcResponse.result.Text(), "0 OK") })
+
+	mainthread.Wait(func() {
+		tab := w.grpcResponse.timing
+		if tab.pages.CurrentIndex() != timingPageTable {
+			t.Fatal("the timing is not shown")
+		}
+		rows := timingRows(tab)
+		for _, stage := range []string{"TCP connect", "Request sent", "Waiting (TTFB)", "Download", "Total"} {
+			if !strings.HasSuffix(rows[stage], " ms") && !strings.HasSuffix(rows[stage], " s") {
+				t.Errorf("%s = %q", stage, rows[stage])
+			}
+		}
+		if details := tab.details.Text(); !strings.Contains(details, strings.TrimPrefix(srv.URL, "http://")) {
+			t.Errorf("details = %q", details)
+		}
+
+		w.grpcResponse.showRPC(&rpc.Response{CodeName: "OK"})
+		if tab.pages.CurrentIndex() != timingPageHint {
+			t.Error("the hint is not shown for a response with no timing")
 		}
 	})
 }

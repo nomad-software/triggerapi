@@ -102,22 +102,11 @@ func (w *WebSocket) Counts() (sent, received int) {
 // whether that was a failure: the HTTP status code, the name of the gRPC
 // status, the outcome of an MCP call or how a WebSocket connection ended.
 func (e *Entry) Status() (string, bool) {
-	switch {
-	case e.Error != "":
+	if e.Error != "" {
 		return "Error", true
-	case e.HTTP != nil:
-		failed := e.HTTP.StatusCode >= 400
-		if e.Request != nil && e.Request.Type == collection.TypeGraphQL && graphql.Errors(e.HTTP.Body) != "" {
-			failed = true
-		}
-		return strconv.Itoa(e.HTTP.StatusCode), failed
-	case e.GRPC != nil:
-		return e.GRPC.CodeName, !e.GRPC.OK()
-	case e.MCP != nil:
-		status, _, failed := e.MCP.Outcome()
-		return status, failed
-	case e.WebSocket != nil:
-		return e.WebSocket.Status, e.WebSocket.Failed
+	}
+	if r := e.response(); r != nil {
+		return r.status()
 	}
 	return "", false
 }
@@ -159,52 +148,19 @@ func (e *Entry) Matches(words []string) bool {
 // its error, the messages of a WebSocket connection, or the error there was
 // instead of a response. It is empty if the body was not kept.
 func (e *Entry) Text() string {
-	switch {
-	case e.Error != "":
+	if e.Error != "" {
 		return e.Error
-	case e.HTTP != nil:
-		return e.HTTP.Text()
-	case e.GRPC != nil:
-		return strings.Join(e.GRPC.Messages, "\n\n")
-	case e.MCP != nil:
-		if e.MCP.Result == nil && e.MCP.Error == nil {
-			return ""
-		}
-		return e.MCP.Text()
-	case e.WebSocket != nil:
-		return ws.Log(e.WebSocket.Messages)
+	}
+	if r := e.response(); r != nil {
+		return r.text()
 	}
 	return ""
 }
 
 // size returns the size of the body of the response, in bytes.
 func (e *Entry) size() int {
-	switch {
-	case e.HTTP != nil:
-		// A stream of events is kept as it came and as its events.
-		n := len(e.HTTP.Body)
-		for _, event := range e.HTTP.Events {
-			n += len(event.Data)
-		}
-		return n
-	case e.GRPC != nil:
-		n := 0
-		for _, m := range e.GRPC.Messages {
-			n += len(m)
-		}
-		return n
-	case e.MCP != nil:
-		n := len(e.MCP.Result)
-		for _, event := range e.MCP.Events {
-			n += event.Size()
-		}
-		return n
-	case e.WebSocket != nil:
-		n := 0
-		for _, m := range e.WebSocket.Messages {
-			n += len(m.Text)
-		}
-		return n
+	if r := e.response(); r != nil {
+		return r.size()
 	}
 	return 0
 }
@@ -215,27 +171,136 @@ func (e *Entry) trim() {
 	if size <= MaxBody {
 		return
 	}
-	// The responses are copied, as whoever recorded them may still be
-	// showing them.
+	e.response().omit(e)
+	e.Omitted = size
+}
+
+// response is the response of an entry of one of the kinds it can hold.
+type response interface {
+	// status is as Entry.Status gives it.
+	status() (string, bool)
+	// text is the body as it is shown.
+	text() string
+	// size is that of the body, in bytes.
+	size() int
+	// omit gives the entry a copy of the response without its body, as
+	// whoever recorded it may still be showing it.
+	omit(e *Entry)
+}
+
+// response returns the response of the entry, or nil if it has none.
+func (e *Entry) response() response {
 	switch {
 	case e.HTTP != nil:
-		res := *e.HTTP
-		res.Body, res.Events = nil, nil
-		e.HTTP = &res
+		return httpResponse{e.HTTP, e.Request != nil && e.Request.Type == collection.TypeGraphQL}
 	case e.GRPC != nil:
-		res := *e.GRPC
-		res.Messages = nil
-		e.GRPC = &res
+		return grpcResponse{e.GRPC}
 	case e.MCP != nil:
-		res := *e.MCP
-		res.Result, res.Events = nil, nil
-		e.MCP = &res
+		return mcpResponse{e.MCP}
 	case e.WebSocket != nil:
-		res := *e.WebSocket
-		res.Messages = nil
-		e.WebSocket = &res
+		return e.WebSocket
 	}
-	e.Omitted = size
+	return nil
+}
+
+// httpResponse is the response of a REST or GraphQL request.
+type httpResponse struct {
+	*rest.Response
+	// graphQL marks the response of a GraphQL request, which has failed if
+	// it reports errors, whatever its status.
+	graphQL bool
+}
+
+func (r httpResponse) status() (string, bool) {
+	failed := r.StatusCode >= 400 || r.graphQL && graphql.Errors(r.Body) != ""
+	return strconv.Itoa(r.StatusCode), failed
+}
+
+func (r httpResponse) text() string { return r.Text() }
+
+// size is that of the body, with the events of a stream, which is kept as it
+// came and as its events.
+func (r httpResponse) size() int {
+	n := len(r.Body)
+	for _, event := range r.Events {
+		n += len(event.Data)
+	}
+	return n
+}
+
+func (r httpResponse) omit(e *Entry) {
+	res := *r.Response
+	res.Body, res.Events = nil, nil
+	e.HTTP = &res
+}
+
+// grpcResponse is the response of a gRPC call.
+type grpcResponse struct{ *rpc.Response }
+
+func (r grpcResponse) status() (string, bool) { return r.CodeName, !r.OK() }
+
+func (r grpcResponse) text() string { return strings.Join(r.Messages, "\n\n") }
+
+func (r grpcResponse) size() int {
+	n := 0
+	for _, m := range r.Messages {
+		n += len(m)
+	}
+	return n
+}
+
+func (r grpcResponse) omit(e *Entry) {
+	res := *r.Response
+	res.Messages = nil
+	e.GRPC = &res
+}
+
+// mcpResponse is the response of a call to an MCP server.
+type mcpResponse struct{ *mcp.Response }
+
+func (r mcpResponse) status() (string, bool) {
+	status, _, failed := r.Outcome()
+	return status, failed
+}
+
+func (r mcpResponse) text() string {
+	if r.Result == nil && r.Error == nil {
+		return ""
+	}
+	return r.Text()
+}
+
+// size is that of the result, with the events of the call.
+func (r mcpResponse) size() int {
+	n := len(r.Result)
+	for _, event := range r.Events {
+		n += event.Size()
+	}
+	return n
+}
+
+func (r mcpResponse) omit(e *Entry) {
+	res := *r.Response
+	res.Result, res.Events = nil, nil
+	e.MCP = &res
+}
+
+func (w *WebSocket) status() (string, bool) { return w.Status, w.Failed }
+
+func (w *WebSocket) text() string { return ws.Log(w.Messages) }
+
+func (w *WebSocket) size() int {
+	n := 0
+	for _, m := range w.Messages {
+		n += len(m.Text)
+	}
+	return n
+}
+
+func (w *WebSocket) omit(e *Entry) {
+	res := *w
+	res.Messages = nil
+	e.WebSocket = &res
 }
 
 // Store is the history of a workspace, newest first.

@@ -198,6 +198,16 @@ func TestTrim(t *testing.T) {
 	if messages.GRPC.Messages != nil || messages.Omitted != MaxBody+2 {
 		t.Errorf("messages = %d, omitted %d", len(messages.GRPC.Messages), messages.Omitted)
 	}
+
+	socket := &WebSocket{Status: "Disconnected", Messages: []ws.Message{{Text: strings.Repeat("x", MaxBody)}, {Text: "y"}}}
+	connection := &Entry{Request: collection.New(collection.TypeWebSocket, ""), WebSocket: socket}
+	store.Add(connection, 10)
+	if connection.WebSocket.Messages != nil || connection.WebSocket.Status != "Disconnected" || connection.Omitted != MaxBody+1 {
+		t.Errorf("connection = %+v, omitted %d", connection.WebSocket, connection.Omitted)
+	}
+	if len(socket.Messages) != 2 {
+		t.Error("the connection recorded was changed")
+	}
 }
 
 func TestRemove(t *testing.T) {

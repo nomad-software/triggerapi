@@ -6,6 +6,8 @@ import (
 	"net/http/httptrace"
 	"sync"
 	"time"
+
+	"github.com/nomad-software/triggerapi/internal/network"
 )
 
 // Stage is a part of the time a request takes.
@@ -78,20 +80,27 @@ func (t *Timing) Phase(stage Stage) (Phase, bool) {
 // annotate adds to a timing what the network settings of the request made of
 // it, the request being the last made, after any redirects. It is given back.
 func (o Options) annotate(timing *Timing, req *http.Request) *Timing {
-	if timing == nil || o.Network == nil || req == nil {
-		return timing
-	}
-	timing.Proxy = o.Network.Proxy(req)
-	timing.Unverified = req.URL.Scheme == "https" && o.Network.Unverified(req.URL.Hostname())
-	return timing
+	return timing.Annotate(o.Network, req)
 }
 
-// tracer records the times of the events of a request, through the hooks of
+// Annotate adds to a timing what the network settings a request was sent
+// with made of it, and gives it back. A nil client or request adds nothing.
+func (t *Timing) Annotate(client *network.Client, req *http.Request) *Timing {
+	if t == nil || client == nil || req == nil {
+		return t
+	}
+	t.Proxy = client.Proxy(req)
+	t.Unverified = req.URL.Scheme == "https" && client.Unverified(req.URL.Hostname())
+	return t
+}
+
+// Tracer records the times of the events of a request, through the hooks of
 // httptrace, and makes a Timing of them. The hooks of a connection being
 // made can be called on goroutines of their own, so it is locked. Only the
 // last request is recorded where there are redirects; the time before it was
-// made is that of the redirects.
-type tracer struct {
+// made is that of the redirects. It is used by Send, and by the gRPC engine,
+// whose calls go over HTTP/2.
+type Tracer struct {
 	mu    sync.Mutex
 	start time.Time
 	// hops is how many requests have been made: one more than there were
@@ -109,15 +118,18 @@ type events struct {
 	gotConn, wrote, firstByte                                       time.Time
 	reused                                                          bool
 	address                                                         string
+	// tls is the state of the TLS connection, if it was one.
+	tls *tls.ConnectionState
 }
 
-func newTracer(start time.Time) *tracer {
-	return &tracer{start: start}
+// NewTracer returns a tracer of a request started at start.
+func NewTracer(start time.Time) *Tracer {
+	return &Tracer{start: start}
 }
 
 // note records the time of an event under the lock, unless it has been
 // recorded for the request being made.
-func (t *tracer) note(at *time.Time) {
+func (t *Tracer) note(at *time.Time) {
 	now := time.Now()
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -126,8 +138,9 @@ func (t *tracer) note(at *time.Time) {
 	}
 }
 
-// trace returns the hooks that record the events.
-func (t *tracer) trace() *httptrace.ClientTrace {
+// Trace returns the hooks that record the events, to be given to the
+// request with httptrace.WithClientTrace.
+func (t *Tracer) Trace() *httptrace.ClientTrace {
 	return &httptrace.ClientTrace{
 		// A connection is asked for once for every request, including each
 		// one made after a redirect, which starts the record again.
@@ -163,6 +176,10 @@ func (t *tracer) trace() *httptrace.ClientTrace {
 			t.reused = info.Reused
 			if info.Conn != nil {
 				t.address = info.Conn.RemoteAddr().String()
+				if conn, ok := info.Conn.(*tls.Conn); ok {
+					state := conn.ConnectionState()
+					t.tls = &state
+				}
 			}
 		},
 		WroteRequest:         func(httptrace.WroteRequestInfo) { t.note(&t.wrote) },
@@ -170,9 +187,10 @@ func (t *tracer) trace() *httptrace.ClientTrace {
 	}
 }
 
-// timing returns the Timing of the request, which ended with the last of its
-// response being read at end, and was answered with res.
-func (t *tracer) timing(end time.Time, res *http.Response) *Timing {
+// Timing returns the Timing of the request, which ended with the last of its
+// response being read at end, and was answered with res, which can be nil
+// where the response is not to hand, as with gRPC.
+func (t *Tracer) Timing(end time.Time, res *http.Response) *Timing {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -201,8 +219,12 @@ func (t *tracer) timing(end time.Time, res *http.Response) *Timing {
 	add(StageWait, t.wrote, t.firstByte)
 	add(StageDownload, t.firstByte, end)
 
+	state := t.tls
 	if res != nil && res.TLS != nil {
-		timing.TLS = tls.VersionName(res.TLS.Version) + ", " + tls.CipherSuiteName(res.TLS.CipherSuite)
+		state = res.TLS
+	}
+	if state != nil {
+		timing.TLS = tls.VersionName(state.Version) + ", " + tls.CipherSuiteName(state.CipherSuite)
 	}
 	return timing
 }

@@ -439,6 +439,16 @@ func (t *assertTable) showResults(results []assert.Result) {
 	}
 }
 
+// factsOf returns the facts of a response, made by facts, or nil if there
+// is no response, as when there was an error instead.
+func factsOf[R any](res *R, facts func(*R) assert.Facts) *assert.Facts {
+	if res == nil {
+		return nil
+	}
+	f := facts(res)
+	return &f
+}
+
 // httpFacts returns what is checked of an HTTP response: the status as its
 // code, then its status line, and the body values are captured from, which
 // for a stream of events is the data of the last.

@@ -2,9 +2,11 @@ package rest
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"reflect"
 	"strings"
 	"testing"
@@ -122,5 +124,31 @@ func TestTimingJSON(t *testing.T) {
 	var back Response
 	if err := json.Unmarshal(data, &back); err != nil || !reflect.DeepEqual(back.Timing, res.Timing) {
 		t.Errorf("timing = %+v, %v", back.Timing, err)
+	}
+}
+
+// TestTracerTLSWithoutResponse checks that the TLS of a request is known
+// from its connection where the response is not to hand, as with gRPC.
+func TestTracerTLSWithoutResponse(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+
+	trace := NewTracer(time.Now())
+	req, err := http.NewRequestWithContext(httptrace.WithClientTrace(context.Background(), trace.Trace()), http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+
+	timing := trace.Timing(time.Now(), nil)
+	if want := tls.VersionName(res.TLS.Version) + ", " + tls.CipherSuiteName(res.TLS.CipherSuite); timing.TLS != want {
+		t.Errorf("TLS = %q, want %q", timing.TLS, want)
+	}
+	if _, ok := timing.Phase(StageTLS); !ok {
+		t.Errorf("no TLS handshake in %+v", timing.Phases)
 	}
 }

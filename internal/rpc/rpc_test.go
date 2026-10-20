@@ -2,6 +2,7 @@ package rpc_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"reflect"
 	"strings"
@@ -393,5 +394,60 @@ func TestInvokeNetwork(t *testing.T) {
 	req.Network = nil
 	if _, err := rpc.Invoke(context.Background(), req, nil); err == nil {
 		t.Error("a name that does not exist was reached")
+	}
+}
+
+// TestInvokeTiming checks that a call says where its time went, as a REST
+// request does.
+func TestInvokeTiming(t *testing.T) {
+	srv := server(t, rpctest.ReflectionAll)
+	schema, err := rpc.Reflect(context.Background(), rpc.Request{URL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := rpc.Invoke(context.Background(), rpc.Request{URL: srv.URL, Method: "test.v1.Echo/Say", Message: `{"text": "hi"}`}, schema)
+	if err != nil || !res.OK() {
+		t.Fatalf("response %+v, %v", res, err)
+	}
+	timing := res.Timing
+	if timing == nil {
+		t.Fatal("no timing")
+	}
+	// The server is at an IP address, so no name is looked up, and there is
+	// no TLS.
+	var stages []rest.Stage
+	var last time.Duration
+	for _, p := range timing.Phases {
+		stages = append(stages, p.Stage)
+		if p.Start < last || p.End < p.Start || p.End > res.Duration {
+			t.Errorf("phase %+v is out of order (previous ended at %v, total %v)", p, last, res.Duration)
+		}
+		last = p.End
+	}
+	if want := []rest.Stage{rest.StageConnect, rest.StageSend, rest.StageWait, rest.StageDownload}; !reflect.DeepEqual(stages, want) {
+		t.Errorf("stages = %v, want %v", stages, want)
+	}
+	if timing.Address != strings.TrimPrefix(srv.URL, "http://") || timing.Reused || timing.TLS != "" || timing.Redirects != 0 {
+		t.Errorf("timing = %+v", timing)
+	}
+}
+
+// TestResponseWithoutTiming checks that a response kept in the history
+// from before there were timings is read as it was, with none.
+func TestResponseWithoutTiming(t *testing.T) {
+	var res rpc.Response
+	if err := json.Unmarshal([]byte(`{"code":0,"codeName":"OK","messages":["{}"],"duration":1000}`), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Timing != nil || res.CodeName != "OK" || len(res.Messages) != 1 {
+		t.Errorf("response = %+v", res)
+	}
+	data, err := json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "timing") {
+		t.Errorf("a response without a timing is written with one: %s", data)
 	}
 }

@@ -388,8 +388,8 @@ func Send(ctx context.Context, client *http.Client, r Request) (*Response, error
 	}
 
 	start := time.Now()
-	trace := newTracer(start)
-	req, err := r.Build(httptrace.WithClientTrace(ctx, trace.trace()))
+	trace := NewTracer(start)
+	req, err := r.Build(httptrace.WithClientTrace(ctx, trace.Trace()))
 	if err != nil {
 		return nil, err
 	}
@@ -415,7 +415,7 @@ func Send(ctx context.Context, client *http.Client, r Request) (*Response, error
 			Headers:    res.Header,
 			Body:       body,
 			Duration:   end.Sub(start),
-			Timing:     r.Options.annotate(trace.timing(end, res), res.Request),
+			Timing:     r.Options.annotate(trace.Timing(end, res), res.Request),
 		}
 	}
 

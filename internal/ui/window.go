@@ -221,7 +221,7 @@ func NewWindow(files Files) *Window {
 		{typ: collection.TypeGRPC, page: pageGRPC, editor: w.grpc, response: w.grpcResponse, send: w.invoke,
 			// The methods offered are those of the server.
 			shown:     func() { w.reflect(false) },
-			endpoints: &endpointSource{grpcEndpoints, w.grpc.endpoints, w.grpc.url.Text}},
+			endpoints: &endpointSource{grpcEndpoints, w.grpc.endpoints, w.grpc.url.Text}, timing: true},
 		{typ: collection.TypeWebSocket, page: pageWS, editor: w.ws, response: w.wsResponse, send: w.connectAndSendWS},
 		{typ: collection.TypeGraphQL, page: pageGraphQL, editor: w.graphql, response: w.graphqlResponse, send: w.sendGraphQL,
 			// The schema is that of the server, if it is on show.

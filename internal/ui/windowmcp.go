@@ -6,7 +6,6 @@ import (
 
 	"github.com/mappu/miqt/qt6/mainthread"
 
-	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/history"
 	"github.com/nomad-software/triggerapi/internal/mcp"
@@ -49,19 +48,15 @@ func (w *Window) callMCP() {
 	request := w.mcp.request()
 	req := request.Expand(w.expander())
 	client := w.mcpClientFor(req)
-	entry := w.historyEntry(w.requestUI(collection.TypeMCP), req.URL)
+	ui := w.requestUI(collection.TypeMCP)
+	entry := w.historyEntry(ui, req.URL)
 
 	listener := w.mcpListener(strings.TrimSpace(req.URL))
 
 	// A token that needs the user to sign in is got before the call, which
 	// the client then finds.
-	w.run(w.mcp.call, w.mcpResponse, entry, w.authorizer(w.requestUI(collection.TypeMCP), &req.Auth), w.timeout(), func(ctx context.Context) (outcome, error) {
+	w.run(w.mcp.call, w.mcpResponse, entry, w.authorizer(ui, &req.Auth), w.timeout(), func(ctx context.Context) (outcome, error) {
 		res, err := client.Call(ctx, req, listener)
-		var facts *assert.Facts
-		if res != nil {
-			f := mcpFacts(res)
-			facts = &f
-		}
 
 		// Values are captured from the result of a call that succeeded.
 		var captured []captureResult
@@ -77,7 +72,7 @@ func (w *Window) callMCP() {
 			},
 			record: func(e *history.Entry) { e.MCP = res },
 			checks: request.Assertions,
-			facts:  facts,
+			facts:  factsOf(res, mcpFacts),
 		}, err
 	})
 }

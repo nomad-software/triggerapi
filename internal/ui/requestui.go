@@ -55,8 +55,9 @@ type requestUI struct {
 	// endpoints is the table of the endpoints of the server, from which
 	// requests of the type are made, or nil if the type has none.
 	endpoints *endpointSource
-	// timing records that requests of the type go through rest.Send, and so
-	// their responses have a Timing tab.
+	// timing records that requests of the type are traced as they are sent
+	// (by rest.Send, or rpc.Invoke for gRPC), and so their responses have a
+	// Timing tab.
 	timing bool
 }
 

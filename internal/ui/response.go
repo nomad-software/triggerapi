@@ -644,6 +644,7 @@ func (p *responsePanel) showRPC(res *rpc.Response) {
 		field{label: "Messages", value: strconv.Itoa(len(res.Messages))},
 		field{label: "Protocol", value: res.Protocol},
 	)
+	p.showTiming(res.Timing, res.Duration)
 }
 
 // showMCP shows the result of a call to an MCP server as JSON, or the error
