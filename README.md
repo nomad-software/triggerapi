@@ -1,5 +1,3 @@
-![TriggerAPI: pull the trigger, test your APIs. A cowboy at his desk fires requests from a pistol at a rack of servers](docs/splash.png)
-
 # TriggerAPI
 
 A desktop client for making REST API, GraphQL and gRPC calls, calling the
