@@ -253,11 +253,7 @@ func Invoke(ctx context.Context, r Request, schema *Schema) (*Response, error) {
 	ins := make([]*dynamicpb.Message, len(texts))
 	for i, text := range texts {
 		ins[i] = dynamicpb.NewMessage(method.desc.Input())
-		text, err := mapEntries(text, method.desc.Input())
-		if err == nil {
-			err = (protojson.UnmarshalOptions{Resolver: schema.types}).Unmarshal([]byte(text), ins[i])
-		}
-		if err != nil {
+		if err := (protojson.UnmarshalOptions{Resolver: schema.types}).Unmarshal([]byte(text), ins[i]); err != nil {
 			if len(texts) > 1 {
 				return nil, fmt.Errorf("message %d is not valid: %w", i+1, err)
 			}
