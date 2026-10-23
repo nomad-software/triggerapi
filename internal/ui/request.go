@@ -195,7 +195,7 @@ func newRequestPanel() *requestPanel {
 	p.params = newKeyValueTable("Key", "Value")
 	p.params.onChange = p.paramsChanged
 	p.highlight.table(p.params.table)
-	p.auth = newAuthEditor(p.highlight)
+	p.auth = newAuthEditor(&p.panelState)
 	p.auth.onChange = p.changed
 
 	p.headers = newKeyValueTable("Header", "Value")
@@ -319,6 +319,13 @@ func (p *requestPanel) updatePreview() {
 	p.resolved.setPieces(pieces)
 }
 
+// commit reports what has been typed into the URL, and anything else
+// waiting, if there is anything.
+func (p *requestPanel) commit() {
+	p.url.commit()
+	p.panelState.commit()
+}
+
 // escape closes what is shown in place of the fields of the request: the
 // curl command, or else the preview of the URL. It reports if there was
 // anything to close.
@@ -374,10 +381,10 @@ func (p *requestPanel) newBodyTab() *qt.QWidget {
 
 	p.bodyRaw = qt.NewQPlainTextEdit2()
 	p.bodyRaw.SetFont(qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont))
-	p.bodyRaw.OnTextChanged(p.changed)
+	p.typedText(p.bodyRaw)
 	p.highlight.document(p.bodyRaw.Document(), p.bodyIsJSON)
 	p.bodyFold = newFolder(p.bodyRaw, p.bodyIsJSON)
-	p.format = newFormatButton(p.bodyRaw)
+	p.format = newFormatButton(p.bodyRaw, p.commit)
 	p.format.button.SetVisible(false)
 
 	p.bodyForm = newKeyValueTable("Key", "Value")

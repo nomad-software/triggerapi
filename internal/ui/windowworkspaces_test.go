@@ -67,6 +67,7 @@ func TestEncryption(t *testing.T) {
 	}
 
 	contents := func() []string {
+		writer.Flush()
 		var all []string
 		for _, path := range paths {
 			data, err := os.ReadFile(path)

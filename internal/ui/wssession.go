@@ -40,6 +40,7 @@ type wsSession struct {
 // handshake is given the time limit of the settings; the connection, once
 // open, has none.
 func (w *Window) toggleWS() {
+	w.commit()
 	if w.socket != nil {
 		w.disconnectWS()
 		return
@@ -144,6 +145,7 @@ func (w *Window) readWS(s *wsSession) {
 // sendWS sends the message of the request, with the active environment
 // applied to it, over the open connection.
 func (w *Window) sendWS() {
+	w.commit()
 	s := w.socket
 	if s == nil || s.conn == nil {
 		return

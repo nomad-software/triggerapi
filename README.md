@@ -22,6 +22,14 @@ bindings.
 - **Native.** It is a single compiled program with a Qt interface, not a web
   browser in a window, so it starts quickly and needs nothing else installed
   but Qt.
+- **Never waits.** Everything slow happens in the background, away from the
+  window. Requests, sign-ins, server reflection, GraphQL introspection and
+  MCP discovery all run concurrently, and you can cancel any of them. Streams
+  of events and WebSocket messages show up as they arrive. Saving is in the
+  background too, so even a large workspace saves without
+  holding up the window. Typing is saved when you finish a field, not on
+  every key, so editing a large body or message never lags. The concurrent
+  code is tested under Go's race detector.
 - **REST, GraphQL, gRPC, MCP and WebSocket together.** Every kind of request
   lives in the same folders and uses the same environments, and REST,
   GraphQL, gRPC and MCP requests capture values for each other.
@@ -850,7 +858,13 @@ removed in the Workspaces tab of the sidebar; the selected one is the one in
 use. The workspaces folder can be kept elsewhere, such as a folder that is
 synced or shared, by choosing its location in File > Settings.
 
-Changes are saved as they are made. The files of the workspaces are encrypted,
+Changes are saved as they are made: what is typed into a field once the
+field is finished with (Return, or moving to anything else), and before a
+request is sent, another is opened or TriggerAPI is closed. The files are
+encrypted and written in the background, and everything waiting is written
+before TriggerAPI closes. Every file is replaced atomically and flushed to the
+disk first, so a crash or a power cut leaves it as it was or as it was to be,
+never half written. The files of the workspaces are encrypted,
 and they and the settings file can be read and written only by the user who
 runs TriggerAPI.
 
@@ -942,6 +956,13 @@ make test
 ```
 
 The interface tests run Qt offscreen, so they do not need a display.
+
+The concurrent code is tested for data races with Go's race detector, which
+the first time builds the Qt bindings again and takes several minutes:
+
+```sh
+go test -race ./... -timeout 600s
+```
 
 The screenshot at the top of this file is drawn by a test, from sample
 requests, and is made again with:

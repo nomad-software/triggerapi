@@ -27,6 +27,8 @@ type requestEditor interface {
 	highlighter() *placeholderHighlighter
 	// setOnChange sets what is called after the user edits the request.
 	setOnChange(onChange func())
+	// commit reports what has been typed and not yet reported, if anything.
+	commit()
 	// setCodeFont sets the font of the code the panel shows.
 	setCodeFont(family string)
 	// refreshPlaceholders recolours the placeholders after the environment
@@ -70,6 +72,8 @@ type panelState struct {
 	updating  bool
 	// onChange is called after the user edits any part of the request.
 	onChange func()
+	// pending is set while an edit is waiting to be committed (edited).
+	pending bool
 }
 
 func newPanelState() panelState {
@@ -82,8 +86,56 @@ func (s *panelState) setOnChange(onChange func()) { s.onChange = onChange }
 
 // changed reports an edit, unless the panel is being filled.
 func (s *panelState) changed() {
-	if !s.updating && s.onChange != nil {
-		s.onChange()
+	if !s.updating {
+		// What is reported is the whole request, so an edit waiting for
+		// commit goes with it.
+		s.pending = false
+		if s.onChange != nil {
+			s.onChange()
+		}
+	}
+}
+
+// edited records an edit, unless the panel is being filled, to be reported
+// only once it is committed (commit). It is for what is typed, which would
+// otherwise have the requests, every one of them, saved on every key.
+func (s *panelState) edited() {
+	if !s.updating {
+		s.pending = true
+	}
+}
+
+// typedText has what is typed into a text editor of the panel reported once
+// it is committed: when the editor loses the keyboard, or through
+// Window.commit.
+func (s *panelState) typedText(edit *qt.QPlainTextEdit) {
+	edit.OnTextChanged(s.edited)
+	edit.OnFocusOutEvent(func(super func(*qt.QFocusEvent), event *qt.QFocusEvent) {
+		s.commit()
+		super(event)
+	})
+}
+
+// typedLine does the same for a line edit, which is also committed on
+// Return.
+func (s *panelState) typedLine(edit *qt.QLineEdit) {
+	edit.OnTextChanged(func(string) { s.edited() })
+	edit.OnEditingFinished(s.commit)
+}
+
+// commit reports the edit that is waiting, if there is one.
+func (s *panelState) commit() {
+	if s.pending {
+		s.changed()
+	}
+}
+
+// commit reports what has been typed into any request UI and not yet
+// reported, which saves it: before another request is shown, a request is
+// sent, the request being composed is taken and the window closes.
+func (w *Window) commit() {
+	for _, ui := range w.uis {
+		ui.editor.commit()
 	}
 }
 

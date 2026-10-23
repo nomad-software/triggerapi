@@ -83,16 +83,20 @@ type authEditor struct {
 	clearToken *qt.QPushButton
 	cancel     context.CancelFunc
 
-	// onChange is called after any of the fields change, as is onEdited,
-	// which the window has show the token for what is in them.
+	// onChange is called after the type, grant or client authentication
+	// is chosen; what is typed into the fields is reported through the
+	// state of the panel, once it is committed. onEdited is called after
+	// any of them change, typed or not, and has the window show the token
+	// for what is in them.
 	onChange func()
 	onEdited func()
 }
 
-// newAuthEditor creates the editor. The placeholders in its fields are
-// coloured by the highlighter. The password is shown as it is typed, like the
-// token, so that a placeholder in it can be read.
-func newAuthEditor(highlight *placeholderHighlighter) *authEditor {
+// newAuthEditor creates the editor of the panel whose state is given. The
+// placeholders in its fields are coloured by the highlighter of the state.
+// The password is shown as it is typed, like the token, so that a
+// placeholder in it can be read.
+func newAuthEditor(state *panelState) *authEditor {
 	a := &authEditor{
 		typ:          qt.NewQComboBox2(),
 		username:     qt.NewQLineEdit2(),
@@ -125,8 +129,9 @@ func newAuthEditor(highlight *placeholderHighlighter) *authEditor {
 	}
 
 	for _, edit := range a.edits() {
-		edit.OnTextChanged(func(string) { a.changed() })
-		highlight.lineEdit(edit)
+		state.typedLine(edit)
+		edit.OnTextChanged(func(string) { a.edited() })
+		state.highlight.lineEdit(edit)
 	}
 	a.redirectURL.SetPlaceholderText(oauth.DefaultRedirect + " on a free port")
 	a.scopes.SetPlaceholderText("Separated by spaces")
@@ -227,10 +232,17 @@ func (a *authEditor) showGrantFields() {
 	a.oauthForm.SetRowVisible2(a.deviceURL.QWidget, grant == rest.GrantDeviceCode)
 }
 
+// changed reports a choice of the type, the grant or the client
+// authentication.
 func (a *authEditor) changed() {
 	if a.onChange != nil {
 		a.onChange()
 	}
+	a.edited()
+}
+
+// edited has the token shown for what is in the fields.
+func (a *authEditor) edited() {
 	if a.onEdited != nil {
 		a.onEdited()
 	}

@@ -74,16 +74,19 @@ var advised int
 
 // loadEnvs reads the environments a test window saved.
 func loadEnvs(path string) (*env.Store, error) {
+	writer.Flush()
 	return env.LoadWith(path, testKeys)
 }
 
 // loadHistory reads the history a test window saved.
 func loadHistory(path string) (*history.Store, error) {
+	writer.Flush()
 	return history.LoadWith(path, testKeys)
 }
 
 // loadRequests reads the requests a test window saved.
 func loadRequests(path string) (*collection.Store, error) {
+	writer.Flush()
 	return collection.LoadWith(path, testKeys)
 }
 

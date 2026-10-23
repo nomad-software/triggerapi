@@ -38,7 +38,7 @@ func (w *Window) saveRequest() {
 // composed returns the request that is not saved, as it is in the request
 // UI, with a name. It is not in the store.
 func (w *Window) composed(name string) *collection.Request {
-	w.request.url.commit()
+	w.commit()
 	return w.requestUI(w.unsaved).editor.compose(name)
 }
 
@@ -48,7 +48,7 @@ func (w *Window) stash(tab *requestTab) {
 	if tab != nil && tab.request == nil {
 		tab.draft = w.composed("")
 	} else {
-		w.request.url.commit()
+		w.commit()
 	}
 }
 

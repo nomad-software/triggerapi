@@ -178,6 +178,8 @@ func (s *workspaceList) duplicate() {
 	if current == "" {
 		return
 	}
+	// The files are copied as they are once what is waiting is written.
+	writer.Flush()
 	name, err := workspace.Duplicate(s.dir(), current)
 	if err != nil {
 		s.warn(fmt.Sprintf("The workspace could not be duplicated: %v.", err))
@@ -206,6 +208,8 @@ func (s *workspaceList) renamed(row int, name string) {
 	previous := s.names[row]
 	name = strings.TrimSpace(name)
 
+	// Nothing waiting may be written to the folder once it has gone.
+	writer.Flush()
 	err := workspace.Rename(s.dir(), previous, name)
 	if err != nil {
 		name = previous
@@ -245,6 +249,8 @@ func (s *workspaceList) remove() {
 	if !s.confirm(fmt.Sprintf("Remove the workspace %q with all of its environments and requests? This cannot be undone.", name)) {
 		return
 	}
+	// Nothing waiting may be written to the folder once it has gone.
+	writer.Flush()
 	if err := workspace.Remove(s.dir(), name); err != nil {
 		s.warn(fmt.Sprintf("The workspace was not removed: %v.", err))
 		return

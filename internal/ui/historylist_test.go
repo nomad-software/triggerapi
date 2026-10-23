@@ -172,6 +172,7 @@ func TestHistoryRemove(t *testing.T) {
 		}
 
 		// Nothing is written until the history is flushed.
+		writer.Flush()
 		if _, err := os.Stat(files.History); err == nil {
 			t.Error("the history was written before it was flushed")
 		}

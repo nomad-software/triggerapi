@@ -8,8 +8,8 @@ import (
 	"errors"
 	"io/fs"
 	"os"
-	"path/filepath"
 
+	"github.com/nomad-software/triggerapi/internal/atomicfile"
 	"github.com/nomad-software/triggerapi/internal/crypt"
 )
 
@@ -44,15 +44,28 @@ func Save(path string, v any) error {
 // SaveWith writes v to the JSON file at path, encrypted with keys unless
 // they are nil, replacing it atomically.
 func SaveWith(path string, v any, keys *crypt.Keys) error {
-	data, err := json.MarshalIndent(v, "", "  ")
+	data, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	data, err = keys.Encrypt(append(data, '\n'))
+	return seal(path, data, keys, write)
+}
+
+// seal writes the JSON data, as json.Marshal makes it, to the file at path
+// with write: indented, as json.MarshalIndent would have made it, and
+// encrypted with keys unless they are nil.
+func seal(path string, data []byte, keys *crypt.Keys, write func(string, []byte) error) error {
+	var indented bytes.Buffer
+	indented.Grow(len(data) * 3 / 2)
+	if err := json.Indent(&indented, data, "", "  "); err != nil {
+		return err
+	}
+	indented.WriteByte('\n')
+	sealed, err := keys.Encrypt(indented.Bytes())
 	if err != nil {
 		return err
 	}
-	return write(path, data)
+	return write(path, sealed)
 }
 
 // Convert has the file at path, which was written with the keys from,
@@ -93,23 +106,8 @@ func Convert(path string, from, to *crypt.Keys) error {
 	return write(path, converted)
 }
 
-// write replaces the file at path atomically. The file can be read and
-// written by the user alone.
+// write replaces the file at path atomically, so that a crash leaves it as
+// it was or as it was to be. It can be read and written by the user alone.
 func write(path string, data []byte) error {
-	// A temporary file is made with just those permissions.
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-
-	return os.Rename(tmp.Name(), path)
+	return atomicfile.Write(path, data, 0o600)
 }

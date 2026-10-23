@@ -162,9 +162,9 @@ func openKeys(parent *qt.QWidget, s settings.Settings) (*crypt.Keys, error) {
 // files encrypted as they are, and nothing can be read or saved until there
 // are keys again, which the user is told.
 func (w *Window) changeKeys(keys *crypt.Keys) error {
-	// The history is written with the keys it was read with before the
-	// files are converted.
-	w.history.flush()
+	// What has been edited is written with the keys it was read with before
+	// the files are converted.
+	w.writeFiles()
 	if keys == nil {
 		w.keys = nil
 		w.workspaces.open(w.config.Workspace)
@@ -195,9 +195,10 @@ func (w *Window) changeKeys(keys *crypt.Keys) error {
 // and requests in place of those of the one before.
 func (w *Window) openWorkspace(name string) {
 	// The pinned requests of the workspace being left are noted while its
-	// requests are still there to be found, and its history is written.
+	// requests are still there to be found, and what has been edited in it
+	// is written.
 	w.keepSet()
-	w.history.flush()
+	w.writeFiles()
 
 	l := w.loadWorkspace(name)
 	w.config.Workspace = name
@@ -229,6 +230,18 @@ func (w *Window) keepSet() {
 	}
 }
 
+// writeFiles has everything edited written to the files of the workspace in
+// use, and waits until it has been: what is typed and not yet committed, the
+// history, and what writer has yet to write. It is called before the files
+// are read, copied or converted other than through the stores, and when the
+// window closes. It returns why any file is not as it was last saved, which
+// has already been shown in the status bar.
+func (w *Window) writeFiles() error {
+	w.commit()
+	w.history.flush()
+	return writer.Flush()
+}
+
 // renamedWorkspace follows the workspace in use to its new name, which is
 // also the name of the folder its files are in.
 func (w *Window) renamedWorkspace(name string) {
@@ -247,8 +260,8 @@ func (w *Window) renamedWorkspace(name string) {
 // moveWorkspaces keeps the workspaces in another folder from now on. If
 // there are none in it yet, the ones there are now are copied there.
 func (w *Window) moveWorkspaces(from string) error {
-	// The history is written where it is before it is copied.
-	w.history.flush()
+	// What has been edited is written where it is before it is copied.
+	w.writeFiles()
 	to := w.workspacesDir()
 
 	names, err := workspace.List(to)
@@ -300,6 +313,7 @@ func (w *Window) exportWorkspaces(public, archive string) error {
 	if err != nil {
 		return err
 	}
+	w.writeFiles()
 	return workspace.Export(w.workspacesDir(), archive, w.keys, recipient)
 }
 

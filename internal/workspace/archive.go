@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"archive/zip"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nomad-software/triggerapi/internal/atomicfile"
 	"github.com/nomad-software/triggerapi/internal/crypt"
 )
 
@@ -34,32 +36,24 @@ func Export(dir, archive string, own, recipient *crypt.Keys) error {
 		return errors.New("there are no workspaces to export")
 	}
 
-	// The archive is written beside where it is to be, and put there once
-	// it is whole.
-	tmp, err := os.CreateTemp(filepath.Dir(archive), filepath.Base(archive)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-
-	w := zip.NewWriter(tmp)
+	// The archive is made whole before it is written, atomically.
+	var data bytes.Buffer
+	w := zip.NewWriter(&data)
 	for _, name := range names {
 		// A workspace with no files yet is still one.
 		if _, err := w.Create(name + "/"); err != nil {
-			tmp.Close()
 			return err
 		}
 		for _, file := range []string{environmentsFile, requestsFile} {
 			if err := exportFile(w, filepath.Join(dir, name, file), name+"/"+file, own, recipient); err != nil {
-				tmp.Close()
 				return fmt.Errorf("%s of %s: %w", file, name, err)
 			}
 		}
 	}
-	if err := errors.Join(w.Close(), tmp.Close()); err != nil {
+	if err := w.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), archive)
+	return atomicfile.Write(archive, data.Bytes(), fileMode)
 }
 
 // exportFile adds a file to an archive, encrypted to the recipient. A file
@@ -139,7 +133,7 @@ func Unpack(dir, archive string, keys *crypt.Keys) ([]string, error) {
 		}
 		added = append(added, unique)
 		for file, data := range files[name] {
-			if err := os.WriteFile(filepath.Join(dir, unique, file), data, fileMode); err != nil {
+			if err := atomicfile.Write(filepath.Join(dir, unique, file), data, fileMode); err != nil {
 				return added, err
 			}
 		}

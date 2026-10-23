@@ -168,6 +168,7 @@ func TestEnvironmentsUnreadableFile(t *testing.T) {
 		w.environments.add()
 	})
 
+	writer.Flush()
 	if data, _ := os.ReadFile(path); string(data) != "{oops" {
 		t.Errorf("file was overwritten: %q", data)
 	}

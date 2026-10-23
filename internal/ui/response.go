@@ -6,7 +6,6 @@ import (
 	"html"
 	"maps"
 	"net/http"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -17,6 +16,7 @@ import (
 	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/assert"
+	"github.com/nomad-software/triggerapi/internal/atomicfile"
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/graphql"
 	"github.com/nomad-software/triggerapi/internal/history"
@@ -234,7 +234,7 @@ func (p *responsePanel) saveBody() {
 	if !ok {
 		return
 	}
-	if err := os.WriteFile(path, p.content, 0o644); err != nil {
+	if err := atomicfile.Write(path, p.content, 0o644); err != nil {
 		p.warn(fmt.Sprintf("The response could not be saved: %v.", err))
 	}
 }

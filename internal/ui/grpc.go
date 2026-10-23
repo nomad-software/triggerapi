@@ -65,7 +65,7 @@ func newGRPCPanel() *grpcPanel {
 
 	p.url = qt.NewQLineEdit2()
 	p.url.SetPlaceholderText("Server address, e.g. localhost:50051")
-	p.url.OnTextChanged(func(string) { p.changed() })
+	p.typedLine(p.url)
 	p.url.OnEditingFinished(p.targetChanged)
 	p.highlight.lineEdit(p.url)
 
@@ -106,7 +106,7 @@ func newGRPCPanel() *grpcPanel {
 	p.message = qt.NewQPlainTextEdit2()
 	p.message.SetFont(fixed)
 	p.message.SetPlaceholderText("The request message as JSON")
-	p.message.OnTextChanged(p.changed)
+	p.typedText(p.message)
 	// The message is always JSON.
 	p.highlight.document(p.message.Document(), always)
 	p.messageFold = newFolder(p.message, always)
@@ -116,7 +116,7 @@ func newGRPCPanel() *grpcPanel {
 
 	exampleBar := qt.NewQHBoxLayout2()
 	exampleBar.AddWidget(p.example.QWidget)
-	p.format = newFormatButton(p.message)
+	p.format = newFormatButton(p.message, p.commit)
 	p.format.several = true
 	exampleBar.AddWidget(p.format.button.QWidget)
 	exampleBar.AddStretch()
@@ -130,7 +130,7 @@ func newGRPCPanel() *grpcPanel {
 	messageLayout.AddWidget2(p.message.QWidget, 1)
 	messageLayout.AddLayout(exampleBar.QLayout)
 
-	p.auth = newAuthEditor(p.highlight)
+	p.auth = newAuthEditor(&p.panelState)
 	p.auth.onChange = p.changed
 
 	p.captures = newCaptureTable()

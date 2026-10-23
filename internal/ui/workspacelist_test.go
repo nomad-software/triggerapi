@@ -75,6 +75,7 @@ func TestWorkspaces(t *testing.T) {
 		if w.config.Workspace != "Alpha" || w.environments.path != workspace.Environments(dir, "Alpha") || w.requests.path != workspace.Requests(dir, "Alpha") {
 			t.Errorf("after rename: workspace %q, paths %q and %q", w.config.Workspace, w.environments.path, w.requests.path)
 		}
+		writer.Flush()
 		if _, err := os.Stat(filepath.Join(dir, "New Workspace")); err == nil {
 			t.Error("the old folder is still there")
 		}
@@ -168,6 +169,7 @@ func TestWorkspaces(t *testing.T) {
 			t.Errorf("after remove: open %+v, requests at %q", w.open, w.requests.path)
 		}
 	})
+	writer.Flush()
 	if _, err := os.Stat(filepath.Join(dir, "Alpha")); err == nil {
 		t.Error("the folder of the removed workspace is still there")
 	}

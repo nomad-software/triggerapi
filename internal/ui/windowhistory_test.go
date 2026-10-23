@@ -117,6 +117,7 @@ func TestHistoryRecordsREST(t *testing.T) {
 
 		// The history is written when the window closes, encrypted like the
 		// rest.
+		writer.Flush()
 		if _, err := os.Stat(files.History); err == nil {
 			t.Error("the history was written before the window closed")
 		}

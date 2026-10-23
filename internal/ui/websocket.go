@@ -40,7 +40,7 @@ func newWSPanel() *wsPanel {
 
 	p.url = qt.NewQLineEdit2()
 	p.url.SetPlaceholderText("Server address, e.g. ws://localhost:8080/socket or {{host}}/socket")
-	p.url.OnTextChanged(func(string) { p.changed() })
+	p.typedLine(p.url)
 	p.highlight.lineEdit(p.url)
 
 	p.connect = qt.NewQPushButton3("Connect")
@@ -57,7 +57,7 @@ func newWSPanel() *wsPanel {
 	p.message = qt.NewQPlainTextEdit2()
 	p.message.SetFont(qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont))
 	p.message.SetPlaceholderText("The message to send, as text or JSON")
-	p.message.OnTextChanged(p.changed)
+	p.typedText(p.message)
 	// A message can be any text, and is coloured and folded when it looks
 	// like JSON.
 	isJSON := func() bool {
@@ -71,7 +71,7 @@ func newWSPanel() *wsPanel {
 	// be pressed, and a plain button while it cannot (styleSend).
 	p.send = qt.NewQPushButton3("Send")
 	p.send.SetEnabled(false)
-	p.format = newFormatButton(p.message)
+	p.format = newFormatButton(p.message, p.commit)
 
 	sendBar := qt.NewQHBoxLayout2()
 	sendBar.AddWidget(p.send.QWidget)
@@ -87,7 +87,7 @@ func newWSPanel() *wsPanel {
 	p.headers.onChange = p.changed
 	p.highlight.table(p.headers.table)
 
-	p.auth = newAuthEditor(p.highlight)
+	p.auth = newAuthEditor(&p.panelState)
 	p.auth.onChange = p.changed
 
 	tabs := qt.NewQTabWidget2()

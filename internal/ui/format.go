@@ -15,14 +15,18 @@ type formatButton struct {
 	// several records that the editor can hold several values one after
 	// another, as the messages of a stream of gRPC.
 	several bool
+	// done is called once the JSON has been set out. Unlike what is typed,
+	// that is one change, which is saved at once.
+	done func()
 
 	// warn tells the user of a problem.
 	warn func(message string)
 }
 
-// newFormatButton returns the button which sets out the JSON in an editor.
-func newFormatButton(edit *qt.QPlainTextEdit) *formatButton {
-	f := &formatButton{edit: edit}
+// newFormatButton returns the button which sets out the JSON in an editor,
+// calling done once it has.
+func newFormatButton(edit *qt.QPlainTextEdit, done func()) *formatButton {
+	f := &formatButton{edit: edit, done: done}
 	f.button = newIconButton(colourAction, drawBraces, "Format the JSON, with each value on a line of its own")
 	f.button.OnClicked(f.format)
 
@@ -52,4 +56,5 @@ func (f *formatButton) format() {
 	defer release(cursor)
 	cursor.Select(qt.QTextCursor__Document)
 	cursor.InsertText(formatted)
+	f.done()
 }

@@ -119,7 +119,13 @@ func waitFor(t *testing.T, what string, condition func() bool) {
 // addGRPCRequest adds a gRPC request to the window. It must be called on the
 // main thread.
 func addGRPCRequest(w *Window) *collection.Request {
-	testRequestType = collection.TypeGRPC
+	return addRequestOf(w, collection.TypeGRPC)
+}
+
+// addRequestOf adds a request of a type to the window, and opens it. It must
+// be called on the main thread.
+func addRequestOf(w *Window, typ collection.Type) *collection.Request {
+	testRequestType = typ
 	defer func() { testRequestType = collection.TypeREST }()
 
 	w.requests.addRequest()

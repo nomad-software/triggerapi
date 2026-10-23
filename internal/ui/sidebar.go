@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 
 	qt "github.com/mappu/miqt/qt6"
+	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/crypt"
+	"github.com/nomad-software/triggerapi/internal/jsonfile"
 )
 
 // importKind describes a kind of file that something of type T can be
@@ -65,9 +67,16 @@ func importDocument[K comparable](chooseSource func() (K, bool), chooseFile func
 	}
 }
 
-// saveStore writes a store of the sidebar to its file with the keys that
-// keys returns, if it has a file, and reports a failure to onError.
-func saveStore(path string, keys func() *crypt.Keys, save func(string, *crypt.Keys) error, onError func(error)) {
+// writer writes the files of the stores of the sidebar in the background,
+// so that the GUI thread does not wait for the encryption and the disk.
+// writeFiles waits for it.
+var writer = jsonfile.NewWriter()
+
+// saveStore has a store of the sidebar written to its file with the keys
+// that keys returns, if it has a file, and reports a failure to onError on
+// the GUI thread. The store is turned into JSON at once; it is encrypted and
+// written by writer.
+func saveStore(path string, keys func() *crypt.Keys, store any, onError func(error)) {
 	if path == "" {
 		return
 	}
@@ -75,7 +84,12 @@ func saveStore(path string, keys func() *crypt.Keys, save func(string, *crypt.Ke
 	if keys != nil {
 		with = keys()
 	}
-	if err := save(path, with); err != nil && onError != nil {
+	report := func(err error) {
+		if err != nil && onError != nil {
+			mainthread.Start(func() { onError(err) })
+		}
+	}
+	if err := writer.Save(path, store, with, report); err != nil && onError != nil {
 		onError(err)
 	}
 }

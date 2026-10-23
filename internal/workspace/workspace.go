@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+
+	"github.com/nomad-software/triggerapi/internal/atomicfile"
 )
 
 // Default is the name of the workspace there is to begin with.
@@ -288,7 +290,8 @@ func CopyAll(from, to string) error {
 }
 
 // copyFile copies a file, unless there is none to copy or there is already
-// one where it would go.
+// one where it would go. The copy is written atomically, so that a crash
+// never leaves a part of it.
 func copyFile(from, to string) error {
 	data, err := os.ReadFile(from)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -297,15 +300,10 @@ func copyFile(from, to string) error {
 		return err
 	}
 
-	file, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, fileMode)
-	if errors.Is(err, fs.ErrExist) {
+	if _, err := os.Lstat(to); err == nil {
 		return nil
-	} else if err != nil {
+	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	if _, err := file.Write(data); err != nil {
-		file.Close()
-		return err
-	}
-	return file.Close()
+	return atomicfile.Write(to, data, fileMode)
 }

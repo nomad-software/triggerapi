@@ -598,5 +598,5 @@ func (h *historyList) flush() {
 	if _, err := os.Stat(filepath.Dir(h.path)); errors.Is(err, fs.ErrNotExist) {
 		return
 	}
-	saveStore(h.path, h.keys, h.store.SaveWith, h.onError)
+	saveStore(h.path, h.keys, h.store, h.onError)
 }

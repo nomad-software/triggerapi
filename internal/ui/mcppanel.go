@@ -121,7 +121,7 @@ func newMCPPanel() *mcpPanel {
 
 	p.url = qt.NewQLineEdit2()
 	p.url.SetPlaceholderText("Server address, e.g. http://localhost:8000/mcp or {{host}}/mcp")
-	p.url.OnTextChanged(func(string) { p.changed() })
+	p.typedLine(p.url)
 	p.url.OnEditingFinished(p.targetChanged)
 	p.highlight.lineEdit(p.url)
 
@@ -165,12 +165,12 @@ func newMCPPanel() *mcpPanel {
 	p.arguments = qt.NewQPlainTextEdit2()
 	p.arguments.SetFont(qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont))
 	p.arguments.SetPlaceholderText(`The arguments as a JSON object, e.g. {"city": "London"}`)
-	p.arguments.OnTextChanged(p.changed)
+	p.typedText(p.arguments)
 	p.highlight.document(p.arguments.Document(), always)
 	p.argumentsFold = newFolder(p.arguments, always)
 
 	p.example = qt.NewQPushButton3("Use Example Arguments")
-	p.format = newFormatButton(p.arguments)
+	p.format = newFormatButton(p.arguments, p.commit)
 
 	exampleBar := qt.NewQHBoxLayout2()
 	exampleBar.AddWidget(p.example.QWidget)
@@ -187,7 +187,7 @@ func newMCPPanel() *mcpPanel {
 	p.headers.onChange = p.changed
 	p.highlight.table(p.headers.table)
 
-	p.auth = newAuthEditor(p.highlight)
+	p.auth = newAuthEditor(&p.panelState)
 	p.auth.onChange = p.changed
 
 	p.captures = newCaptureTable()

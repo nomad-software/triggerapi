@@ -176,4 +176,6 @@ func (w *Window) useMCPExample() {
 		return
 	}
 	w.mcp.arguments.SetPlainText(example)
+	// Unlike what is typed, it is one change, saved at once.
+	w.mcp.commit()
 }

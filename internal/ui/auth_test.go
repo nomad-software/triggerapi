@@ -12,7 +12,7 @@ import (
 
 func TestAuthEditor(t *testing.T) {
 	mainthread.Wait(func() {
-		a := newAuthEditor(newPlaceholderHighlighter())
+		a := newAuthEditor(new(newPanelState()))
 
 		// With nothing of OAuth filled in, there are no settings of it,
 		// as in a request from before there was OAuth.
@@ -65,7 +65,7 @@ func TestAuthEditor(t *testing.T) {
 func TestTokenStateWidth(t *testing.T) {
 	var a *authEditor
 	mainthread.Wait(func() {
-		a = newAuthEditor(newPlaceholderHighlighter())
+		a = newAuthEditor(new(newPanelState()))
 		a.oauthForm.SetFieldGrowthPolicy(qt.QFormLayout__FieldsStayAtSizeHint)
 		a.typ.SetCurrentIndex(3) // OAuth 2.0
 		a.showToken("There is no token yet. One is got when the request is sent, or with Get Token.", false)

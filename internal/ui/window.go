@@ -267,10 +267,13 @@ func NewWindow(files Files) *Window {
 		}
 		// An open connection is closed with the window, as is the client of
 		// an MCP server. The connection goes in the history, which is then
-		// written.
+		// written with everything else that is waiting to be.
 		w.disconnectWS()
 		w.closeMCP()
-		w.history.flush()
+		if err := w.writeFiles(); err != nil {
+			// The status bar is going away with the window.
+			fmt.Fprintln(os.Stderr, "triggerapi: changes could not be saved:", err)
+		}
 		w.removeDiffFiles()
 		super(event)
 	})
@@ -349,6 +352,7 @@ func NewWindow(files Files) *Window {
 	w.requests.onRename = w.tabs.rename
 	// What is in the folders decides which endpoints have requests.
 	w.requests.onSave = w.syncEndpoints
+	w.requests.commit = w.commit
 
 	w.history = newHistoryList(l.history, l.historyPath)
 	w.history.onError = saveFailed
@@ -714,8 +718,8 @@ func (w *Window) openRequest(r *collection.Request) {
 // an empty unsaved REST request if r is nil. The environment editor is left
 // open if it is.
 func (w *Window) show(r *collection.Request) {
-	// What was typed into the URL is kept by the request it was typed into.
-	w.request.url.commit()
+	// What was typed is kept by the request it was typed into.
+	w.commit()
 	if w.cancel != nil {
 		w.cancel()
 	}

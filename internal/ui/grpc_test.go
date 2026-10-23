@@ -195,6 +195,7 @@ func TestGRPCAndRESTRequests(t *testing.T) {
 
 		grpcRequest := addGRPCRequest(w)
 		w.grpc.url.SetText("localhost:1")
+		w.commit()
 
 		if restRequest.Type != collection.TypeREST || restRequest.URL != "example.com" || grpcRequest.GRPC.URL != "localhost:1" {
 			t.Errorf("requests = %+v, %+v", restRequest.Request, grpcRequest.GRPC)

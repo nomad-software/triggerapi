@@ -241,8 +241,13 @@ func TestSelectorWidth(t *testing.T) {
 		w.closeEditor()
 	})
 
+	// The layout is done once the drop-down has been widened and then
+	// squeezed into the window, which can take more than one pass.
 	waitFor(t, "the layout", func() bool {
-		return mainthread.Wait2(func() bool { return w.environment.environment.Width() > selectorMinWidth })
+		return mainthread.Wait2(func() bool {
+			width := w.environment.environment.Width()
+			return width > selectorMinWidth && width < w.Width()
+		})
 	})
 
 	mainthread.Wait(func() {

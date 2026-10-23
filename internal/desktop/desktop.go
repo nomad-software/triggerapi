@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/nomad-software/triggerapi/internal/atomicfile"
 )
 
 // Name is the name of the desktop entry, without its extension, and of the
@@ -102,8 +104,8 @@ func Write(data, exec, class string, icon []byte) error {
 	)
 }
 
-// writeFile writes data to a file through a temporary one beside it, unless
-// it already holds that data.
+// writeFile writes data to a file atomically, unless it already holds that
+// data.
 func writeFile(path string, data []byte) error {
 	if len(data) == 0 {
 		return nil
@@ -114,21 +116,5 @@ func writeFile(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(0o644); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	return atomicfile.Write(path, data, 0o644)
 }

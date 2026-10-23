@@ -292,7 +292,7 @@ func (s *envList) save() {
 	if s.onChange != nil {
 		s.onChange()
 	}
-	saveStore(s.path, s.keys, s.store.SaveWith, s.onError)
+	saveStore(s.path, s.keys, s.store, s.onError)
 }
 
 // environmentIcon returns the icon shown before the name of an environment.

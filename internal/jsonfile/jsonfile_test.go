@@ -1,6 +1,7 @@
 package jsonfile
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -162,5 +163,29 @@ func TestFilePermissions(t *testing.T) {
 	}
 	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
 		t.Errorf("mode after converting = %v, %v", info.Mode().Perm(), err)
+	}
+}
+
+// A file is written as json.MarshalIndent makes it, with a newline at the
+// end, although it is indented apart from being made into JSON.
+func TestSaveFormat(t *testing.T) {
+	type nested struct {
+		Name  string            `json:"name"`
+		Items []document        `json:"items"`
+		Map   map[string]string `json:"map"`
+		Empty []string          `json:"empty"`
+		HTML  string            `json:"html"`
+	}
+	v := nested{Name: "n", Items: []document{{Name: "a"}, {}}, Map: map[string]string{"b": "2", "a": "1"}, Empty: []string{}, HTML: "<a href=\"x\">&</a>"}
+	path := filepath.Join(t.TempDir(), "doc.json")
+	if err := Save(path, v); err != nil {
+		t.Fatal(err)
+	}
+	want, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(path); string(got) != string(want)+"\n" {
+		t.Errorf("file = %s, want %s", got, want)
 	}
 }

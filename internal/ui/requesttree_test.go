@@ -213,6 +213,7 @@ func TestRequestsUnreadableFile(t *testing.T) {
 		w.environments.add()
 	})
 
+	writer.Flush()
 	if data, _ := os.ReadFile(files.Requests); string(data) != "{oops" {
 		t.Errorf("file was overwritten: %q", data)
 	}
@@ -293,6 +294,7 @@ func TestNestedFolders(t *testing.T) {
 			t.Errorf("open = %+v", w.open)
 		}
 		w.grpc.url.SetText("localhost:1")
+		w.commit()
 		if get.GRPC.URL != "localhost:1" {
 			t.Errorf("edit went to %+v", get.GRPC)
 		}
@@ -491,6 +493,7 @@ func TestFoldersStartClosed(t *testing.T) {
 	}
 
 	// Whether a folder is open is never saved.
+	writer.Flush()
 	if data, err := os.ReadFile(files.Requests); err != nil {
 		t.Fatal(err)
 	} else if saved, err := loadRequests(files.Requests); err != nil || len(saved.Folders) != 2 || strings.Contains(string(data), "collapsed") {

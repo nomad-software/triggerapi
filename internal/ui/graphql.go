@@ -79,7 +79,7 @@ func newGraphQLPanel() *graphqlPanel {
 
 	p.url = qt.NewQLineEdit2()
 	p.url.SetPlaceholderText("Endpoint, e.g. https://api.example.com/graphql or {{host}}/graphql")
-	p.url.OnTextChanged(func(string) { p.changed() })
+	p.typedLine(p.url)
 	p.url.OnEditingFinished(func() { p.loadSchema(false) })
 	p.highlight.lineEdit(p.url)
 
@@ -99,7 +99,7 @@ func newGraphQLPanel() *graphqlPanel {
 	p.query = qt.NewQPlainTextEdit2()
 	p.query.SetFont(fixed)
 	p.query.SetPlaceholderText("The query, e.g. { user(id: 1) { name } }")
-	p.query.OnTextChanged(p.changed)
+	p.typedText(p.query)
 	// The query is coloured as GraphQL in the colours of JSON, and folded
 	// as JSON is, by its braces.
 	p.highlight.graphql(p.query.Document())
@@ -113,10 +113,10 @@ func newGraphQLPanel() *graphqlPanel {
 	p.variables = qt.NewQPlainTextEdit2()
 	p.variables.SetFont(fixed)
 	p.variables.SetPlaceholderText(`The variables of the query as a JSON object, e.g. {"id": 1}`)
-	p.variables.OnTextChanged(p.changed)
+	p.typedText(p.variables)
 	p.highlight.document(p.variables.Document(), always)
 	p.variablesFold = newFolder(p.variables, always)
-	p.format = newFormatButton(p.variables)
+	p.format = newFormatButton(p.variables, p.commit)
 
 	formatBar := qt.NewQHBoxLayout2()
 	formatBar.AddWidget(p.format.button.QWidget)
@@ -131,7 +131,7 @@ func newGraphQLPanel() *graphqlPanel {
 	p.headers.onChange = p.changed
 	p.highlight.table(p.headers.table)
 
-	p.auth = newAuthEditor(p.highlight)
+	p.auth = newAuthEditor(&p.panelState)
 	p.auth.onChange = p.changed
 
 	p.captures = newCaptureTable()

@@ -76,8 +76,10 @@ type outcome struct {
 // nil (see Window.authorizer), and is not sent if it cannot be. The work is
 // then given up once it has taken as long as limit, unless that is zero,
 // when it keeps to the time limit of the settings itself, as rest.Send does
-// to the headers of a stream of events.
+// to the headers of a stream of events. What was typed into the request is
+// saved first.
 func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *history.Entry, authorize func(context.Context) error, limit time.Duration, work func(context.Context) (outcome, error)) {
+	w.commit()
 	if w.cancel != nil {
 		w.cancel()
 		return
@@ -174,7 +176,7 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *his
 
 // send starts the REST request, or cancels the request in flight.
 func (w *Window) send() {
-	w.request.url.commit()
+	w.commit()
 	request := w.request.request()
 	req := request.Expand(w.expander())
 	req.Options = w.options()
@@ -444,4 +446,6 @@ func (w *Window) useExample() {
 		return
 	}
 	w.grpc.message.SetPlainText(example)
+	// Unlike what is typed, it is one change, saved at once.
+	w.grpc.commit()
 }

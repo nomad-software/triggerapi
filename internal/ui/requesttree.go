@@ -83,9 +83,19 @@ type requestTree struct {
 	// onSave is called after any change to the store, when it is saved.
 	onSave  func()
 	onError func(error)
+	// commit has what was typed into the open request and is not yet in
+	// the store put there, before a request is copied (Window.commit).
+	commit func()
 	// keys returns the keys the file is encrypted with, which are nil if
 	// it is not to be.
 	keys func() *crypt.Keys
+}
+
+// commitTyped calls commit, if it is set.
+func (t *requestTree) commitTyped() {
+	if t.commit != nil {
+		t.commit()
+	}
 }
 
 func newRequestTree(store *collection.Store, path string) *requestTree {
@@ -727,6 +737,7 @@ func (t *requestTree) insert(request *collection.Request) {
 // copy keeps a copy of the selected request, or of the selected folder and
 // everything in it, to be pasted. Nothing is copied from a heading.
 func (t *requestTree) copy() {
+	t.commitTyped()
 	item := t.tree.CurrentItem()
 	if item == nil {
 		return
@@ -783,6 +794,7 @@ func (t *requestTree) paste() {
 // and everything in it, beside the one it is a copy of, and starts editing
 // its name. A copy of a request is opened.
 func (t *requestTree) duplicate() {
+	t.commitTyped()
 	item := t.tree.CurrentItem()
 	if item == nil {
 		return
@@ -951,5 +963,5 @@ func (t *requestTree) save() {
 	if t.onSave != nil {
 		defer t.onSave()
 	}
-	saveStore(t.path, t.keys, t.store.SaveWith, t.onError)
+	saveStore(t.path, t.keys, t.store, t.onError)
 }
