@@ -331,6 +331,7 @@ func NewWindow(files Files) *Window {
 	}
 
 	w.editor.onChange = w.environments.update
+	w.editor.onSort = w.environments.setSort
 	w.editor.close.OnClicked(w.closeEditor)
 
 	w.workspaces.onOpen = w.openWorkspace

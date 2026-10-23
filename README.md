@@ -357,6 +357,13 @@ bindings.
 - Give each variable a description. Several variables can share a name, to
   keep the values it is switched between: switching one on switches the
   other off.
+- Variables stay in the order you add them. Click the Variable, Value or
+  Description heading to sort them by it, again for the other way, and a
+  third time to go back to your order. Shift+click another heading to sort
+  by it as well, among variables that are the same in the first (by name and
+  then value, say); the headings show the order with numbered arrows. Each
+  environment remembers its own sort. Sorting only changes how variables are
+  shown, never the order they are kept in.
 - Placeholders are coloured wherever they are used, the password of basic
   authorization included, which is shown as it is typed: green if the
   selected environment gives them a value, and red if it does not define

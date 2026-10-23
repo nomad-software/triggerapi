@@ -26,6 +26,41 @@ type envEditor struct {
 
 	// onChange is called with the edited values after every change.
 	onChange func(name string, variables []env.Variable)
+	// onSort is called with how the variables are shown sorted after the
+	// user sorts them by the headings, which is nil for not at all.
+	onSort func([]env.SortKey)
+}
+
+// sortNames are the columns variables can be sorted by, with the names they
+// are kept by in the file of environments.
+var sortNames = map[int]string{
+	colKey:         env.SortVariable,
+	colValue:       env.SortValue,
+	colDescription: env.SortDescription,
+}
+
+// envSort returns the sort of the variables of an environment that keys of
+// the table are.
+func envSort(keys []sortKey) []env.SortKey {
+	var sort []env.SortKey
+	for _, k := range keys {
+		sort = append(sort, env.SortKey{Column: sortNames[k.column], Descending: k.descending})
+	}
+	return sort
+}
+
+// tableSort returns the keys of the table a sort of the variables of an
+// environment is, leaving out a column this version does not know.
+func tableSort(sort []env.SortKey) []sortKey {
+	var keys []sortKey
+	for _, k := range sort {
+		for column, name := range sortNames {
+			if name == k.Column {
+				keys = append(keys, sortKey{column, k.Descending})
+			}
+		}
+	}
+	return keys
 }
 
 func newEnvEditor() *envEditor {
@@ -40,6 +75,14 @@ func newEnvEditor() *envEditor {
 	e.variables.describe("Description")
 	// Variables with one name are alternatives, of which one is in use.
 	e.variables.exclusive = true
+	// The variables are kept in the order they were added, which decides
+	// nothing but that, and shown sorted only as the user chooses.
+	e.variables.sortByHeadings()
+	e.variables.onSort = func(keys []sortKey) {
+		if e.onSort != nil {
+			e.onSort(envSort(keys))
+		}
+	}
 
 	bar := qt.NewQHBoxLayout2()
 	bar.AddWidget(qt.NewQLabel3("Environment").QWidget)
@@ -62,7 +105,8 @@ func newEnvEditor() *envEditor {
 	return e
 }
 
-// load shows the environment without calling onChange.
+// load shows the environment, with its variables sorted as it says, without
+// calling onChange or onSort.
 func (e *envEditor) load(environment *env.Environment) {
 	items := make([]describedPair, 0, len(environment.Variables))
 	for _, v := range environment.Variables {
@@ -73,6 +117,7 @@ func (e *envEditor) load(environment *env.Environment) {
 	e.named = environment.Name
 	e.name.SetText(environment.Name)
 	e.variables.setDescribed(items)
+	e.variables.setSort(tableSort(environment.Sort))
 	e.updating = false
 }
 

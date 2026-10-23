@@ -75,6 +75,76 @@ func TestSaveLoad(t *testing.T) {
 	}
 }
 
+// A file from before variables could be sorted in the editor is read with no
+// sort, and written again as it was; each environment keeps its own sort, by
+// several columns, and the variables the order they are in, whatever it is.
+func TestSortKeys(t *testing.T) {
+	dir := t.TempDir()
+	old := filepath.Join(dir, "old.json")
+	const before = `{
+  "active": 0,
+  "environments": [
+    {
+      "name": "Local",
+      "variables": [
+        {
+          "key": "zeta",
+          "value": "1",
+          "enabled": true
+        },
+        {
+          "key": "alpha",
+          "value": "2",
+          "enabled": false
+        }
+      ]
+    }
+  ]
+}
+`
+	if err := os.WriteFile(old, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Environments[0].Sort != nil || s.Environments[0].Variables[0].Key != "zeta" {
+		t.Errorf("loaded %+v", s)
+	}
+	if err := s.Save(old); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(old); string(data) != before {
+		t.Errorf("written again as %s", data)
+	}
+
+	s.Environments[0].Sort = []SortKey{{Column: SortVariable}, {Column: SortValue, Descending: true}}
+	s.Environments = append(s.Environments, Environment{Name: "Other", Sort: []SortKey{{Column: SortDescription}}})
+	path := filepath.Join(dir, "sorted.json")
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); !strings.Contains(string(data), `"sort": [
+        {
+          "column": "variable"
+        },
+        {
+          "column": "value",
+          "descending": true
+        }
+      ]`) {
+		t.Errorf("written as %s", data)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, s) {
+		t.Errorf("got %+v, want %+v", got, s)
+	}
+}
+
 func TestLoadMissing(t *testing.T) {
 	s, err := Load(filepath.Join(t.TempDir(), "none.json"))
 	if err != nil {
@@ -345,7 +415,7 @@ func Load(path string) (*Store, error) {
 }
 
 func TestEnvironmentClone(t *testing.T) {
-	e := Environment{Name: "Dev", Variables: []Variable{{Key: "a", Value: "1", Enabled: true, Description: "d"}}}
+	e := Environment{Name: "Dev", Variables: []Variable{{Key: "a", Value: "1", Enabled: true, Description: "d"}}, Sort: []SortKey{{Column: SortValue}}}
 	clone := e.Clone()
 	if !reflect.DeepEqual(clone, e) {
 		t.Fatalf("Clone() = %+v, want %+v", clone, e)
@@ -353,6 +423,10 @@ func TestEnvironmentClone(t *testing.T) {
 	clone.Variables[0].Value = "2"
 	if e.Variables[0].Value != "1" {
 		t.Error("the clone shares its variables with the original")
+	}
+	clone.Sort[0].Descending = true
+	if e.Sort[0].Descending {
+		t.Error("the clone shares its sort with the original")
 	}
 }
 

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 
@@ -50,9 +51,10 @@ type rowStatus struct {
 
 // keyValueTable is an editable list of key/value pairs, each of which can be
 // switched off. An empty row is always kept at the bottom for new entries.
-// The pairs are kept in alphabetical order of their keys. Each row but the
-// empty one has a button at its right which removes it. A table can also
-// have a description of each pair (describe).
+// The pairs are kept in alphabetical order of their keys, unless the table
+// is sorted by its headings (sortByHeadings). Each row but the empty one has
+// a button at its right which removes it. A table can also have a
+// description of each pair (describe).
 type keyValueTable struct {
 	table    *qt.QTableWidget
 	updating bool
@@ -75,6 +77,22 @@ type keyValueTable struct {
 	// made.
 	plain bool
 	faint *qt.QBrush
+
+	// sortable keeps the pairs in the order they were added, which is the
+	// order they are read in, and shows them sorted only as the user
+	// chooses with the headings (sortByHeadings). places holds where each
+	// row is in that order, which goes with the row wherever it is shown;
+	// next is the place of the next row added.
+	sortable bool
+	places   []int
+	next     int
+	// sortKeys are the columns the rows are shown sorted by, the first
+	// deciding, and none for the order they are kept in. adding records
+	// that the heading being clicked is clicked with Shift.
+	sortKeys []sortKey
+	adding   bool
+	// onSort is called after the user sorts by the headings.
+	onSort func([]sortKey)
 }
 
 func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
@@ -90,13 +108,7 @@ func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
 	t.table.SetSelectionMode(qt.QAbstractItemView__SingleSelection)
 	t.delegateColumns()
 
-	header := t.table.HorizontalHeader()
-	header.SetSectionResizeMode2(colEnabled, qt.QHeaderView__ResizeToContents)
-	header.SetSectionResizeMode2(colKey, qt.QHeaderView__Stretch)
-	header.SetSectionResizeMode2(colValue, qt.QHeaderView__Stretch)
-	header.SetSectionResizeMode2(colDescription, qt.QHeaderView__Stretch)
-	header.SetSectionResizeMode2(colStatus, qt.QHeaderView__ResizeToContents)
-	header.SetSectionResizeMode2(colRemove, qt.QHeaderView__ResizeToContents)
+	t.sizeColumns()
 
 	t.table.OnItemChanged(func(item *qt.QTableWidgetItem) {
 		if t.updating {
@@ -171,46 +183,88 @@ func (t *keyValueTable) keepOne(changed *qt.QTableWidgetItem) {
 	}
 }
 
+// sizeColumns has the columns of key, value and description share the width
+// the others leave, which are as wide as what is in them.
+func (t *keyValueTable) sizeColumns() {
+	header := t.table.HorizontalHeader()
+	header.SetSectionResizeMode2(colEnabled, qt.QHeaderView__ResizeToContents)
+	header.SetSectionResizeMode2(colKey, qt.QHeaderView__Stretch)
+	header.SetSectionResizeMode2(colValue, qt.QHeaderView__Stretch)
+	header.SetSectionResizeMode2(colDescription, qt.QHeaderView__Stretch)
+	header.SetSectionResizeMode2(colStatus, qt.QHeaderView__ResizeToContents)
+	header.SetSectionResizeMode2(colRemove, qt.QHeaderView__ResizeToContents)
+}
+
 // describe shows the column of descriptions, under a heading.
 func (t *keyValueTable) describe(label string) {
 	t.table.HorizontalHeaderItem(colDescription).SetText(label)
 	t.table.SetColumnHidden(colDescription, false)
 }
 
-// sort puts the rows in alphabetical order of their keys, and of their
-// descriptions where the keys are the same, keeping the current cell on the
-// pair it was on, and calls onChange if any moved.
+// compare gives the order rows are shown in, given their pairs and places:
+// alphabetical by their keys and then their descriptions, or for a table
+// sorted by its headings, as compareSorted says.
+func (t *keyValueTable) compare(a describedPair, aPlace int, b describedPair, bPlace int) int {
+	if !t.sortable {
+		return compareDescribed(a, b)
+	}
+	return t.compareSorted(a, aPlace, b, bPlace)
+}
+
+// sort puts the rows in the order they are shown in (compare), keeping the
+// current cell on the pair it was on. Pairs that are kept in order of their
+// keys have been changed if any moved, which onChange is told; a sort by the
+// headings changes only how they are shown.
 func (t *keyValueTable) sort() {
 	type entry struct {
 		describedPair
-		row int
+		place, row int
 	}
 
 	rows := make([]entry, t.table.RowCount()-1)
 	for row := range rows {
-		rows[row] = entry{t.described(row), row}
+		rows[row] = entry{t.described(row), t.places[row], row}
 	}
 	sorted := slices.Clone(rows)
-	slices.SortStableFunc(sorted, func(a, b entry) int { return compareDescribed(a.describedPair, b.describedPair) })
+	slices.SortStableFunc(sorted, func(a, b entry) int { return t.compare(a.describedPair, a.place, b.describedPair, b.place) })
 	if slices.Equal(rows, sorted) {
 		return
 	}
 
 	current, column := t.table.CurrentRow(), t.table.CurrentColumn()
 
+	defer func(prev bool) { t.updating = prev }(t.updating)
 	t.updating = true
 	for row, e := range sorted {
 		t.table.Item(row, colKey).SetText(e.Key)
 		t.table.Item(row, colValue).SetText(e.Value)
 		t.table.Item(row, colDescription).SetText(e.Description)
 		t.table.Item(row, colEnabled).SetCheckState(checkState(e.Enabled))
+		t.places[row] = e.place
 		if e.row == current {
 			t.table.SetCurrentCell(row, column)
 		}
 	}
 	t.updating = false
 
-	t.changed()
+	if !t.sortable {
+		t.changed()
+	}
+}
+
+// kept returns the rows that have a key, in the order their pairs are kept
+// in.
+func (t *keyValueTable) kept() []int {
+	var rows []int
+	for row := range t.table.RowCount() {
+		if t.text(row, colKey) != "" {
+			rows = append(rows, row)
+		}
+	}
+	if t.sortable {
+		slices.SortFunc(rows, func(a, b int) int { return cmp.Compare(t.places[a], t.places[b]) })
+	}
+	return rows
 }
 
 // pair returns the contents of a row.
@@ -273,6 +327,8 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 
 	row := t.table.RowCount()
 	t.table.InsertRow(row)
+	t.places = append(t.places, t.next)
+	t.next++
 
 	check := qt.NewQTableWidgetItem()
 	check.SetFlags(qt.ItemIsEnabled | qt.ItemIsSelectable | qt.ItemIsUserCheckable)
@@ -351,17 +407,31 @@ func (t *keyValueTable) addToEdit(key, value string) {
 	t.table.EditItem(item)
 }
 
-// setItems replaces the contents of the table, in alphabetical order,
+// setItems replaces the contents of the table, in alphabetical order or, for
+// a table sorted by its headings, in the order given and shown as sorted,
 // without calling onChange.
 func (t *keyValueTable) setItems(items []rest.KeyValue) {
-	items = slices.Clone(items)
-	rest.SortPairs(items)
+	t.fill(items)
+	if t.sortable {
+		t.sort()
+	}
+}
+
+// fill replaces the contents of the table, in alphabetical order or, for a
+// table sorted by its headings, in the order given, without calling
+// onChange.
+func (t *keyValueTable) fill(items []rest.KeyValue) {
+	if !t.sortable {
+		items = slices.Clone(items)
+		rest.SortPairs(items)
+	}
 
 	defer func(prev bool) { t.updating = prev }(t.updating)
 	t.updating = true
 
 	t.statuses = false
 	t.table.SetRowCount(0)
+	t.places, t.next = nil, 0
 	for _, item := range items {
 		t.addRow(item.Key, item.Value, item.Enabled)
 	}
@@ -371,30 +441,34 @@ func (t *keyValueTable) setItems(items []rest.KeyValue) {
 // setDescribed replaces the contents of the table with pairs that have
 // descriptions, in order, without calling onChange.
 func (t *keyValueTable) setDescribed(pairs []describedPair) {
-	pairs = slices.Clone(pairs)
-	slices.SortStableFunc(pairs, compareDescribed)
+	if !t.sortable {
+		pairs = slices.Clone(pairs)
+		slices.SortStableFunc(pairs, compareDescribed)
+	}
 
 	items := make([]rest.KeyValue, len(pairs))
 	for i, p := range pairs {
 		items[i] = p.KeyValue
 	}
 	// The order is already that of the items, which are not moved.
-	t.setItems(items)
+	t.fill(items)
 
 	defer func(prev bool) { t.updating = prev }(t.updating)
 	t.updating = true
 	for row, p := range pairs {
 		t.table.Item(row, colDescription).SetText(p.Description)
 	}
+	if t.sortable {
+		t.sort()
+	}
 }
 
-// allDescribed returns every row that has a key, with its description.
+// allDescribed returns every row that has a key, with its description, in
+// the order they are kept in.
 func (t *keyValueTable) allDescribed() []describedPair {
 	var pairs []describedPair
-	for row := range t.table.RowCount() {
-		if pair := t.described(row); pair.Key != "" {
-			pairs = append(pairs, pair)
-		}
+	for _, row := range t.kept() {
+		pairs = append(pairs, t.described(row))
 	}
 	return pairs
 }
@@ -405,6 +479,7 @@ func (t *keyValueTable) remove(row int) {
 		return
 	}
 	t.table.RemoveRow(row)
+	t.places = slices.Delete(t.places, row, row+1)
 	t.changed()
 }
 
@@ -415,13 +490,11 @@ func (t *keyValueTable) text(row, col int) string {
 	return ""
 }
 
-// items returns every row that has a key.
+// items returns every row that has a key, in the order they are kept in.
 func (t *keyValueTable) items() []rest.KeyValue {
 	var items []rest.KeyValue
-	for row := range t.table.RowCount() {
-		if pair := t.pair(row); pair.Key != "" {
-			items = append(items, pair)
-		}
+	for _, row := range t.kept() {
+		items = append(items, t.pair(row))
 	}
 	return items
 }

@@ -26,11 +26,30 @@ type Variable struct {
 type Environment struct {
 	Name      string     `json:"name"`
 	Variables []Variable `json:"variables"`
+	// Sort is how the editor shows the variables sorted: by each column in
+	// turn, the first deciding, or in the order they are kept in when it is
+	// empty. It never changes that order. A file from before there was one
+	// has none.
+	Sort []SortKey `json:"sort,omitempty"`
 }
+
+// SortKey is one of the columns the variables are shown sorted by.
+type SortKey struct {
+	// Column is SortVariable, SortValue or SortDescription.
+	Column     string `json:"column"`
+	Descending bool   `json:"descending,omitempty"`
+}
+
+// The columns variables can be sorted by.
+const (
+	SortVariable    = "variable"
+	SortValue       = "value"
+	SortDescription = "description"
+)
 
 // Clone returns a copy of the environment which shares nothing with it.
 func (e Environment) Clone() Environment {
-	return Environment{Name: e.Name, Variables: slices.Clone(e.Variables)}
+	return Environment{Name: e.Name, Variables: slices.Clone(e.Variables), Sort: slices.Clone(e.Sort)}
 }
 
 // Store is the collection of environments that is saved to disk.

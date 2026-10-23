@@ -206,8 +206,7 @@ func TestVariableDescriptions(t *testing.T) {
 			t.Error("the params have descriptions")
 		}
 
-		// The variables are in order of their names, and those with one
-		// name in order of their descriptions, both ignoring case.
+		// The variables are in the order they are kept in.
 		descriptions := func() []string {
 			var got []string
 			for _, p := range table.allDescribed() {
@@ -215,14 +214,15 @@ func TestVariableDescriptions(t *testing.T) {
 			}
 			return got
 		}
-		if got, want := descriptions(), []string{"Host/Live", "host/local machine", "host/Staging", "token/"}; !slices.Equal(got, want) {
+		if got, want := descriptions(), []string{"host/Staging", "token/", "host/local machine", "Host/Live"}; !slices.Equal(got, want) {
 			t.Errorf("got %v, want %v", got, want)
 		}
 
-		// A description that is edited is saved, and the rows put in order.
+		// A description that is edited is saved, and the rows left where
+		// they are.
 		table.table.Item(0, colDescription).SetText("Zurich")
 		table.sort()
-		if got, want := descriptions(), []string{"host/local machine", "host/Staging", "Host/Zurich", "token/"}; !slices.Equal(got, want) {
+		if got, want := descriptions(), []string{"host/Zurich", "token/", "host/local machine", "Host/Live"}; !slices.Equal(got, want) {
 			t.Errorf("got %v, want %v", got, want)
 		}
 	})
@@ -232,10 +232,10 @@ func TestVariableDescriptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []env.Variable{
-		{Key: "host", Value: "http://local.test", Enabled: true, Description: "local machine"},
-		{Key: "host", Value: "https://staging.test", Description: "Staging"},
-		{Key: "Host", Value: "https://live.test", Description: "Zurich"},
+		{Key: "host", Value: "https://staging.test", Description: "Zurich"},
 		{Key: "token", Value: "abc", Enabled: true},
+		{Key: "host", Value: "http://local.test", Enabled: true, Description: "local machine"},
+		{Key: "Host", Value: "https://live.test", Description: "Live"},
 	}
 	if !slices.Equal(saved.Environments[0].Variables, want) {
 		t.Errorf("saved %+v", saved.Environments[0].Variables)
@@ -290,13 +290,13 @@ func TestOneVariableOfAName(t *testing.T) {
 		}
 
 		// A variable given the name of one that is on is switched off, and
-		// the one in use stays so.
+		// the one in use stays so. It is added at the end.
 		table.add("other", "xyz")
 		if got, want := enabled(), []bool{false, false, false, true, true}; !slices.Equal(got, want) {
 			t.Errorf("got %v, want %v", got, want)
 		}
-		table.table.Item(3, colKey).SetText("token")
-		if got, want := enabled(), []bool{false, false, false, false, true}; !slices.Equal(got, want) || w.expand("{{token}}") != "abc" {
+		table.table.Item(4, colKey).SetText("token")
+		if got, want := enabled(), []bool{false, false, false, true, false}; !slices.Equal(got, want) || w.expand("{{token}}") != "abc" {
 			t.Errorf("got %v, want %v, token %q", got, want, w.expand("{{token}}"))
 		}
 

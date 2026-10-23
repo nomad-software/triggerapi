@@ -287,6 +287,16 @@ func (s *envList) update(name string, variables []env.Variable) {
 	s.save()
 }
 
+// setSort keeps how the variables of the environment being edited are shown
+// sorted, which changes nothing that depends on them, so only the file is
+// written.
+func (s *envList) setSort(sort []env.SortKey) {
+	if e, ok := s.store.Current(); ok {
+		e.Sort = sort
+		saveStore(s.path, s.keys, s.store, s.onError)
+	}
+}
+
 // save reports the change, and writes the store to its file.
 func (s *envList) save() {
 	if s.onChange != nil {
