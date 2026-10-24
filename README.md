@@ -831,6 +831,16 @@ as one, and otherwise the program itself. It is only rewritten when that
 changes. Delete the two files to take it out of the menu again; they come
 back the next time TriggerAPI is run.
 
+Only one copy of TriggerAPI runs at a time. Starting it again while it runs
+(from the desktop's menu, or `./triggerapi`) brings the window there is to the
+front, even if it was minimised, and the new copy leaves at once. The copy
+that runs holds a lock, `triggerapi.lock`, and listens on a socket,
+`triggerapi.sock`, in `$XDG_RUNTIME_DIR` (or a folder of your own,
+`triggerapi-<uid>`, in the temporary folder); the system lets go of the lock
+if the program dies, and the next copy clears the socket away. Under Wayland
+the new copy hands on the desktop's activation token, without which the
+window would only ask for attention.
+
 TriggerAPI keeps its data as JSON files.
 
 The settings are kept where the system keeps the configuration of programs:

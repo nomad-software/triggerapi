@@ -582,6 +582,20 @@ func (w *Window) later(f func()) {
 	mainthread.Start(f)
 }
 
+// Activate brings the window to the front, as it is when the program is
+// started again while it runs. token is the desktop's leave to take the focus
+// under Wayland, which is refused without it; Qt reads it from the
+// environment when it asks for the focus, and then takes it out.
+func (w *Window) Activate(token string) {
+	if token != "" {
+		os.Setenv("XDG_ACTIVATION_TOKEN", token)
+	}
+	w.SetWindowState(w.WindowState() &^ qt.WindowMinimized)
+	w.Show()
+	w.Raise()
+	w.ActivateWindow()
+}
+
 // restoreLayout gives the sidebar and the response their saved sizes.
 func (w *Window) restoreLayout() {
 	if width, sizes := w.config.SidebarWidth, w.split.Sizes(); width > 0 && sizes[0]+sizes[1] > width {
