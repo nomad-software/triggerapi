@@ -13,7 +13,7 @@ import (
 func TestSaveLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 
-	want := Settings{Width: 900, Height: 600, Maximized: true, SidebarWidth: 310, ResponseHeight: 240, ResponseFont: "Hack", WorkspacesDir: "/a/workspaces", Workspace: "Default", JSONColours: JSONColours{Key: "#A31515", Number: "#098658"}, Colours: Colours{Workspaces: "#112233", GRPC: "#445566"}}
+	want := Settings{Width: 900, Height: 600, Maximized: true, SidebarWidth: 310, ResponseHeight: 240, ResponseFont: "Hack", WorkspacesDir: "/a/workspaces", Workspace: "Default", JSONColours: JSONColours{Key: "#A31515", Number: "#098658"}, Colours: Colours{Workspaces: "#112233", GRPC: "#445566"}, Theme: ThemeDark}
 	if err := want.Save(path); err != nil {
 		t.Fatal(err)
 	}
@@ -38,6 +38,21 @@ func TestLoadDefaults(t *testing.T) {
 	os.WriteFile(path, []byte(`{"width": 5, "height": 9000, "maximized": true, "sidebarWidth": -4, "responseHeight": -1}`), 0o644)
 	if got := Load(path); !reflect.DeepEqual(got, Settings{Width: defaultWidth, Height: defaultHeight, Maximized: true, ResponseFont: defaultResponseFont}) {
 		t.Errorf("bad size: got %+v", got)
+	}
+}
+
+func TestLoadTheme(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	for file, want := range map[string]string{
+		`{}`:                  "",
+		`{"theme": "light"}`:  ThemeLight,
+		`{"theme": "dark"}`:   ThemeDark,
+		`{"theme": "purple"}`: "",
+	} {
+		os.WriteFile(path, []byte(file), 0o644)
+		if got := Load(path).Theme; got != want {
+			t.Errorf("%s: theme = %q, want %q", file, got, want)
+		}
 	}
 }
 

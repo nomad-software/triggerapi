@@ -5,7 +5,7 @@ tools of MCP servers and talking to WebSocket servers. It is written in Go
 with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
 bindings.
 
-![TriggerAPI showing saved requests under GraphQL, gRPC, MCP, REST, WebSocket and Mixed headings, the pinned tabs of a request set, a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
+![TriggerAPI in its dark theme, showing saved requests under GraphQL, gRPC, MCP, REST, WebSocket and Mixed headings, the pinned tabs of a request set, a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
 
 ## Why TriggerAPI
 
@@ -386,7 +386,8 @@ File > Settings has five tabs:
   [Network](#network)).
 - History: whether the requests sent are kept in the history, how many, and
   the diff tool responses are compared with.
-- User interface: the font of code (request and response bodies, messages,
+- User interface: the theme, light, dark or following the desktop's (which
+  changes with it), the font of code (request and response bodies, messages,
   queries, arguments and the curl command), and the colours of the
   interface, listed in sections: the icons of the sidebar and of each type of
   request, the buttons, the sets, the history, placeholders, errors, the marks of captures and assertions,
@@ -664,8 +665,8 @@ It runs under both X11 and Wayland, using Wayland where the session is one.
 To use the other, set `QT_QPA_PLATFORM` to `xcb` or `wayland` when starting
 it.
 
-On GNOME it takes its colours, light or dark, from the desktop, through Qt's
-GTK theme plugin, which is in the AppImage. GTK itself is not, and is the
+On GNOME it takes its colours, light or dark, from the desktop, unless a light
+or dark theme is chosen in the settings, through Qt's GTK theme plugin, which is in the AppImage. GTK itself is not, and is the
 desktop's own.
 
 The C library of the system (glibc) is not put in the AppImage, as it cannot
@@ -982,7 +983,7 @@ go test -race ./... -timeout 600s
 ```
 
 The screenshot at the top of this file is drawn by a test, from sample
-requests, and is made again with:
+requests in the dark theme, and is made again with:
 
 ```sh
 make screenshot

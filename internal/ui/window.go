@@ -209,6 +209,10 @@ func NewWindow(files Files) *Window {
 	// Restore the window size, and remember it again when the window closes.
 	w.files = files
 	w.config = settings.Load(files.Settings)
+	// The widgets are made in the theme of the settings.
+	if w.config.Theme != "" {
+		applyTheme(w.config.Theme)
+	}
 	// The icons are drawn in the colours of the settings as they are made.
 	setColours(w.config.Colours)
 	w.response = newResponsePanel(w.config.ResponseFont)

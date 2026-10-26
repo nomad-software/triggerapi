@@ -84,10 +84,18 @@ func (w *Window) applySettings(s settings.Settings) error {
 	w.config.NoHistory, w.config.HistoryLimit, w.config.DiffCommand = s.NoHistory, s.HistoryLimit, s.DiffCommand
 	w.history.keep()
 
+	// What is drawn in colours made from the palette, such as faded text
+	// and the default colours of JSON, is drawn again in the new one.
+	theme := s.Theme != w.config.Theme
+	if theme {
+		w.config.Theme = s.Theme
+		applyTheme(w.config.Theme)
+	}
+
 	w.config.JSONColours = s.JSONColours
 	w.applyJSONColours()
 
-	if s.Colours != w.config.Colours {
+	if theme || s.Colours != w.config.Colours {
 		w.config.Colours = s.Colours
 		w.applyColours()
 	}

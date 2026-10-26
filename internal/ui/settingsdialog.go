@@ -19,6 +19,8 @@ type settingsDialog struct {
 
 	tabs *qt.QTabWidget
 	font *qt.QFontComboBox
+	// theme chooses one of themes.
+	theme *qt.QComboBox
 	// timeout is how long a request can take, in seconds, which is zero
 	// for no limit, and redirects whether a REST request follows them.
 	timeout   *qt.QSpinBox
@@ -85,6 +87,7 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 		QDialog:      qt.NewQDialog(parent),
 		tabs:         qt.NewQTabWidget2(),
 		font:         qt.NewQFontComboBox2(),
+		theme:        qt.NewQComboBox2(),
 		timeout:      qt.NewQSpinBox2(),
 		redirects:    qt.NewQCheckBox3("Follow redirects"),
 		history:      qt.NewQCheckBox3("Enabled"),
@@ -107,6 +110,11 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 
 	d.font.SetCurrentFont(qt.NewQFont2(current.ResponseFont))
 	d.initialFont = d.font.CurrentFont().Family()
+
+	for _, t := range themes {
+		d.theme.AddItem(t.label)
+	}
+	d.theme.SetCurrentIndex(themeIndex(current.Theme))
 
 	d.timeout.SetRange(0, settings.MaxTimeout)
 	d.timeout.SetSuffix(" s")
@@ -220,6 +228,19 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	colours := qt.NewQWidget2()
 	coloursLayout := qt.NewQVBoxLayout(colours)
 	coloursLayout.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
+	themeRow := qt.NewQHBoxLayout2()
+	themeRow.SetContentsMargins(12, 0, 0, 0)
+	themeRow.SetSpacing(16)
+	themeRow.AddWidget(qt.NewQLabel3("Theme").QWidget)
+	themeRow.AddWidget(d.theme.QWidget)
+	themeRow.AddStretch()
+	themeNote := qt.NewQLabel3("Follow the system looks as the desktop's theme does, and changes with it.")
+	themeNote.SetWordWrap(true)
+	themeNote.SetEnabled(false)
+	coloursLayout.AddWidget(sectionHeading("Theme").QWidget)
+	coloursLayout.AddLayout(themeRow.QLayout)
+	coloursLayout.AddWidget(themeNote.QWidget)
+	coloursLayout.AddSpacing(14)
 	// The font has the whole width, as the names of fonts are long.
 	fontRow := qt.NewQHBoxLayout2()
 	fontRow.SetContentsMargins(12, 0, 0, 0)
@@ -501,6 +522,7 @@ func (d *settingsDialog) settings(base settings.Settings) settings.Settings {
 		}
 		return ""
 	}
+	base.Theme = themes[max(d.theme.CurrentIndex(), 0)].name
 	base.Timeout = d.timeout.Value()
 	base.NoRedirects = !d.redirects.IsChecked()
 	base.Network = d.network.config()

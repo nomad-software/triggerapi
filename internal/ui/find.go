@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -168,16 +169,6 @@ func newFindBar(edit *qt.QPlainTextEdit, highlighter *qt.QSyntaxHighlighter, fol
 	layout.AddWidget(f.hide.QWidget)
 	f.root.SetVisible(false)
 
-	// The selected match is the selection of the editor, which is to look
-	// the same while the keyboard is in the bar as when it is in the
-	// editor.
-	palette := qt.NewQPalette7(edit.Palette())
-	defer palette.Delete()
-	for _, role := range []qt.QPalette__ColorRole{qt.QPalette__Highlight, qt.QPalette__HighlightedText} {
-		palette.SetColor(qt.QPalette__Inactive, role, palette.Color(qt.QPalette__Active, role))
-	}
-	edit.SetPalette(palette)
-
 	f.recolour()
 	return f
 }
@@ -320,6 +311,21 @@ func (f *findBar) highlight(line string) {
 // recolour marks the matches in the colour of the settings, with their text
 // in black or white, whichever can be read against it.
 func (f *findBar) recolour() {
+	// The selected match is the selection of the editor, which is to look
+	// the same while the keyboard is in the bar as when it is in the
+	// editor, in the palette of the theme in effect. The colours are those
+	// of the application, which a change of theme changes at once, and
+	// those of widgets only a turn of the event loop later; the palette
+	// sets only these, so the editor has the others of the theme.
+	theme := qt.QGuiApplication_Palette()
+	palette := qt.NewQPalette()
+	defer palette.Delete()
+	for _, role := range []qt.QPalette__ColorRole{qt.QPalette__Highlight, qt.QPalette__HighlightedText} {
+		palette.SetColor(qt.QPalette__Inactive, role, theme.Color(qt.QPalette__Active, role))
+	}
+	runtime.KeepAlive(theme)
+	f.edit.SetPalette(palette)
+
 	colour := qt.NewQColor6(themeColour(colourMatch))
 	defer colour.Delete()
 	text := qt.NewQColor6(readableOn(colour))

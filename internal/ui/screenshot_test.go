@@ -64,6 +64,10 @@ func TestScreenshot(t *testing.T) {
 	files := testFiles(t)
 	config := settings.Load(files.Settings)
 	config.Width, config.Height, config.SidebarWidth = 1280, 800, 340
+	config.Theme = settings.ThemeDark
+	// The window puts the theme into effect, and the system's is put back
+	// for the tests run after.
+	t.Cleanup(func() { mainthread.Wait(func() { applyTheme("") }) })
 	if err := config.Save(files.Settings); err != nil {
 		t.Fatal(err)
 	}

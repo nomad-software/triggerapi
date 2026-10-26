@@ -78,14 +78,17 @@ const minAssertColumn = 120
 const comboPadding = 6
 
 // paddedStyle is the style of the lists of the table of assertions, once
-// made: that of the application, with room before the text.
+// made: that of the theme in effect, with room before the text, which
+// applyTheme changes the style it is over to.
 var paddedStyle *qt.QProxyStyle
 
 // paddedComboStyle returns the style of the lists of the table of
 // assertions.
 func paddedComboStyle() *qt.QStyle {
 	if paddedStyle == nil {
-		paddedStyle = qt.NewQProxyStyle()
+		// A proxy style made without one is over the desktop's style,
+		// not the application's.
+		paddedStyle = qt.NewQProxyStyle2(themeStyleName())
 		paddedStyle.OnSubControlRect(func(super func(qt.QStyle__ComplexControl, *qt.QStyleOptionComplex, qt.QStyle__SubControl, *qt.QWidget) *qt.QRect, control qt.QStyle__ComplexControl, option *qt.QStyleOptionComplex, sub qt.QStyle__SubControl, widget *qt.QWidget) *qt.QRect {
 			rect := super(control, option, sub, widget)
 			if control == qt.QStyle__CC_ComboBox && sub == qt.QStyle__SC_ComboBoxEditField {

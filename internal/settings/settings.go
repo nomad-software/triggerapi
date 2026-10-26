@@ -85,7 +85,17 @@ type Settings struct {
 
 	// Colours are the colours of the icons and of placeholders.
 	Colours Colours `json:"colours,omitzero"`
+
+	// Theme is how the program looks: ThemeLight, ThemeDark, or, where it
+	// is empty, as the desktop's theme says.
+	Theme string `json:"theme,omitempty"`
 }
+
+// The themes that can be chosen, besides the system's, which is "".
+const (
+	ThemeLight = "light"
+	ThemeDark  = "dark"
+)
 
 // JSONColours are the colours of the parts of JSON, as #rrggbb. The default
 // colour for the desktop's theme is used for a part that is empty.
@@ -231,6 +241,9 @@ func Load(path string) Settings {
 	s.ResponseHeight = max(s.ResponseHeight, 0)
 	s.JSONColours = s.JSONColours.valid()
 	s.Colours = s.Colours.valid()
+	if s.Theme != ThemeLight && s.Theme != ThemeDark {
+		s.Theme = ""
+	}
 	if s.ResponseFont == "" {
 		s.ResponseFont = defaultResponseFont
 	}
