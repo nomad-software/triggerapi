@@ -23,11 +23,11 @@ vet:
 screenshot:
 	TRIGGERAPI_SCREENSHOT=$(CURDIR)/docs/screenshot.png go test -timeout 90s -run '^TestScreenshot$$' -count=1 ./internal/ui/
 
-# Draws the program's icon into the files the packages are made from:
-# packaging/triggerapi.png and packaging/macos/triggerapi.png. Run it again
-# whenever the icon changes.
+# Draws the program's icon into its files: internal/appicon/appicon.png,
+# which is built into the program, and packaging/macos/triggerapi.png. Run it
+# again whenever the icon changes.
 icons:
-	TRIGGERAPI_ICONS=$(CURDIR)/packaging go test -timeout 90s -run '^TestWriteIcons$$' -count=1 ./internal/ui/
+	TRIGGERAPI_ICONS=$(CURDIR) go test -timeout 90s -run '^TestWriteIcons$$' -count=1 ./internal/ui/
 
 # Starts the sample MCP server at http://localhost:8000/mcp, to try MCP
 # requests against by hand. Options go in ARGS, as in

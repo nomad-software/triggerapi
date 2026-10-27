@@ -8,10 +8,12 @@ import (
 	"testing"
 
 	"github.com/mappu/miqt/qt6/mainthread"
+
+	"github.com/nomad-software/triggerapi/internal/appicon"
 )
 
-// iconsEnv names the folder TestWriteIcons writes the icons of the packages
-// into. The test is skipped without it; make icons sets it to packaging.
+// iconsEnv names the folder of the repository, which TestWriteIcons writes
+// the icons into. The test is skipped without it; make icons sets it.
 const iconsEnv = "TRIGGERAPI_ICONS"
 
 // macIconSize and macIconMargin are the size of the icon of the macOS app
@@ -22,9 +24,11 @@ const (
 	macIconMargin = 100
 )
 
-// TestWriteIcons draws the program's icon into the files the packages are
-// made from: triggerapi.png for Linux, as the desktop entry has it, and
-// macos/triggerapi.png for macOS, from which the .icns of the app is made.
+// TestWriteIcons draws the program's icon into its files:
+// internal/appicon/appicon.png, which is built into the program and is the
+// icon of the desktop entry and the AppImage, and
+// packaging/macos/triggerapi.png, from which the .icns of the macOS app is
+// made.
 // Run make icons again whenever the icon changes.
 func TestWriteIcons(t *testing.T) {
 	dir := os.Getenv(iconsEnv)
@@ -35,8 +39,8 @@ func TestWriteIcons(t *testing.T) {
 		path         string
 		size, margin int
 	}{
-		{"triggerapi.png", desktopIconSize, 0},
-		{filepath.Join("macos", "triggerapi.png"), macIconSize, macIconMargin},
+		{filepath.Join("internal", "appicon", "appicon.png"), appicon.Size, 0},
+		{filepath.Join("packaging", "macos", "triggerapi.png"), macIconSize, macIconMargin},
 	} {
 		var data []byte
 		mainthread.Wait(func() { data = appIconPNG(icon.size, icon.margin) })

@@ -25,6 +25,9 @@ mkdir -p "$TOOLS"
 
 echo "Building TriggerAPI $VERSION"
 go build -ldflags "-s -w" -o "$BUILD/triggerapi" .
+# The icon is the program's own, which it is built with. The tool names it by
+# its file, which has to be the name the desktop file gives it.
+cp internal/appicon/appicon.png "$BUILD/triggerapi.png"
 
 # linuxdeploy copies the program and every library it uses into a folder
 # laid out as an AppImage needs, and its Qt plugin adds the parts of Qt that
@@ -104,7 +107,7 @@ export LINUXDEPLOY_OUTPUT_VERSION="$VERSION"
 	--appdir "$APPDIR" \
 	--executable "$BUILD/triggerapi" \
 	--desktop-file packaging/triggerapi.desktop \
-	--icon-file packaging/triggerapi.png \
+	--icon-file "$BUILD/triggerapi.png" \
 	--custom-apprun packaging/AppRun \
 	--plugin qt
 

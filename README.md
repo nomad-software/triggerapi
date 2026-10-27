@@ -1,4 +1,4 @@
-# TriggerAPI
+# <img src="internal/appicon/appicon.png" alt="" width="40" height="40"> TriggerAPI
 
 A desktop client for making REST API, GraphQL and gRPC calls, calling the
 tools of MCP servers and talking to WebSocket servers. It is written in Go
@@ -713,8 +713,9 @@ is in the app and writes into its `Info.plist`.
 `make macos` runs the same script on a Mac with Apple Silicon and
 `brew install go pkgconf qtbase`: the base of Qt alone, which is all
 TriggerAPI uses, as with the whole of Homebrew's `qt` the plugins of its
-other modules go into the app too, with what they use. The icon files are drawn from the program's own
-icon by `make icons`.
+other modules go into the app too, with what they use. The icon is
+`internal/appicon/appicon.png`, built into the program; it and the icon of
+the macOS app are drawn by `make icons`.
 
 ## gRPC
 

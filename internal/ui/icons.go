@@ -4,6 +4,8 @@ import (
 	"math"
 
 	qt "github.com/mappu/miqt/qt6"
+
+	"github.com/nomad-software/triggerapi/internal/appicon"
 )
 
 // iconSize is the size request type icons are shown at. They are drawn at
@@ -668,16 +670,21 @@ const appIconColour = "#e8590c"
 
 var appIconCache *qt.QIcon
 
-// appIcon returns the icon of the program.
+// appIcon returns the icon of the program, from the PNG built into it.
 func appIcon() *qt.QIcon {
 	if appIconCache == nil {
-		appIconCache = drawIcon(256, appIconColour, drawRevolver)
+		pixmap := qt.NewQPixmap()
+		// The icon keeps a copy of the picture.
+		defer pixmap.Delete()
+		pixmap.LoadFromDataWithData(appicon.PNG)
+		appIconCache = qt.NewQIcon2(pixmap)
 	}
 	return appIconCache
 }
 
-// appIconPNG returns the program's icon as a PNG of a size, with a margin of
-// that many pixels on every side, or nil if it could not be made.
+// appIconPNG draws the program's icon as a PNG of a size, with a margin of
+// that many pixels on every side, or returns nil if it could not be made. It
+// is what make icons writes the files of the icon with.
 func appIconPNG(size, margin int) []byte {
 	icon := drawPixmap(size-2*margin, appIconColour, drawRevolver)
 	defer icon.Delete()
