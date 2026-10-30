@@ -192,13 +192,13 @@ func newRequestPanel() *requestPanel {
 	beside(p.send.QWidget)
 	beside(p.save.QWidget)
 
-	p.params = newKeyValueTable("Key", "Value")
+	p.params = newExclusiveTable("Key", "Value")
 	p.params.onChange = p.paramsChanged
 	p.highlight.table(p.params.table)
 	p.auth = newAuthEditor(&p.panelState)
 	p.auth.onChange = p.changed
 
-	p.headers = newKeyValueTable("Header", "Value")
+	p.headers = newExclusiveTable("Header", "Value")
 	p.headers.onChange = p.changed
 	p.highlight.table(p.headers.table)
 

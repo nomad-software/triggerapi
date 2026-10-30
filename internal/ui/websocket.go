@@ -83,7 +83,7 @@ func newWSPanel() *wsPanel {
 	messageLayout.AddWidget2(p.message.QWidget, 1)
 	messageLayout.AddLayout(sendBar.QLayout)
 
-	p.headers = newKeyValueTable("Header", "Value")
+	p.headers = newExclusiveTable("Header", "Value")
 	p.headers.onChange = p.changed
 	p.highlight.table(p.headers.table)
 

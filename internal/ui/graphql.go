@@ -127,7 +127,7 @@ func newGraphQLPanel() *graphqlPanel {
 	variablesLayout.AddWidget2(p.variables.QWidget, 1)
 	variablesLayout.AddLayout(formatBar.QLayout)
 
-	p.headers = newKeyValueTable("Header", "Value")
+	p.headers = newExclusiveTable("Header", "Value")
 	p.headers.onChange = p.changed
 	p.highlight.table(p.headers.table)
 

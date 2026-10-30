@@ -67,14 +67,13 @@ func newEnvEditor() *envEditor {
 	e := &envEditor{
 		root:      qt.NewQWidget2(),
 		name:      qt.NewQLineEdit2(),
-		variables: newKeyValueTable("Variable", "Value"),
+		variables: newExclusiveTable("Variable", "Value"),
 		close:     qt.NewQPushButton3("Close"),
 	}
 
 	e.name.SetPlaceholderText("Environment name")
 	e.variables.describe("Description")
 	// Variables with one name are alternatives, of which one is in use.
-	e.variables.exclusive = true
 	// The variables are kept in the order they were added, which decides
 	// nothing but that, and shown sorted only as the user chooses.
 	e.variables.sortByHeadings()

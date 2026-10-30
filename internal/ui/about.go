@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"runtime/debug"
+	"strconv"
+	"strings"
+
 	qt "github.com/mappu/miqt/qt6"
 )
 
@@ -11,12 +15,65 @@ const aboutWidth = 640
 // aboutIconSize is the size of the program's icon in the about box.
 const aboutIconSize = 96
 
+// appVersion returns the version of the program, which Go records from git
+// when it is built, as plain major.minor.patch.
+func appVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return plainVersion(info.Main.Version)
+	}
+	return "dev"
+}
+
+// plainVersion returns the release a version recorded by Go is, or follows.
+// Between tags Go records a version made from the commit, whose patch is one
+// more than the tag before it, as v1.2.4-0.20261027184954-00c19a9187bb is
+// after v1.2.3.
+func plainVersion(version string) string {
+	version, _, _ = strings.Cut(version, "+")
+	version, pre, _ := strings.Cut(version, "-")
+	if !strings.HasPrefix(pre, "0.") {
+		return version
+	}
+	i := strings.LastIndex(version, ".") + 1
+	patch, err := strconv.Atoi(version[i:])
+	if err != nil || patch == 0 {
+		return version
+	}
+	return version[:i] + strconv.Itoa(patch-1)
+}
+
 // aboutText returns what the about box says of the program.
 func aboutText() string {
-	return "<h2>TriggerAPI</h2>" +
-		"<p>A desktop client for making REST API, GraphQL and gRPC calls, calling the tools of " +
+	return "<p>A desktop client for making REST API, GraphQL and gRPC calls, calling the tools of " +
 		"MCP servers and talking to WebSocket servers.</p>" +
 		"<p>Copyright © 2026 Gary Willoughby. All rights reserved.</p>"
+}
+
+// newAboutTitle returns the name of the program with its version to the
+// right of it, smaller and half transparent, on one baseline, and the label
+// of the version.
+func newAboutTitle() (*qt.QHBoxLayout, *qt.QLabel) {
+	name := qt.NewQLabel3("TriggerAPI")
+	font := name.Font()
+	font.SetBold(true)
+	font.SetPointSizeF(font.PointSizeF() * 1.5)
+	name.SetFont(font)
+
+	version := qt.NewQLabel3(appVersion())
+	version.SetTextFormat(qt.PlainText)
+	small := version.Font()
+	small.SetPointSizeF(small.PointSizeF() * 0.8)
+	version.SetFont(small)
+	version.SetContentsMargins(0, 0, 0, name.FontMetrics().Descent()-version.FontMetrics().Descent())
+	faded := qt.NewQGraphicsOpacityEffect()
+	faded.SetOpacity(0.5)
+	version.SetGraphicsEffect(faded.QGraphicsEffect)
+
+	title := qt.NewQHBoxLayout2()
+	title.AddWidget3(name.QWidget, 0, qt.AlignBottom)
+	title.AddWidget3(version.QWidget, 0, qt.AlignBottom)
+	title.AddStretch()
+	return title, version
 }
 
 // licenceText returns the notices of the licences of what the program is
@@ -55,6 +112,8 @@ type aboutDialog struct {
 	*qt.QDialog
 	// notices is the frame around the notices of the licences.
 	notices *qt.QFrame
+	// version is the label of the version of the program.
+	version *qt.QLabel
 }
 
 func newAboutDialog(parent *qt.QWidget) *aboutDialog {
@@ -66,12 +125,19 @@ func newAboutDialog(parent *qt.QWidget) *aboutDialog {
 	icon.SetPixmap(appIcon().PixmapWithExtent(aboutIconSize))
 	icon.SetAlignment(qt.AlignTop)
 
-	about := newRichLabel(aboutText())
+	title, version := newAboutTitle()
+	d.version = version
+
+	about := qt.NewQVBoxLayout2()
+	about.SetSpacing(12)
+	about.AddLayout(title.QLayout)
+	about.AddWidget(newRichLabel(aboutText()).QWidget)
+	about.AddStretch()
 
 	top := qt.NewQHBoxLayout2()
 	top.SetSpacing(20)
 	top.AddWidget(icon.QWidget)
-	top.AddWidget2(about.QWidget, 1)
+	top.AddLayout2(about.QLayout, 1)
 
 	// The notices are smaller than the rest, as on a label of the style.
 	licences := newRichLabel(licenceText())

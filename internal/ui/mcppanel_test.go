@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	qt "github.com/mappu/miqt/qt6"
 	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/capture"
@@ -218,6 +219,71 @@ func TestMCPExampleWithoutCapabilities(t *testing.T) {
 		w.mcp.example.Click()
 		if !strings.Contains(w.mcp.status.Text(), "capabilities of the server") || w.mcp.status.IsHidden() || w.mcp.arguments.ToPlainText() != `{"kept": true}` {
 			t.Errorf("status %q, arguments %q", w.mcp.status.Text(), w.mcp.arguments.ToPlainText())
+		}
+	})
+}
+
+// A description is beside the arguments, as tall as they are, and scrolls.
+func TestMCPDescriptionScrolls(t *testing.T) {
+	mainthread.Wait(func() {
+		p := newMCPPanel()
+		defer p.root.Delete()
+		p.root.Resize(600, 500)
+		p.root.Show()
+		p.load(mcp.Request{Kind: mcp.KindTool, Name: "long"})
+		qt.QCoreApplication_ProcessEvents()
+
+		if p.descriptionArea.IsVisible() {
+			t.Error("shown with no description")
+		}
+		alone := p.arguments.Width()
+
+		schema := func(description string) *mcp.Schema {
+			return &mcp.Schema{Items: []mcp.Item{{Kind: mcp.KindTool, Name: "long", Description: description}}}
+		}
+		bar := p.descriptionArea.VerticalScrollBar()
+		for _, c := range []struct {
+			description string
+			scrolls     bool
+		}{
+			{"Short.", false},
+			{strings.Repeat("A long line of what the tool does.\n\n", 30), true},
+		} {
+			p.setSchema(schema(c.description))
+			qt.QCoreApplication_ProcessEvents()
+			if !p.descriptionArea.IsVisible() || p.descriptionArea.Height() != p.arguments.Height() || p.descriptionArea.Y() != p.arguments.Y() {
+				t.Errorf("at %d, %d tall beside arguments at %d, %d tall", p.descriptionArea.Y(), p.descriptionArea.Height(), p.arguments.Y(), p.arguments.Height())
+			}
+			if p.descriptionArea.X() <= p.arguments.X() || p.arguments.Width() >= alone {
+				t.Errorf("at %d beside arguments at %d, %d wide of %d", p.descriptionArea.X(), p.arguments.X(), p.arguments.Width(), alone)
+			}
+			if (bar.Maximum() > 0) != c.scrolls {
+				t.Errorf("%d long, scrolling by %d", len(c.description), bar.Maximum())
+			}
+		}
+
+		// The two start level, and the separator between them moves.
+		sizes := p.argumentsSplit.Sizes()
+		if len(sizes) != 2 || sizes[0]-sizes[1] > 2 || sizes[1]-sizes[0] > 2 {
+			t.Errorf("sizes %v", sizes)
+		}
+		p.argumentsSplit.SetSizes([]int{sizes[0] + 50, sizes[1] - 50})
+		if got := p.argumentsSplit.Sizes(); got[0] != sizes[0]+50 {
+			t.Errorf("moved to %v from %v", got, sizes)
+		}
+
+		// The wheel scrolls it.
+		pos := qt.NewQPointF2(p.descriptionArea.Viewport().Rect().Center())
+		defer pos.Delete()
+		global := p.descriptionArea.Viewport().MapToGlobal(pos)
+		none, down := qt.NewQPoint(), qt.NewQPoint2(0, -120)
+		defer none.Delete()
+		defer down.Delete()
+		event := qt.NewQWheelEvent(pos, global, *none, *down, qt.NoButton, qt.NoModifier, qt.NoScrollPhase, false)
+		defer event.Delete()
+		qt.QCoreApplication_SendEvent(p.descriptionArea.Viewport().QObject, event.QEvent)
+		if bar.Value() == 0 {
+			t.Error("the wheel did not scroll the description")
 		}
 	})
 }

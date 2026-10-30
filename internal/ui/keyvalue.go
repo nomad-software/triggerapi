@@ -95,6 +95,14 @@ type keyValueTable struct {
 	onSort func([]sortKey)
 }
 
+// newExclusiveTable returns a table which keeps to one the pairs with the same
+// key that are switched on, for what is used by name.
+func newExclusiveTable(keyLabel, valueLabel string) *keyValueTable {
+	t := newKeyValueTable(keyLabel, valueLabel)
+	t.exclusive = true
+	return t
+}
+
 func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
 	t := &keyValueTable{table: qt.NewQTableWidget3(0, 6)}
 

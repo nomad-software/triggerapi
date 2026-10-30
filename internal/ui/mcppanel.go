@@ -85,9 +85,13 @@ type mcpPanel struct {
 	// status reports a failure to load what the server has.
 	status statusLine
 
-	// description is what the server says of what is chosen.
-	description *qt.QLabel
-	arguments   *qt.QPlainTextEdit
+	// description is what the server says of what is chosen, which scrolls
+	// in a frame beside the arguments, as tall as they are.
+	description     *qt.QLabel
+	descriptionArea *qt.QScrollArea
+	// argumentsSplit has the arguments and the description side by side.
+	argumentsSplit *qt.QSplitter
+	arguments      *qt.QPlainTextEdit
 	// argumentsFold folds the objects and arrays of the arguments.
 	argumentsFold *folder
 	example       *qt.QPushButton
@@ -158,9 +162,17 @@ func newMCPPanel() *mcpPanel {
 	p.description = qt.NewQLabel2()
 	p.description.SetTextFormat(qt.PlainText)
 	p.description.SetWordWrap(true)
-	p.description.SetTextInteractionFlags(qt.TextSelectableByMouse)
 	p.description.SetEnabled(false)
-	p.description.SetVisible(false)
+	p.description.SetMargin(4)
+	p.description.SetAlignment(qt.AlignTop | qt.AlignLeft)
+	p.description.SetBackgroundRole(qt.QPalette__Base)
+
+	p.descriptionArea = qt.NewQScrollArea2()
+	p.descriptionArea.SetWidget(p.description.QWidget)
+	p.descriptionArea.SetWidgetResizable(true)
+	p.descriptionArea.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
+	p.descriptionArea.SetFocusPolicy(qt.NoFocus)
+	p.descriptionArea.SetVisible(false)
 
 	p.arguments = qt.NewQPlainTextEdit2()
 	p.arguments.SetFont(qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont))
@@ -177,13 +189,19 @@ func newMCPPanel() *mcpPanel {
 	exampleBar.AddWidget(p.format.button.QWidget)
 	exampleBar.AddStretch()
 
+	// The arguments have the room of the description when there is none.
+	p.argumentsSplit = qt.NewQSplitter3(qt.Horizontal)
+	p.argumentsSplit.AddWidget(p.arguments.QWidget)
+	p.argumentsSplit.AddWidget(p.descriptionArea.QWidget)
+	p.argumentsSplit.SetChildrenCollapsible(false)
+	p.argumentsSplit.SetSizes([]int{1, 1})
+
 	argumentsTab := qt.NewQWidget2()
 	argumentsLayout := qt.NewQVBoxLayout(argumentsTab)
-	argumentsLayout.AddWidget(p.description.QWidget)
-	argumentsLayout.AddWidget2(p.arguments.QWidget, 1)
+	argumentsLayout.AddWidget2(p.argumentsSplit.QWidget, 1)
 	argumentsLayout.AddLayout(exampleBar.QLayout)
 
-	p.headers = newKeyValueTable("Header", "Value")
+	p.headers = newExclusiveTable("Header", "Value")
 	p.headers.onChange = p.changed
 	p.highlight.table(p.headers.table)
 
@@ -319,7 +337,7 @@ func (p *mcpPanel) chosen() (mcp.Item, bool) {
 func (p *mcpPanel) describe() {
 	item, _ := p.chosen()
 	p.description.SetText(item.Description)
-	p.description.SetVisible(item.Description != "")
+	p.descriptionArea.SetVisible(item.Description != "")
 }
 
 // setCodeFont sets the font the arguments are shown in.

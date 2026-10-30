@@ -231,3 +231,38 @@ func TestKeyValueRowClicks(t *testing.T) {
 		}
 	})
 }
+
+// Switching on a param, a header or gRPC metadata switches off the others of
+// that name.
+func TestRequestTablesKeepOne(t *testing.T) {
+	mainthread.Wait(func() {
+		request, grpc, ws, graphql, mcp := newRequestPanel(), newGRPCPanel(), newWSPanel(), newGraphQLPanel(), newMCPPanel()
+		for _, panel := range []requestEditor{request, grpc, ws, graphql, mcp} {
+			defer panel.widget().Delete()
+		}
+		for name, table := range map[string]*keyValueTable{
+			"params":          request.params,
+			"REST headers":    request.headers,
+			"gRPC metadata":   grpc.metadata,
+			"WebSocket":       ws.headers,
+			"GraphQL headers": graphql.headers,
+			"MCP headers":     mcp.headers,
+		} {
+			table.setItems([]rest.KeyValue{{Key: "a", Value: "1", Enabled: true}, {Key: "a", Value: "2"}, {Key: "b", Value: "3", Enabled: true}})
+			table.table.Item(1, colEnabled).SetCheckState(qt.Checked)
+
+			want := []rest.KeyValue{{Key: "a", Value: "1"}, {Key: "a", Value: "2", Enabled: true}, {Key: "b", Value: "3", Enabled: true}}
+			if got := table.items(); !reflect.DeepEqual(got, want) {
+				t.Errorf("%s: %+v, want %+v", name, got, want)
+			}
+		}
+
+		// The URL follows the param switched on.
+		request.url.SetText("http://api.test")
+		request.params.setItems([]rest.KeyValue{{Key: "a", Value: "1", Enabled: true}, {Key: "a", Value: "2"}})
+		request.params.table.Item(1, colEnabled).SetCheckState(qt.Checked)
+		if got := request.url.Text(); got != "http://api.test?a=2" {
+			t.Errorf("URL %q", got)
+		}
+	})
+}

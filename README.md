@@ -68,6 +68,9 @@ bindings.
   and a JSON, text, XML or form body.
 - Params are shown in the URL and kept in step with it both ways. Params,
   headers and form fields can each be switched off without being removed.
+- Of the params, headers or gRPC metadata with the same name, switching one on
+  switches off the others, so you can keep several values and choose between
+  them. To send a param more than once, type it into the URL.
 - A long URL is wrapped, with the field growing to show all of it.
 - Opening a request, or changing its method, shows the tab it is likely to
   need: the body for POST, PUT and PATCH, and the params for the rest.
@@ -152,6 +155,8 @@ bindings.
   See [MCP](#mcp) for why local servers that only speak stdio need a bridge.
 - What the server has is loaded when a request is opened, and offered under
   Tools, Resources and Prompts headings with what the server says of each.
+  What the server says of what is chosen is beside the arguments, in a frame
+  which scrolls, with a separator between them to resize them by.
   Use Example Arguments fills in arguments from the schema of a tool, and a
   Format button sets them out.
 - The result is shown as JSON, with the server's name and the protocol
@@ -496,7 +501,7 @@ environment.
 | Ctrl+F | Find text in the response. |
 | Escape | Close the environment editor, or else the search of the response, the curl command or the URL preview. |
 | Ctrl+, | Open the settings. |
-| Ctrl+I | Show the about box. |
+| Ctrl+I | Show the about box, with the version of the program. |
 | Ctrl+Q | Quit. |
 
 **Sending**

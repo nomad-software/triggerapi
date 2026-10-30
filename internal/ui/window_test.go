@@ -103,12 +103,28 @@ func TestMenuBar(t *testing.T) {
 	}
 }
 
+func TestPlainVersion(t *testing.T) {
+	for version, want := range map[string]string{
+		"v1.15.0":                               "v1.15.0",
+		"v1.15.0+dirty":                         "v1.15.0",
+		"v1.15.1-0.20261027184954-00c19a9187bb": "v1.15.0",
+		"v1.15.1-0.20261027184954-00c19a9187bb+dirty": "v1.15.0",
+		"v2.0.0-rc.1": "v2.0.0",
+		"v1.2.3-rc.1.0.20261027184954-00c19a9187bb": "v1.2.3",
+		"v0.0.0-20261027184954-00c19a9187bb":        "v0.0.0",
+	} {
+		if got := plainVersion(version); got != want {
+			t.Errorf("plainVersion(%q) = %q, want %q", version, got, want)
+		}
+	}
+}
+
 func TestAboutBox(t *testing.T) {
 	for _, c := range []struct {
 		text  string
 		wants []string
 	}{
-		{mainthread.Wait2(aboutText), []string{"<h2>TriggerAPI</h2>", "Copyright © 2026 Gary Willoughby", "MCP"}},
+		{mainthread.Wait2(aboutText), []string{"Copyright © 2026 Gary Willoughby", "MCP"}},
 		// The notice the LGPL asks for, and the libraries it is built with.
 		{mainthread.Wait2(licenceText), []string{"Qt version 6.", "LGPLv3", "https://www.gnu.org/licenses/lgpl-3.0.html", "The Qt Company Ltd", "miqt", "MCP Go SDK", "age"}},
 	} {
@@ -129,6 +145,9 @@ func TestAboutBox(t *testing.T) {
 		d.Show()
 		if d.Width() < aboutWidth {
 			t.Errorf("the about box is %d wide", d.Width())
+		}
+		if d.version.Text() != appVersion() {
+			t.Errorf("the version shown is %q", d.version.Text())
 		}
 		// The notices are in a frame of the style, not one drawn by a style
 		// sheet.

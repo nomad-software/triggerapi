@@ -138,7 +138,7 @@ func newGRPCPanel() *grpcPanel {
 	p.assertions = newAssertTable(p.highlight)
 	p.assertions.onChange = p.changed
 
-	p.metadata = newKeyValueTable("Key", "Value")
+	p.metadata = newExclusiveTable("Key", "Value")
 	p.metadata.onChange = p.changed
 	p.highlight.table(p.metadata.table)
 
