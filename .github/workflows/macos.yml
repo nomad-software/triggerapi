@@ -24,7 +24,7 @@ jobs:
     # A Mac with Apple Silicon. The oldest macOS the app runs on is that of
     # this machine, as Homebrew's Qt is built for it, so it is not the
     # newest there is.
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       # Homebrew's Qt has the pkg-config files that the bindings are built
       # with. Only its base is installed, which is all TriggerAPI uses, as
