@@ -63,7 +63,7 @@ func TestColourSettingFields(t *testing.T) {
 // TestJSONColourSettingFields checks that each kind of token is kept in its own
 // field of the settings.
 func TestJSONColourSettingFields(t *testing.T) {
-	want := map[tokenKind]string{tokenKey: "Key", tokenString: "String", tokenNumber: "Number", tokenLiteral: "Literal"}
+	want := map[tokenKind]string{tokenKey: "Key", tokenString: "String", tokenNumber: "Number", tokenLiteral: "Literal", tokenCurl: "Curl"}
 	for _, k := range tokenKinds {
 		var c settings.JSONColours
 		*customColour(&c, k.kind) = "#123456"

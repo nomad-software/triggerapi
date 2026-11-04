@@ -104,6 +104,8 @@ type JSONColours struct {
 	String  string `json:"string,omitempty"`
 	Number  string `json:"number,omitempty"`
 	Literal string `json:"literal,omitempty"`
+	// Curl is the colour of the text of the curl command of a request.
+	Curl string `json:"curl,omitempty"`
 }
 
 var hexColour = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -111,7 +113,7 @@ var hexColour = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 // valid returns the colours with any that are not of the form #rrggbb
 // emptied.
 func (c JSONColours) valid() JSONColours {
-	emptyInvalid(&c.Key, &c.String, &c.Number, &c.Literal)
+	emptyInvalid(&c.Key, &c.String, &c.Number, &c.Literal, &c.Curl)
 	return c
 }
 

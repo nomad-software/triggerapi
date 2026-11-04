@@ -287,6 +287,37 @@ func TestJSONColourSettings(t *testing.T) {
 	})
 }
 
+// TestCurlColourSetting checks that the curl command is in the colour of the
+// keys of JSON until another is chosen for it.
+func TestCurlColourSetting(t *testing.T) {
+	files := testFiles(t)
+
+	mainthread.Wait(func() {
+		w := NewWindow(files.Files)
+		text := func() string { return w.request.command.Palette().ColorWithCr(qt.QPalette__Text).Name() }
+		if want := defaultJSONColours()[tokenKey]; text() != want {
+			t.Errorf("curl colour = %s, want the colour of keys %s", text(), want)
+		}
+
+		d := newSettingsDialog(w.QWidget, w.config, files.Files)
+		d.json[tokenCurl].set("#112233")
+		chosen := d.settings(w.config)
+		if chosen.JSONColours != (settings.JSONColours{Curl: "#112233"}) {
+			t.Errorf("chosen = %+v", chosen.JSONColours)
+		}
+		if err := w.applySettings(chosen); err != nil {
+			t.Fatal(err)
+		}
+		if text() != "#112233" {
+			t.Errorf("curl colour = %s after choosing one", text())
+		}
+	})
+
+	if got := settings.Load(files.Settings).JSONColours; got != (settings.JSONColours{Curl: "#112233"}) {
+		t.Errorf("saved %+v", got)
+	}
+}
+
 func TestColourSettings(t *testing.T) {
 	files := testFiles(t)
 
@@ -476,7 +507,7 @@ func TestSettingsTabs(t *testing.T) {
 		// Every colour has a row of the table, under a heading for its
 		// section which is as wide as the table.
 		table := d.colourList
-		if want := len(colourSections) + 1 + len(colourKinds) + len(tokenKinds); table.RowCount() != want {
+		if want := len(colourSections) + 2 + len(colourKinds) + len(tokenKinds); table.RowCount() != want {
 			t.Errorf("the table of colours has %d rows, want %d", table.RowCount(), want)
 		}
 		if table.Item(0, colColourName).Text() != "Sidebar" || table.ColumnSpan(0, colColourName) != 2 || table.Item(1, colColourName).Text() != colourLabel(colourWorkspaces) {

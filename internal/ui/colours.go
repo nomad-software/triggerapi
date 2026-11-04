@@ -34,7 +34,8 @@ const (
 )
 
 // colourKinds are the colours, with what each is called in the settings and
-// the colour it is until another is chosen. Each has a default of its own,
+// the colour it is until another is chosen, which is one of the accents of
+// the Solarized palette. Each has a default of its own,
 // which no other follows, so that changing one changes nothing else. Send
 // is the colour of every button which sends: Invoke, Call, Connect, and
 // Execute beside the curl command. The action buttons are those beside the tabs of a panel,
@@ -54,26 +55,26 @@ var colourKinds = []struct {
 	// user has chosen.
 	setting func(*settings.Colours) *string
 }{
-	{colourWorkspaces, "Workspaces", "#ba7d1c", func(c *settings.Colours) *string { return &c.Workspaces }},
-	{colourEnvironments, "Environments", "#2f7fd1", func(c *settings.Colours) *string { return &c.Environments }},
-	{colourRequests, "Requests", "#17807c", func(c *settings.Colours) *string { return &c.Requests }},
-	{colourREST, "REST", "#2e9e5b", func(c *settings.Colours) *string { return &c.REST }},
-	{colourGRPC, "gRPC", "#2f7fd1", func(c *settings.Colours) *string { return &c.GRPC }},
-	{colourWebSocket, "WebSocket", "#ba7d1c", func(c *settings.Colours) *string { return &c.WebSocket }},
-	{colourGraphQL, "GraphQL", "#ff4989", func(c *settings.Colours) *string { return &c.GraphQL }},
-	{colourMCP, "MCP", "#526598", func(c *settings.Colours) *string { return &c.MCP }},
-	{colourRemove, "Delete", "#e03131", func(c *settings.Colours) *string { return &c.Remove }},
-	{colourAction, "Action", "#526598", func(c *settings.Colours) *string { return &c.Action }},
-	{colourSend, "Send", "#ba7d1c", func(c *settings.Colours) *string { return &c.Send }},
-	{colourFound, "Placeholders found", "#2e9e5b", func(c *settings.Colours) *string { return &c.Found }},
-	{colourNotFound, "Placeholders not found", "#ef5350", func(c *settings.Colours) *string { return &c.NotFound }},
-	{colourError, "Errors", "#ef5350", func(c *settings.Colours) *string { return &c.Error }},
-	{colourMatch, "Search matches", "#ffd43b", func(c *settings.Colours) *string { return &c.Match }},
-	{colourSets, "Sets", "#ff4989", func(c *settings.Colours) *string { return &c.Sets }},
-	{colourHistory, "History", "#2e9e5b", func(c *settings.Colours) *string { return &c.History }},
-	{colourTiming, "Timing bars", "#ba7d1c", func(c *settings.Colours) *string { return &c.Timing }},
-	{colourPassed, "Passed", "#2e9e5b", func(c *settings.Colours) *string { return &c.Passed }},
-	{colourFailed, "Failed", "#ef5350", func(c *settings.Colours) *string { return &c.Failed }},
+	{colourWorkspaces, "Workspaces", "#859900", func(c *settings.Colours) *string { return &c.Workspaces }},
+	{colourEnvironments, "Environments", "#268bd2", func(c *settings.Colours) *string { return &c.Environments }},
+	{colourRequests, "Requests", "#2aa198", func(c *settings.Colours) *string { return &c.Requests }},
+	{colourREST, "REST", "#859900", func(c *settings.Colours) *string { return &c.REST }},
+	{colourGRPC, "gRPC", "#268bd2", func(c *settings.Colours) *string { return &c.GRPC }},
+	{colourWebSocket, "WebSocket", "#b58900", func(c *settings.Colours) *string { return &c.WebSocket }},
+	{colourGraphQL, "GraphQL", "#d33682", func(c *settings.Colours) *string { return &c.GraphQL }},
+	{colourMCP, "MCP", "#6c71c4", func(c *settings.Colours) *string { return &c.MCP }},
+	{colourRemove, "Delete", "#dc322f", func(c *settings.Colours) *string { return &c.Remove }},
+	{colourAction, "Action", "#6c71c4", func(c *settings.Colours) *string { return &c.Action }},
+	{colourSend, "Send", "#b58900", func(c *settings.Colours) *string { return &c.Send }},
+	{colourFound, "Placeholders found", "#859900", func(c *settings.Colours) *string { return &c.Found }},
+	{colourNotFound, "Placeholders not found", "#dc322f", func(c *settings.Colours) *string { return &c.NotFound }},
+	{colourError, "Errors", "#dc322f", func(c *settings.Colours) *string { return &c.Error }},
+	{colourMatch, "Search matches", "#b58900", func(c *settings.Colours) *string { return &c.Match }},
+	{colourSets, "Sets", "#d33682", func(c *settings.Colours) *string { return &c.Sets }},
+	{colourHistory, "History", "#cb4b16", func(c *settings.Colours) *string { return &c.History }},
+	{colourTiming, "Timing bars", "#b58900", func(c *settings.Colours) *string { return &c.Timing }},
+	{colourPassed, "Passed", "#859900", func(c *settings.Colours) *string { return &c.Passed }},
+	{colourFailed, "Failed", "#dc322f", func(c *settings.Colours) *string { return &c.Failed }},
 }
 
 // customColours are the colours the user has chosen. See setColours.

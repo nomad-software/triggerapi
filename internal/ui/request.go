@@ -280,6 +280,18 @@ func (p *requestPanel) setCodeFont(family string) {
 	p.command.SetFont(fixedFont(family))
 }
 
+// setCurlColour sets the colour the text of the curl command is in. Only the
+// role of the text is set in the widget's palette, so the rest follows the
+// theme.
+func (p *requestPanel) setCurlColour(colour string) {
+	palette := qt.NewQPalette()
+	c := qt.NewQColor6(colour)
+	palette.SetColor2(qt.QPalette__Text, c)
+	p.command.SetPalette(palette)
+	c.Delete()
+	palette.Delete()
+}
+
 // missingValue is shown in the preview of the URL where a placeholder has no
 // value: a black square, for something that is not there.
 const missingValue = "\u25a0"

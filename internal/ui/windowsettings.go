@@ -140,6 +140,7 @@ func (w *Window) applyJSONColours() {
 		ui.editor.refreshPlaceholders()
 		ui.response.setJSONColours(colours)
 	}
+	w.request.setCurlColour(colours[tokenCurl])
 }
 
 // drawSidebarIcons gives the tabs of the sidebar their icons.

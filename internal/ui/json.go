@@ -17,6 +17,10 @@ const (
 	tokenString
 	tokenNumber
 	tokenLiteral
+	// tokenCurl is not a token of JSON but the text of the curl command of
+	// a request, which is in the colour of the keys of JSON unless another
+	// is chosen.
+	tokenCurl
 )
 
 // The default colours of the tokens. jsonDark is used on a dark background
@@ -28,28 +32,32 @@ var (
 		tokenString:  "#0451a5",
 		tokenNumber:  "#098658",
 		tokenLiteral: "#0451a5",
+		tokenCurl:    "#a31515",
 	}
 	jsonDark = map[tokenKind]string{
 		tokenKey:     "#9bdafc",
 		tokenString:  "#a1b796",
 		tokenNumber:  "#b0c8a4",
 		tokenLiteral: "#a1b796",
+		tokenCurl:    "#9bdafc",
 	}
 )
 
 // tokenKinds are the kinds of token in the order they are offered in the
-// settings, with what each is called there.
+// settings, with the heading they are under there and what each is called.
 var tokenKinds = []struct {
-	kind  tokenKind
-	label string
+	kind    tokenKind
+	heading string
+	label   string
 	// setting returns the place in the settings that holds the colour the
 	// user has chosen.
 	setting func(*settings.JSONColours) *string
 }{
-	{tokenKey, "Keys", func(c *settings.JSONColours) *string { return &c.Key }},
-	{tokenString, "Strings", func(c *settings.JSONColours) *string { return &c.String }},
-	{tokenNumber, "Numbers", func(c *settings.JSONColours) *string { return &c.Number }},
-	{tokenLiteral, "true, false and null", func(c *settings.JSONColours) *string { return &c.Literal }},
+	{tokenKey, "JSON", "Keys", func(c *settings.JSONColours) *string { return &c.Key }},
+	{tokenString, "JSON", "Strings", func(c *settings.JSONColours) *string { return &c.String }},
+	{tokenNumber, "JSON", "Numbers", func(c *settings.JSONColours) *string { return &c.Number }},
+	{tokenLiteral, "JSON", "true, false and null", func(c *settings.JSONColours) *string { return &c.Literal }},
+	{tokenCurl, "Curl command", "Text", func(c *settings.JSONColours) *string { return &c.Curl }},
 }
 
 // defaultJSONColours returns the colours of the tokens for the background

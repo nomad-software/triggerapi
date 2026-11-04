@@ -394,10 +394,11 @@ File > Settings has five tabs:
 - User interface: the theme, light, dark or following the desktop's (which
   changes with it), the font of code (request and response bodies, messages,
   queries, arguments and the curl command), and the colours of the
-  interface, listed in sections: the icons of the sidebar and of each type of
+  interface (by default the accents of Solarized), listed in sections: the icons of the sidebar and of each type of
   request, the buttons, the sets, the history, placeholders, errors, the marks of captures and assertions,
-  the matches of a search, the bars of the Timing tab and JSON highlighting, which GraphQL is coloured
-  with too.
+  the matches of a search, the bars of the Timing tab, JSON highlighting, which GraphQL is coloured
+  with too, and the text of the curl command, which is in the colour of the keys of JSON
+  unless another is chosen.
 
 The size and layout of the window are remembered between runs. Folders of
 requests all start closed; choosing a request's tab opens the folders it is

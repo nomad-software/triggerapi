@@ -416,9 +416,13 @@ func (d *settingsDialog) colourTable() *qt.QTableWidget {
 		}
 	}
 
-	heading("JSON")
+	last := ""
 	for _, t := range tokenKinds {
-		s := d.newSwatch("JSON "+strings.ToLower(t.label[:1])+t.label[1:], customColour(&d.jsonColours, t.kind), func() string { return defaultJSONColours()[t.kind] })
+		if t.heading != last {
+			heading(t.heading)
+			last = t.heading
+		}
+		s := d.newSwatch(t.heading+" "+strings.ToLower(t.label[:1])+t.label[1:], customColour(&d.jsonColours, t.kind), func() string { return defaultJSONColours()[t.kind] })
 		d.json[t.kind] = s
 		add(t.label, s)
 	}
