@@ -1,7 +1,9 @@
 package ui
 
 import (
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 )
 
 // noEnvironment is the entry of the environment selector for using none, and
@@ -24,16 +26,16 @@ const selectorIconSize = 24
 // them all. The title of each drop-down is an icon button, which goes to
 // where what it selects is kept; the window says where.
 type environmentSelector struct {
-	root        *qt.QWidget
-	workspace   *qt.QComboBox
-	environment *qt.QComboBox
+	root        *qtwidgets.QWidget
+	workspace   *qtwidgets.QComboBox
+	environment *qtwidgets.QComboBox
 	// set chooses the set of requests whose tabs are open, or none.
-	set *qt.QComboBox
+	set *qtwidgets.QComboBox
 
 	// The titles of the drop-downs.
-	workspaceTitle   *qt.QToolButton
-	environmentTitle *qt.QToolButton
-	setTitle         *qt.QToolButton
+	workspaceTitle   *qtwidgets.QToolButton
+	environmentTitle *qtwidgets.QToolButton
+	setTitle         *qtwidgets.QToolButton
 
 	updating bool
 
@@ -50,20 +52,19 @@ type environmentSelector struct {
 
 func newEnvironmentSelector() *environmentSelector {
 	s := &environmentSelector{
-		root:        qt.NewQWidget2(),
-		workspace:   qt.NewQComboBox2(),
-		environment: qt.NewQComboBox2(),
-		set:         qt.NewQComboBox2(),
+		root:        qtwidgets.NewQWidget(nil),
+		workspace:   qtwidgets.NewQComboBox(nil),
+		environment: qtwidgets.NewQComboBox(nil),
+		set:         qtwidgets.NewQComboBox(nil),
 	}
 
 	// The titles are icons, in the colours of the tabs of the sidebar they
 	// go to, small enough to keep the line as tall as the drop-downs.
-	title := func(colour colourKind, glyph func(*qt.QPainter), tip string) *qt.QToolButton {
+	title := func(colour colourKind, glyph func(*qtgui.QPainter), tip string) *qtwidgets.QToolButton {
 		button := newIconButton(colour, glyph, tip)
-		size := qt.NewQSize2(selectorIconSize, selectorIconSize)
+		size := qtcore.QSize{Width: selectorIconSize, Height: selectorIconSize}
 		button.SetIconSize(size)
-		size.Delete()
-		button.SetFocusPolicy(qt.NoFocus)
+		button.SetFocusPolicy(qtcore.NoFocus)
 		return button
 	}
 	s.workspaceTitle = title(colourWorkspaces, drawMonitor, "Workspaces")
@@ -74,8 +75,8 @@ func newEnvironmentSelector() *environmentSelector {
 	// only for the names it has when first shown, where the window has the
 	// room. It can be narrower than that, down to selectorMinWidth, so that
 	// a long name never makes the window wider: the name is cut short.
-	for _, combo := range []*qt.QComboBox{s.workspace, s.environment, s.set} {
-		combo.SetSizeAdjustPolicy(qt.QComboBox__AdjustToContents)
+	for _, combo := range []*qtwidgets.QComboBox{s.workspace, s.environment, s.set} {
+		combo.SetSizeAdjustPolicy(qtwidgets.QComboBoxAdjustToContents)
 		combo.SetMinimumWidth(selectorMinWidth)
 	}
 	s.workspace.OnCurrentIndexChanged(func(index int) {
@@ -101,25 +102,25 @@ func newEnvironmentSelector() *environmentSelector {
 	// beneath by the margin below it. The frame is the style's own panel,
 	// in the theme's colours, with no style sheet: under one Qt draws the
 	// titles in the colours of a light theme whatever the theme is.
-	panel := qt.NewQFrame2()
-	panel.SetFrameStyle(int(qt.QFrame__StyledPanel) | int(qt.QFrame__Plain))
-	frame := panel.QWidget
-	outer := qt.NewQHBoxLayout(s.root)
-	outer.SetContentsMargins(9, 6, 9, 8)
+	panel := qtwidgets.NewQFrame(nil)
+	panel.SetFrameStyle(int(qtwidgets.QFrameStyledPanel) | int(qtwidgets.QFramePlain))
+	frame := panel.AsQWidget()
+	outer := qtwidgets.NewQHBoxLayout(s.root)
+	outer.SetContentsMargins(qtcore.QMargins{Left: 9, Top: 6, Right: 9, Bottom: 8})
 	// The frame takes the whole width, with the drop-downs at its right.
 	outer.AddWidget(frame)
 
-	layout := qt.NewQHBoxLayout(frame)
-	layout.SetContentsMargins(6, 4, 6, 4)
+	layout := qtwidgets.NewQHBoxLayout(frame)
+	layout.SetContentsMargins(qtcore.QMargins{Left: 6, Top: 4, Right: 6, Bottom: 4})
 	layout.AddStretch()
-	layout.AddWidget(s.workspaceTitle.QWidget)
-	layout.AddWidget(s.workspace.QWidget)
+	layout.AddWidget(s.workspaceTitle.AsQWidget())
+	layout.AddWidget(s.workspace.AsQWidget())
 	layout.AddSpacing(12)
-	layout.AddWidget(s.environmentTitle.QWidget)
-	layout.AddWidget(s.environment.QWidget)
+	layout.AddWidget(s.environmentTitle.AsQWidget())
+	layout.AddWidget(s.environment.AsQWidget())
 	layout.AddSpacing(12)
-	layout.AddWidget(s.setTitle.QWidget)
-	layout.AddWidget(s.set.QWidget)
+	layout.AddWidget(s.setTitle.AsQWidget())
+	layout.AddWidget(s.set.AsQWidget())
 
 	s.setEnvironments(nil, -1)
 	s.setSets(nil, -1)
@@ -148,7 +149,7 @@ func (s *environmentSelector) setSets(names []string, active int) {
 // fill gives a combo box its entries and selects one of them, without what
 // it is listening with being called. The entries are left alone if they are
 // already those wanted, as this is also called while one is being chosen.
-func (s *environmentSelector) fill(combo *qt.QComboBox, names []string, current int) {
+func (s *environmentSelector) fill(combo *qtwidgets.QComboBox, names []string, current int) {
 	defer func(prev bool) { s.updating = prev }(s.updating)
 	s.updating = true
 

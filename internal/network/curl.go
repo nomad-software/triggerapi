@@ -37,7 +37,11 @@ func (c *Client) CurlOptions(host string) [][]string {
 				names = append(names, name)
 			}
 		}
-		add("--noproxy", strings.Join(names, ","))
+		// An empty list would have curl ignore the NO_PROXY of the
+		// environment, which the client does not.
+		if len(names) > 0 {
+			add("--noproxy", strings.Join(names, ","))
+		}
 	}
 
 	switch c.config.MinTLS {

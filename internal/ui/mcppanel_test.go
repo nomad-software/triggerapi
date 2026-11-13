@@ -1,12 +1,13 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+
 	"reflect"
 	"strings"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/collection"
@@ -29,9 +30,9 @@ func TestMCPRequest(t *testing.T) {
 
 	var w *Window
 	field := func(label string) string { return fieldValue(w.mcpResponse, label) }
-	body := func() string { return mainthread.Wait2(func() string { return w.mcpResponse.body.ToPlainText() }) }
+	body := func() string { return onGUI(func() string { return w.mcpResponse.body.ToPlainText() }) }
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 
@@ -49,8 +50,8 @@ func TestMCPRequest(t *testing.T) {
 	})
 
 	// What the server has is offered under headings, the first chosen.
-	waitFor(t, "the capabilities", func() bool { return mainthread.Wait2(w.mcp.endpoint.count) == 7 })
-	mainthread.Wait(func() {
+	waitFor(t, "the capabilities", func() bool { return onGUI(w.mcp.endpoint.count) == 7 })
+	qute.PostSync(func() {
 		if w.mcp.endpoint.current() != "Tools/echo" || w.mcp.endpoints.count() != 7 || w.mcp.description.Text() != "Says the text back." {
 			t.Errorf("chosen %q, description %q", w.mcp.endpoint.current(), w.mcp.description.Text())
 		}
@@ -72,7 +73,7 @@ func TestMCPRequest(t *testing.T) {
 	// It is called with the environment applied, and what it captures is
 	// kept.
 	waitFor(t, "the result", func() bool { return strings.Contains(body(), "worldworld") })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// The server is stateless, as servers are now.
 		if field(fieldCode) != "OK" || field(fieldError) != "" || field("Server") != "test-server 1.2.3" || field("Protocol") != "2026-07-28" {
 			t.Errorf("status %q, error %q, server %q, protocol %q", field(fieldCode), field(fieldError), field("Server"), field("Protocol"))
@@ -88,8 +89,8 @@ func TestMCPRequest(t *testing.T) {
 		w.mcp.endpoint.selectMethod("Tools/fail")
 		w.mcp.call.Click()
 	})
-	waitFor(t, "the tool error", func() bool { return mainthread.Wait2(func() bool { return field(fieldCode) == "Tool error" }) })
-	mainthread.Wait(func() {
+	waitFor(t, "the tool error", func() bool { return onGUI(func() bool { return field(fieldCode) == "Tool error" }) })
+	qute.PostSync(func() {
 		if field(fieldError) != "it went wrong" {
 			t.Errorf("error %q", field(fieldError))
 		}
@@ -102,7 +103,7 @@ func TestMCPRequest(t *testing.T) {
 
 	// Requests are made of what is ticked, in a folder named after the
 	// server, under the headings.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.mcp.endpoints.setAll(true)
 		w.mcp.endpoints.create.Click()
 		var made []string
@@ -150,7 +151,7 @@ func TestMCPGroupAndDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree
@@ -192,7 +193,7 @@ func TestMCPGroupAndDraft(t *testing.T) {
 func TestMCPSchemaFailure(t *testing.T) {
 	files := testFiles(t)
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		defer func(prev collection.Type) { testRequestType = prev }(testRequestType)
@@ -202,14 +203,14 @@ func TestMCPSchemaFailure(t *testing.T) {
 		w.mcp.reload.Click()
 	})
 	waitFor(t, "the failure", func() bool {
-		return mainthread.Wait2(func() bool { return strings.Contains(w.mcp.status.Text(), "could not be loaded") })
+		return onGUI(func() bool { return strings.Contains(w.mcp.status.Text(), "could not be loaded") })
 	})
 }
 
 // An example of the arguments needs what the server says the tool takes.
 func TestMCPExampleWithoutCapabilities(t *testing.T) {
 	files := testFiles(t)
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		defer func(prev collection.Type) { testRequestType = prev }(testRequestType)
@@ -225,13 +226,13 @@ func TestMCPExampleWithoutCapabilities(t *testing.T) {
 
 // A description is beside the arguments, as tall as they are, and scrolls.
 func TestMCPDescriptionScrolls(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		p := newMCPPanel()
 		defer p.root.Delete()
 		p.root.Resize(600, 500)
 		p.root.Show()
 		p.load(mcp.Request{Kind: mcp.KindTool, Name: "long"})
-		qt.QCoreApplication_ProcessEvents()
+		qtcore.QCoreApplicationProcessEvents()
 
 		if p.descriptionArea.IsVisible() {
 			t.Error("shown with no description")
@@ -250,7 +251,7 @@ func TestMCPDescriptionScrolls(t *testing.T) {
 			{strings.Repeat("A long line of what the tool does.\n\n", 30), true},
 		} {
 			p.setSchema(schema(c.description))
-			qt.QCoreApplication_ProcessEvents()
+			qtcore.QCoreApplicationProcessEvents()
 			if !p.descriptionArea.IsVisible() || p.descriptionArea.Height() != p.arguments.Height() || p.descriptionArea.Y() != p.arguments.Y() {
 				t.Errorf("at %d, %d tall beside arguments at %d, %d tall", p.descriptionArea.Y(), p.descriptionArea.Height(), p.arguments.Y(), p.arguments.Height())
 			}
@@ -273,15 +274,12 @@ func TestMCPDescriptionScrolls(t *testing.T) {
 		}
 
 		// The wheel scrolls it.
-		pos := qt.NewQPointF2(p.descriptionArea.Viewport().Rect().Center())
-		defer pos.Delete()
-		global := p.descriptionArea.Viewport().MapToGlobal(pos)
-		none, down := qt.NewQPoint(), qt.NewQPoint2(0, -120)
-		defer none.Delete()
-		defer down.Delete()
-		event := qt.NewQWheelEvent(pos, global, *none, *down, qt.NoButton, qt.NoModifier, qt.NoScrollPhase, false)
+		pos := (p.descriptionArea.Viewport().Rect().Center()).ToF()
+		global := p.descriptionArea.Viewport().MapToGlobalF(pos)
+		none, down := qtcore.QPoint{}, qtcore.QPoint{X: 0, Y: -120}
+		event := qtgui.NewQWheelEvent(pos, global, none, down, qtcore.NoButton, qtcore.NoModifier, qtcore.NoScrollPhase, false)
 		defer event.Delete()
-		qt.QCoreApplication_SendEvent(p.descriptionArea.Viewport().QObject, event.QEvent)
+		qtcore.QCoreApplicationSendEvent(p.descriptionArea.Viewport().AsQObject(), event.AsQEvent())
 		if bar.Value() == 0 {
 			t.Error("the wheel did not scroll the description")
 		}

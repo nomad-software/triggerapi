@@ -191,7 +191,7 @@ func (c *Colours) UnmarshalJSON(data []byte) error {
 // valid returns the colours with any that are not of the form #rrggbb
 // emptied.
 func (c Colours) valid() Colours {
-	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.WebSocket, &c.GraphQL, &c.MCP, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Match, &c.Sets, &c.History, &c.Passed, &c.Failed)
+	emptyInvalid(&c.Workspaces, &c.Environments, &c.Requests, &c.REST, &c.GRPC, &c.WebSocket, &c.GraphQL, &c.MCP, &c.Remove, &c.Action, &c.Send, &c.Found, &c.NotFound, &c.Error, &c.Match, &c.Sets, &c.History, &c.Timing, &c.Passed, &c.Failed)
 	return c
 }
 
@@ -212,8 +212,7 @@ const fileName = "settings.json"
 
 // Path returns where the settings file is kept: in a folder for the program
 // in the place the system has for the configuration of programs, which is
-// ~/.config on Linux (or $XDG_CONFIG_HOME), ~/Library/Application Support on
-// macOS and %AppData% on Windows.
+// ~/.config (or $XDG_CONFIG_HOME).
 func Path() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {

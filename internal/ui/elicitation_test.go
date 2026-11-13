@@ -1,11 +1,11 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"reflect"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/mcp"
 )
@@ -20,7 +20,7 @@ func TestElicitDialog(t *testing.T) {
 		{Name: "window", Type: mcp.FieldBoolean, Default: true},
 	}}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		var answer *mcp.ElicitAnswer
 		d := newElicitDialog(nil, "localhost", e)
 		d.open(func(a *mcp.ElicitAnswer) { answer = a })
@@ -30,7 +30,7 @@ func TestElicitDialog(t *testing.T) {
 		if answer != nil || d.problem.Text() != "name has to be given." {
 			t.Errorf("answer %+v, problem %q", answer, d.problem.Text())
 		}
-		lineOf := func(i int) *qt.QLineEdit { return qt.UnsafeNewQLineEdit(d.inputs[i].widget.UnsafePointer()) }
+		lineOf := func(i int) *qtwidgets.QLineEdit { return qtwidgets.QLineEditCast(d.inputs[i].widget) }
 		lineOf(2).SetText("Ada")
 		lineOf(3).SetText("0")
 		d.accept()

@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -55,6 +56,22 @@ func TestExample(t *testing.T) {
 	deep := example(t, `{"properties": {"node": {"$ref": "#/$defs/node"}}, "$defs": {"node": {"properties": {"next": {"$ref": "#/$defs/node"}}}}}`)
 	if strings.Count(deep, "next") == 0 || strings.Count(deep, "next") > maxDepth {
 		t.Errorf("self reference: %s", deep)
+	}
+
+	// Schemas that refer to one another many times over make an example of
+	// no more than maxValues values, not one of a size that grows with every
+	// level.
+	var wide strings.Builder
+	wide.WriteString(`{"properties": {"a": {"$ref": "#/$defs/a"}}, "$defs": {"a": {"properties": {`)
+	for i := range 12 {
+		if i > 0 {
+			wide.WriteString(",")
+		}
+		fmt.Fprintf(&wide, `"p%02d": {"$ref": "#/$defs/a"}`, i)
+	}
+	wide.WriteString(`}}}}`)
+	if made := example(t, wide.String()); strings.Count(made, `"p`) > maxValues {
+		t.Errorf("an example of %d values was made, which is more than %d", strings.Count(made, `"p`), maxValues)
 	}
 
 	// A tool with no schema takes an empty object, and a schema that cannot

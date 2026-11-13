@@ -1,7 +1,8 @@
 package ui
 
 import (
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 )
@@ -14,7 +15,7 @@ var requestTypes = []struct {
 	label  string
 	colour colourKind
 	// glyph draws the symbol of the type. See drawIcon.
-	glyph func(*qt.QPainter)
+	glyph func(*qtgui.QPainter)
 }{
 	{collection.TypeREST, "REST", colourREST, drawBraces},
 	{collection.TypeGRPC, "gRPC", colourGRPC, drawArrows},
@@ -35,10 +36,10 @@ var typeLabels = func() map[collection.Type]string {
 // requestTypeIcon returns the icon for a type of request, or nil if the type
 // is not one that can be created. It is drawn again after the colours
 // change.
-func requestTypeIcon(typ collection.Type) *qt.QIcon {
+func requestTypeIcon(typ collection.Type) *qtgui.QIcon {
 	for _, t := range requestTypes {
 		if t.typ == typ {
-			return cachedIcon("type "+string(typ), func() *qt.QIcon {
+			return cachedIcon("type "+string(typ), func() *qtgui.QIcon {
 				return drawIcon(iconSize*2, themeColour(t.colour), t.glyph)
 			})
 		}
@@ -48,7 +49,7 @@ func requestTypeIcon(typ collection.Type) *qt.QIcon {
 
 // newRequestTypeDialog returns a dialog which asks what type of request to
 // create.
-func newRequestTypeDialog(parent *qt.QWidget) *choiceDialog[collection.Type] {
+func newRequestTypeDialog(parent *qtwidgets.QWidget) *choiceDialog[collection.Type] {
 	choices := make([]choice[collection.Type], len(requestTypes))
 	for i, t := range requestTypes {
 		choices[i] = choice[collection.Type]{t.typ, t.label, requestTypeIcon(t.typ)}

@@ -1,10 +1,10 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"reflect"
 	"testing"
-
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/network"
 )
@@ -20,11 +20,11 @@ func TestNetworkTab(t *testing.T) {
 		},
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
-		d := newSettingsDialog(w.QWidget, w.config, w.files)
+		d := newSettingsDialog(w.AsQWidget(), w.config, w.files)
 		defer d.DeleteLater()
-		if !d.tabs.Widget(settingsTabNetwork).IsAncestorOf(d.network.proxy.QWidget) {
+		if !d.tabs.Widget(settingsTabNetwork).IsAncestorOf(d.network.proxy.AsQWidget()) {
 			t.Error("the network settings are not on their tab")
 		}
 
@@ -35,7 +35,7 @@ func TestNetworkTab(t *testing.T) {
 		}
 
 		// What the settings hold is shown, and given back unchanged.
-		tab := newNetworkTab(w.QWidget, current)
+		tab := newNetworkTab(w.AsQWidget(), current)
 		if got := tab.config(); !reflect.DeepEqual(got, current) {
 			t.Errorf("config = %+v, want %+v", got, current)
 		}

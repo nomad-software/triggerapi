@@ -1,9 +1,11 @@
 package ui
 
 import (
-	"strings"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
-	qt "github.com/mappu/miqt/qt6"
+	"strings"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/mcp"
@@ -73,28 +75,28 @@ var mcpEndpoints = endpointKind{
 // arguments, and the headers and authorization of the HTTP requests. Only
 // the Streamable HTTP transport is offered.
 type mcpPanel struct {
-	root *qt.QWidget
+	root *qtwidgets.QWidget
 
-	url  *qt.QLineEdit
-	call *qt.QPushButton
+	url  *qtwidgets.QLineEdit
+	call *qtwidgets.QPushButton
 	// save saves a request that is not saved yet.
-	save *qt.QPushButton
+	save *qtwidgets.QPushButton
 	// endpoint is the tool, resource or prompt to call.
 	endpoint *methodCombo
-	reload   *qt.QPushButton
+	reload   *qtwidgets.QPushButton
 	// status reports a failure to load what the server has.
 	status statusLine
 
 	// description is what the server says of what is chosen, which scrolls
 	// in a frame beside the arguments, as tall as they are.
-	description     *qt.QLabel
-	descriptionArea *qt.QScrollArea
+	description     *qtwidgets.QLabel
+	descriptionArea *qtwidgets.QScrollArea
 	// argumentsSplit has the arguments and the description side by side.
-	argumentsSplit *qt.QSplitter
-	arguments      *qt.QPlainTextEdit
+	argumentsSplit *qtwidgets.QSplitter
+	arguments      *qtwidgets.QPlainTextEdit
 	// argumentsFold folds the objects and arrays of the arguments.
 	argumentsFold *folder
-	example       *qt.QPushButton
+	example       *qtwidgets.QPushButton
 	// format sets out the arguments.
 	format  *formatButton
 	headers *keyValueTable
@@ -121,19 +123,19 @@ type mcpPanel struct {
 }
 
 func newMCPPanel() *mcpPanel {
-	p := &mcpPanel{root: qt.NewQWidget2(), panelState: newPanelState()}
+	p := &mcpPanel{root: qtwidgets.NewQWidget(nil), panelState: newPanelState()}
 
-	p.url = qt.NewQLineEdit2()
+	p.url = qtwidgets.NewQLineEdit(nil)
 	p.url.SetPlaceholderText("Server address, e.g. http://localhost:8000/mcp or {{host}}/mcp")
 	p.typedLine(p.url)
 	p.url.OnEditingFinished(p.targetChanged)
 	p.highlight.lineEdit(p.url)
 
-	p.call = qt.NewQPushButton3("Call")
+	p.call = qtwidgets.NewQPushButtonWithText("Call", nil)
 	makePrimary(p.call)
 	// Save is only for a request that is not saved, as one that is saved is
 	// saved with every change.
-	p.save = qt.NewQPushButton3("Save")
+	p.save = qtwidgets.NewQPushButtonWithText("Save", nil)
 
 	p.endpoint = newMethodCombo()
 	// The heading says what kind of thing it is while the list is open.
@@ -146,60 +148,60 @@ func newMCPPanel() *mcpPanel {
 		p.changed()
 	})
 
-	p.reload = qt.NewQPushButton3("Reload")
+	p.reload = qtwidgets.NewQPushButtonWithText("Reload", nil)
 
 	// The address takes a quarter of the width left by the buttons and
 	// what is called the rest, as in the gRPC panel.
-	top := qt.NewQHBoxLayout2()
-	top.AddWidget2(p.url.QWidget, 1)
-	top.AddWidget2(p.endpoint.QWidget, 3)
-	top.AddWidget(p.reload.QWidget)
-	top.AddWidget(p.call.QWidget)
-	top.AddWidget(p.save.QWidget)
+	top := qtwidgets.NewQHBoxLayout(nil)
+	top.AddWidgetFull(p.url.AsQWidget(), 1, 0)
+	top.AddWidgetFull(p.endpoint.AsQWidget(), 3, 0)
+	top.AddWidget(p.reload.AsQWidget())
+	top.AddWidget(p.call.AsQWidget())
+	top.AddWidget(p.save.AsQWidget())
 
 	p.status = newStatusLine()
 
-	p.description = qt.NewQLabel2()
-	p.description.SetTextFormat(qt.PlainText)
+	p.description = qtwidgets.NewQLabel(nil)
+	p.description.SetTextFormat(qtcore.PlainText)
 	p.description.SetWordWrap(true)
 	p.description.SetEnabled(false)
 	p.description.SetMargin(4)
-	p.description.SetAlignment(qt.AlignTop | qt.AlignLeft)
-	p.description.SetBackgroundRole(qt.QPalette__Base)
+	p.description.SetAlignment(qtcore.AlignTop | qtcore.AlignLeft)
+	p.description.SetBackgroundRole(qtgui.QPaletteBase)
 
-	p.descriptionArea = qt.NewQScrollArea2()
-	p.descriptionArea.SetWidget(p.description.QWidget)
+	p.descriptionArea = qtwidgets.NewQScrollArea(nil)
+	p.descriptionArea.SetWidget(p.description.AsQWidget())
 	p.descriptionArea.SetWidgetResizable(true)
-	p.descriptionArea.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
-	p.descriptionArea.SetFocusPolicy(qt.NoFocus)
+	p.descriptionArea.SetHorizontalScrollBarPolicy(qtcore.ScrollBarAlwaysOff)
+	p.descriptionArea.SetFocusPolicy(qtcore.NoFocus)
 	p.descriptionArea.SetVisible(false)
 
-	p.arguments = qt.NewQPlainTextEdit2()
-	p.arguments.SetFont(qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont))
+	p.arguments = qtwidgets.NewQPlainTextEdit(nil)
+	p.arguments.SetFont(qtgui.QFontDatabaseGetSystemFont(qtgui.QFontDatabaseFixedFont))
 	p.arguments.SetPlaceholderText(`The arguments as a JSON object, e.g. {"city": "London"}`)
 	p.typedText(p.arguments)
 	p.highlight.document(p.arguments.Document(), always)
 	p.argumentsFold = newFolder(p.arguments, always)
 
-	p.example = qt.NewQPushButton3("Use Example Arguments")
+	p.example = qtwidgets.NewQPushButtonWithText("Use Example Arguments", nil)
 	p.format = newFormatButton(p.arguments, p.commit)
 
-	exampleBar := qt.NewQHBoxLayout2()
-	exampleBar.AddWidget(p.example.QWidget)
-	exampleBar.AddWidget(p.format.button.QWidget)
+	exampleBar := qtwidgets.NewQHBoxLayout(nil)
+	exampleBar.AddWidget(p.example.AsQWidget())
+	exampleBar.AddWidget(p.format.button.AsQWidget())
 	exampleBar.AddStretch()
 
 	// The arguments have the room of the description when there is none.
-	p.argumentsSplit = qt.NewQSplitter3(qt.Horizontal)
-	p.argumentsSplit.AddWidget(p.arguments.QWidget)
-	p.argumentsSplit.AddWidget(p.descriptionArea.QWidget)
+	p.argumentsSplit = qtwidgets.NewQSplitterWithOrientation(qtcore.Horizontal, nil)
+	p.argumentsSplit.AddWidget(p.arguments.AsQWidget())
+	p.argumentsSplit.AddWidget(p.descriptionArea.AsQWidget())
 	p.argumentsSplit.SetChildrenCollapsible(false)
 	p.argumentsSplit.SetSizes([]int{1, 1})
 
-	argumentsTab := qt.NewQWidget2()
-	argumentsLayout := qt.NewQVBoxLayout(argumentsTab)
-	argumentsLayout.AddWidget2(p.argumentsSplit.QWidget, 1)
-	argumentsLayout.AddLayout(exampleBar.QLayout)
+	argumentsTab := qtwidgets.NewQWidget(nil)
+	argumentsLayout := qtwidgets.NewQVBoxLayout(argumentsTab)
+	argumentsLayout.AddWidgetFull(p.argumentsSplit.AsQWidget(), 1, 0)
+	argumentsLayout.AddLayout(exampleBar.AsQLayout())
 
 	p.headers = newExclusiveTable("Header", "Value")
 	p.headers.onChange = p.changed
@@ -215,16 +217,16 @@ func newMCPPanel() *mcpPanel {
 
 	p.endpoints = newEndpointTable()
 
-	tabs := qt.NewQTabWidget2()
+	tabs := qtwidgets.NewQTabWidget(nil)
 	tabs.AddTab(plainPage(argumentsTab), "Arguments")
 	tabs.AddTab(p.headers.widget(), "Headers")
 	tabs.AddTab(p.auth.root, "Authorization")
 	tabs.AddTab(plainPage(p.endpoints.root), "Capabilities")
 
-	layout := qt.NewQVBoxLayout(p.root)
-	layout.AddLayout(top.QLayout)
-	layout.AddWidget(p.status.QWidget)
-	layout.AddWidget(tabs.QWidget)
+	layout := qtwidgets.NewQVBoxLayout(p.root)
+	layout.AddLayout(top.AsQLayout())
+	layout.AddWidget(p.status.AsQWidget())
+	layout.AddWidget(tabs.AsQWidget())
 
 	return p
 }
@@ -241,9 +243,9 @@ func (p *mcpPanel) targetChanged() {
 	}
 }
 
-func (p *mcpPanel) widget() *qt.QWidget { return p.root }
+func (p *mcpPanel) widget() *qtwidgets.QWidget { return p.root }
 
-func (p *mcpPanel) saveButton() *qt.QPushButton { return p.save }
+func (p *mcpPanel) saveButton() *qtwidgets.QPushButton { return p.save }
 
 func (p *mcpPanel) authorization() *authEditor { return p.auth }
 

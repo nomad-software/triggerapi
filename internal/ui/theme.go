@@ -1,55 +1,59 @@
 package ui
 
 import (
-	"runtime"
-
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"github.com/nomad-software/triggerapi/internal/settings"
 )
 
-// newThemeStyle returns the style of the light and dark themes: Fusion,
+// useThemeStyle puts the style of the light and dark themes into effect: Fusion,
 // with the boxes of check boxes edged more clearly. Fusion edges them in a
 // shade a little darker than the window, which in the light theme is barely
 // seen between the white of the box and the page it is on, and in the dark
 // theme is as dark as the box. The edge is drawn again in a colour half way
 // between the text and the box, which shows in either, and fades with the
-// text where the box is disabled. Qt keeps the style, and deletes it when
-// another is put in its place.
-func newThemeStyle() *qt.QStyle {
-	s := qt.NewQProxyStyle2(fusion)
-	s.OnDrawPrimitive(func(super func(qt.QStyle__PrimitiveElement, *qt.QStyleOption, *qt.QPainter, *qt.QWidget), element qt.QStyle__PrimitiveElement, option *qt.QStyleOption, painter *qt.QPainter, widget *qt.QWidget) {
-		super(element, option, painter, widget)
-		// A box the keyboard has brought the focus to keeps the edge
-		// Fusion gives it, in the colour of the selection.
-		focus := qt.QStyle__State_HasFocus | qt.QStyle__State_KeyboardFocusChange
-		if element == qt.QStyle__PE_IndicatorCheckBox && option.State()&focus != focus {
-			edgeBox(option, painter)
-		}
-	})
-	return s.QStyle
+// text where the box is disabled. The application keeps the style, and
+// deletes it when another is put in its place.
+func useThemeStyle() {
+	s := &themeStyle{}
+	qtwidgets.NewQProxyStyleWithKeyWith(s, fusion)
+	qtwidgets.QApplicationSetStyle(s)
+}
+
+// themeStyle is the style of the light and dark themes. See useThemeStyle.
+type themeStyle struct {
+	qtwidgets.QProxyStyleBase
+}
+
+// DrawPrimitive draws as Fusion does, and edges the box of a check box.
+func (s *themeStyle) DrawPrimitive(element qtwidgets.QStylePrimitiveElement, option *qtwidgets.QStyleOption, painter *qtgui.QPainter, widget *qtwidgets.QWidget) {
+	s.Super().DrawPrimitive(element, option, painter, widget)
+	// A box the keyboard has brought the focus to keeps the edge Fusion
+	// gives it, in the colour of the selection.
+	focus := qtwidgets.QStyleState_HasFocus | qtwidgets.QStyleState_KeyboardFocusChange
+	if element == qtwidgets.QStylePE_IndicatorCheckBox && option.State()&focus != focus {
+		edgeBox(option, painter)
+	}
 }
 
 // edgeBox draws the edge of the box of a check box, in a colour half way
 // between that of text and that of the box.
-func edgeBox(option *qt.QStyleOption, painter *qt.QPainter) {
+func edgeBox(option *qtwidgets.QStyleOption, painter *qtgui.QPainter) {
 	palette := option.Palette()
-	text, base := palette.ColorWithCr(qt.QPalette__Text), palette.ColorWithCr(qt.QPalette__Base)
-	edge := qt.NewQColor3((text.Red()+base.Red())/2, (text.Green()+base.Green())/2, (text.Blue()+base.Blue())/2)
-	runtime.KeepAlive(palette)
+	text, base := palette.Color(qtgui.QPaletteText), palette.Color(qtgui.QPaletteBase)
+	edge := qtgui.RGB(uint8((int(text.R)+int(base.R))/2), uint8((int(text.G)+int(base.G))/2), uint8((int(text.B)+int(base.B))/2))
 	r := option.Rect()
 	// An outline drawn without antialiasing covers the pixel below and to
 	// the right of each of its lines, so it is one less each way.
-	rect := qt.NewQRectF4(float64(r.X()), float64(r.Y()), float64(r.Width()-1), float64(r.Height()-1))
-	runtime.KeepAlive(r)
+	rect := qtcore.QRectF{X: float64(r.X), Y: float64(r.Y), Width: float64(r.Width - 1), Height: float64(r.Height - 1)}
 	painter.Save()
-	painter.SetRenderHint2(qt.QPainter__Antialiasing, false)
-	painter.SetPen(edge)
-	painter.SetBrushWithStyle(qt.NoBrush)
-	painter.DrawRect(rect)
+	painter.SetRenderHintFull(qtgui.QPainterAntialiasing, false)
+	painter.SetPenColor(edge)
+	painter.SetBrushStyle(qtcore.NoBrush)
+	painter.DrawRectF(rect)
 	painter.Restore()
-	edge.Delete()
-	rect.Delete()
 }
 
 // fusion is the style the light and dark themes are drawn in.
@@ -85,7 +89,7 @@ var systemStyle string
 // before a theme of its own replaces it.
 func rememberSystemStyle() {
 	if systemStyle == "" {
-		systemStyle = qt.QApplication_Style().Name()
+		systemStyle = qtwidgets.QApplicationStyle().Name()
 	}
 }
 
@@ -98,22 +102,22 @@ func rememberSystemStyle() {
 func applyTheme(name string) {
 	rememberSystemStyle()
 	t := themes[themeIndex(name)]
-	var p *qt.QPalette
+	var p *qtgui.QPalette
 	if t.colours != nil {
-		qt.QApplication_SetStyle(newThemeStyle())
+		useThemeStyle()
 		p = makePalette(*t.colours)
 	} else {
-		qt.QApplication_SetStyleWithStyle(systemStyle)
+		qtwidgets.QApplicationSetStyleName(systemStyle)
 		// A palette that sets nothing is the desktop's.
-		p = qt.NewQPalette()
+		p = qtgui.NewQPalette()
 	}
-	qt.QApplication_SetPalette(p)
+	qtwidgets.QApplicationSetPalette(p)
 	p.Delete()
 	themeName = t.name
 	// The lists of the table of assertions have a style of their own, over
 	// the one in effect.
 	if paddedStyle != nil {
-		paddedStyle.SetBaseStyle(qt.QStyleFactory_Create(themeStyleName()))
+		paddedStyle.SetBaseStyle(qtwidgets.QStyleFactoryCreate(themeStyleName()))
 	}
 }
 
@@ -134,7 +138,7 @@ func themeStyleName() string {
 // colours are the colours of a palette: those of each role, and those of
 // some roles where what they are in is disabled.
 type colours struct {
-	roles, disabled map[qt.QPalette__ColorRole]string
+	roles, disabled map[qtgui.QPaletteColorRole]string
 }
 
 // lightColours and darkColours are the palettes of the light and dark
@@ -143,84 +147,82 @@ type colours struct {
 // the desktop's colour scheme is.
 var (
 	lightColours = colours{
-		roles: map[qt.QPalette__ColorRole]string{
-			qt.QPalette__Window:          "#efefef",
-			qt.QPalette__WindowText:      "#1a1a1a",
-			qt.QPalette__Base:            "#ffffff",
-			qt.QPalette__AlternateBase:   "#f5f5f5",
-			qt.QPalette__Text:            "#1a1a1a",
-			qt.QPalette__PlaceholderText: "#808080",
-			qt.QPalette__Button:          "#efefef",
-			qt.QPalette__ButtonText:      "#1a1a1a",
-			qt.QPalette__BrightText:      "#ffffff",
-			qt.QPalette__ToolTipBase:     "#ffffdc",
-			qt.QPalette__ToolTipText:     "#1a1a1a",
-			qt.QPalette__Highlight:       "#308cc6",
-			qt.QPalette__HighlightedText: "#ffffff",
-			qt.QPalette__Link:            "#0b57d0",
-			qt.QPalette__LinkVisited:     "#6a1b9a",
+		roles: map[qtgui.QPaletteColorRole]string{
+			qtgui.QPaletteWindow:          "#efefef",
+			qtgui.QPaletteWindowText:      "#1a1a1a",
+			qtgui.QPaletteBase:            "#ffffff",
+			qtgui.QPaletteAlternateBase:   "#f5f5f5",
+			qtgui.QPaletteText:            "#1a1a1a",
+			qtgui.QPalettePlaceholderText: "#808080",
+			qtgui.QPaletteButton:          "#efefef",
+			qtgui.QPaletteButtonText:      "#1a1a1a",
+			qtgui.QPaletteBrightText:      "#ffffff",
+			qtgui.QPaletteToolTipBase:     "#ffffdc",
+			qtgui.QPaletteToolTipText:     "#1a1a1a",
+			qtgui.QPaletteHighlight:       "#308cc6",
+			qtgui.QPaletteHighlightedText: "#ffffff",
+			qtgui.QPaletteLink:            "#0b57d0",
+			qtgui.QPaletteLinkVisited:     "#6a1b9a",
 			// The shades Fusion draws the edges of buttons and frames
 			// with.
-			qt.QPalette__Light:    "#ffffff",
-			qt.QPalette__Midlight: "#e3e3e3",
-			qt.QPalette__Mid:      "#b8b8b8",
-			qt.QPalette__Dark:     "#9f9f9f",
-			qt.QPalette__Shadow:   "#767676",
+			qtgui.QPaletteLight:    "#ffffff",
+			qtgui.QPaletteMidlight: "#e3e3e3",
+			qtgui.QPaletteMid:      "#b8b8b8",
+			qtgui.QPaletteDark:     "#9f9f9f",
+			qtgui.QPaletteShadow:   "#767676",
 		},
-		disabled: map[qt.QPalette__ColorRole]string{
-			qt.QPalette__WindowText:      "#a0a0a0",
-			qt.QPalette__Text:            "#a0a0a0",
-			qt.QPalette__ButtonText:      "#a0a0a0",
-			qt.QPalette__Highlight:       "#919191",
-			qt.QPalette__HighlightedText: "#ffffff",
+		disabled: map[qtgui.QPaletteColorRole]string{
+			qtgui.QPaletteWindowText:      "#a0a0a0",
+			qtgui.QPaletteText:            "#a0a0a0",
+			qtgui.QPaletteButtonText:      "#a0a0a0",
+			qtgui.QPaletteHighlight:       "#919191",
+			qtgui.QPaletteHighlightedText: "#ffffff",
 		},
 	}
 	darkColours = colours{
-		roles: map[qt.QPalette__ColorRole]string{
-			qt.QPalette__Window:          "#2d2d2d",
-			qt.QPalette__WindowText:      "#e6e6e6",
-			qt.QPalette__Base:            "#1e1e1e",
-			qt.QPalette__AlternateBase:   "#262626",
-			qt.QPalette__Text:            "#e6e6e6",
-			qt.QPalette__PlaceholderText: "#8c8c8c",
-			qt.QPalette__Button:          "#353535",
-			qt.QPalette__ButtonText:      "#e6e6e6",
-			qt.QPalette__BrightText:      "#ff6060",
-			qt.QPalette__ToolTipBase:     "#353535",
-			qt.QPalette__ToolTipText:     "#e6e6e6",
-			qt.QPalette__Highlight:       "#2f6fb5",
-			qt.QPalette__HighlightedText: "#ffffff",
-			qt.QPalette__Link:            "#6aa9ff",
-			qt.QPalette__LinkVisited:     "#b48cff",
-			qt.QPalette__Light:           "#4a4a4a",
-			qt.QPalette__Midlight:        "#3e3e3e",
-			qt.QPalette__Mid:             "#262626",
-			qt.QPalette__Dark:            "#1a1a1a",
-			qt.QPalette__Shadow:          "#101010",
+		roles: map[qtgui.QPaletteColorRole]string{
+			qtgui.QPaletteWindow:          "#2d2d2d",
+			qtgui.QPaletteWindowText:      "#e6e6e6",
+			qtgui.QPaletteBase:            "#1e1e1e",
+			qtgui.QPaletteAlternateBase:   "#262626",
+			qtgui.QPaletteText:            "#e6e6e6",
+			qtgui.QPalettePlaceholderText: "#8c8c8c",
+			qtgui.QPaletteButton:          "#353535",
+			qtgui.QPaletteButtonText:      "#e6e6e6",
+			qtgui.QPaletteBrightText:      "#ff6060",
+			qtgui.QPaletteToolTipBase:     "#353535",
+			qtgui.QPaletteToolTipText:     "#e6e6e6",
+			qtgui.QPaletteHighlight:       "#2f6fb5",
+			qtgui.QPaletteHighlightedText: "#ffffff",
+			qtgui.QPaletteLink:            "#6aa9ff",
+			qtgui.QPaletteLinkVisited:     "#b48cff",
+			qtgui.QPaletteLight:           "#4a4a4a",
+			qtgui.QPaletteMidlight:        "#3e3e3e",
+			qtgui.QPaletteMid:             "#262626",
+			qtgui.QPaletteDark:            "#1a1a1a",
+			qtgui.QPaletteShadow:          "#101010",
 		},
-		disabled: map[qt.QPalette__ColorRole]string{
-			qt.QPalette__WindowText:      "#7a7a7a",
-			qt.QPalette__Text:            "#7a7a7a",
-			qt.QPalette__ButtonText:      "#7a7a7a",
-			qt.QPalette__Highlight:       "#4a4a4a",
-			qt.QPalette__HighlightedText: "#b0b0b0",
+		disabled: map[qtgui.QPaletteColorRole]string{
+			qtgui.QPaletteWindowText:      "#7a7a7a",
+			qtgui.QPaletteText:            "#7a7a7a",
+			qtgui.QPaletteButtonText:      "#7a7a7a",
+			qtgui.QPaletteHighlight:       "#4a4a4a",
+			qtgui.QPaletteHighlightedText: "#b0b0b0",
 		},
 	}
 )
 
 // makePalette returns a palette of the colours.
-func makePalette(cs colours) *qt.QPalette {
-	p := qt.NewQPalette()
+func makePalette(cs colours) *qtgui.QPalette {
+	p := qtgui.NewQPalette()
 	// The palette keeps a copy of each colour.
 	for role, colour := range cs.roles {
-		c := qt.NewQColor6(colour)
-		p.SetColor2(role, c)
-		c.Delete()
+		c := qcolour(colour)
+		p.SetColor(role, c)
 	}
 	for role, colour := range cs.disabled {
-		c := qt.NewQColor6(colour)
-		p.SetColor(qt.QPalette__Disabled, role, c)
-		c.Delete()
+		c := qcolour(colour)
+		p.SetGroupColor(qtgui.QPaletteDisabled, role, c)
 	}
 	return p
 }

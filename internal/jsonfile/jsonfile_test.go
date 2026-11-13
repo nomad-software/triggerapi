@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -142,9 +141,6 @@ func TestConvert(t *testing.T) {
 }
 
 func TestFilePermissions(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("permissions are not kept this way on Windows")
-	}
 	path := filepath.Join(t.TempDir(), "doc.json")
 
 	// A file anyone could read is replaced by one only the user can.

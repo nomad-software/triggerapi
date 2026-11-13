@@ -1,9 +1,10 @@
 package ui
 
 import (
-	"fmt"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
-	qt "github.com/mappu/miqt/qt6"
+	"fmt"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/completion"
@@ -14,27 +15,27 @@ import (
 // user can choose from come from the server, which describes its services
 // through reflection, as do the fields offered as the message is typed.
 type grpcPanel struct {
-	root *qt.QWidget
+	root *qtwidgets.QWidget
 
-	url    *qt.QLineEdit
-	tls    *qt.QCheckBox
-	invoke *qt.QPushButton
+	url    *qtwidgets.QLineEdit
+	tls    *qtwidgets.QCheckBox
+	invoke *qtwidgets.QPushButton
 	// save saves a request that is not saved yet.
-	save   *qt.QPushButton
+	save   *qtwidgets.QPushButton
 	method *methodCombo
-	reload *qt.QPushButton
+	reload *qtwidgets.QPushButton
 	// status reports a failure to load the service definition.
 	status statusLine
 
-	message *qt.QPlainTextEdit
+	message *qtwidgets.QPlainTextEdit
 	// messageFold folds the objects and arrays of the message.
 	messageFold *folder
-	example     *qt.QPushButton
+	example     *qtwidgets.QPushButton
 	// format sets out the message, or the messages.
 	format *formatButton
 	// streaming says that the method chosen takes a stream of messages,
 	// and how to give several.
-	streaming *qt.QLabel
+	streaming *qtwidgets.QLabel
 	auth      *authEditor
 	metadata  *keyValueTable
 	// captures are the variables to set from the response. See
@@ -61,25 +62,25 @@ type grpcPanel struct {
 }
 
 func newGRPCPanel() *grpcPanel {
-	p := &grpcPanel{root: qt.NewQWidget2(), panelState: newPanelState()}
+	p := &grpcPanel{root: qtwidgets.NewQWidget(nil), panelState: newPanelState()}
 
-	p.url = qt.NewQLineEdit2()
+	p.url = qtwidgets.NewQLineEdit(nil)
 	p.url.SetPlaceholderText("Server address, e.g. localhost:50051")
 	p.typedLine(p.url)
 	p.url.OnEditingFinished(p.targetChanged)
 	p.highlight.lineEdit(p.url)
 
-	p.tls = qt.NewQCheckBox3("TLS")
+	p.tls = qtwidgets.NewQCheckBoxWithText("TLS", nil)
 	p.tls.OnToggled(func(bool) {
 		p.changed()
 		p.targetChanged()
 	})
 
-	p.invoke = qt.NewQPushButton3("Invoke")
+	p.invoke = qtwidgets.NewQPushButtonWithText("Invoke", nil)
 	makePrimary(p.invoke)
 	// Save is only for a request that is not saved, as one that is saved is
 	// saved with every change.
-	p.save = qt.NewQPushButton3("Save")
+	p.save = qtwidgets.NewQPushButtonWithText("Save", nil)
 
 	p.method = newMethodCombo()
 	p.method.OnCurrentIndexChanged(func(int) {
@@ -87,23 +88,23 @@ func newGRPCPanel() *grpcPanel {
 		p.changed()
 	})
 
-	p.reload = qt.NewQPushButton3("Reload")
+	p.reload = qtwidgets.NewQPushButtonWithText("Reload", nil)
 
 	// The address takes a quarter of the width left by the buttons and the
 	// method the rest.
-	top := qt.NewQHBoxLayout2()
-	top.AddWidget2(p.url.QWidget, 1)
-	top.AddWidget2(p.method.QWidget, 3)
-	top.AddWidget(p.reload.QWidget)
-	top.AddWidget(p.tls.QWidget)
-	top.AddWidget(p.invoke.QWidget)
-	top.AddWidget(p.save.QWidget)
+	top := qtwidgets.NewQHBoxLayout(nil)
+	top.AddWidgetFull(p.url.AsQWidget(), 1, 0)
+	top.AddWidgetFull(p.method.AsQWidget(), 3, 0)
+	top.AddWidget(p.reload.AsQWidget())
+	top.AddWidget(p.tls.AsQWidget())
+	top.AddWidget(p.invoke.AsQWidget())
+	top.AddWidget(p.save.AsQWidget())
 
 	p.status = newStatusLine()
 
-	fixed := qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont)
+	fixed := qtgui.QFontDatabaseGetSystemFont(qtgui.QFontDatabaseFixedFont)
 
-	p.message = qt.NewQPlainTextEdit2()
+	p.message = qtwidgets.NewQPlainTextEdit(nil)
 	p.message.SetFont(fixed)
 	p.message.SetPlaceholderText("The request message as JSON")
 	p.typedText(p.message)
@@ -112,23 +113,23 @@ func newGRPCPanel() *grpcPanel {
 	p.messageFold = newFolder(p.message, always)
 	p.completer = newCompleter(p.message, p.completeMessage)
 
-	p.example = qt.NewQPushButton3("Use Example Message")
+	p.example = qtwidgets.NewQPushButtonWithText("Use Example Message", nil)
 
-	exampleBar := qt.NewQHBoxLayout2()
-	exampleBar.AddWidget(p.example.QWidget)
+	exampleBar := qtwidgets.NewQHBoxLayout(nil)
+	exampleBar.AddWidget(p.example.AsQWidget())
 	p.format = newFormatButton(p.message, p.commit)
 	p.format.several = true
-	exampleBar.AddWidget(p.format.button.QWidget)
+	exampleBar.AddWidget(p.format.button.AsQWidget())
 	exampleBar.AddStretch()
-	p.streaming = qt.NewQLabel3("This method takes a stream of messages: give them one after another, or in an array.")
+	p.streaming = qtwidgets.NewQLabelWithText("This method takes a stream of messages: give them one after another, or in an array.", nil)
 	p.streaming.SetEnabled(false)
 	p.streaming.SetVisible(false)
-	exampleBar.AddWidget(p.streaming.QWidget)
+	exampleBar.AddWidget(p.streaming.AsQWidget())
 
-	messageTab := qt.NewQWidget2()
-	messageLayout := qt.NewQVBoxLayout(messageTab)
-	messageLayout.AddWidget2(p.message.QWidget, 1)
-	messageLayout.AddLayout(exampleBar.QLayout)
+	messageTab := qtwidgets.NewQWidget(nil)
+	messageLayout := qtwidgets.NewQVBoxLayout(messageTab)
+	messageLayout.AddWidgetFull(p.message.AsQWidget(), 1, 0)
+	messageLayout.AddLayout(exampleBar.AsQLayout())
 
 	p.auth = newAuthEditor(&p.panelState)
 	p.auth.onChange = p.changed
@@ -144,16 +145,16 @@ func newGRPCPanel() *grpcPanel {
 
 	p.endpoints = newEndpointTable()
 
-	tabs := qt.NewQTabWidget2()
+	tabs := qtwidgets.NewQTabWidget(nil)
 	tabs.AddTab(plainPage(messageTab), "Message")
 	tabs.AddTab(p.auth.root, "Authorization")
 	tabs.AddTab(p.metadata.widget(), "Metadata")
 	tabs.AddTab(plainPage(p.endpoints.root), "Service Definitions")
 
-	layout := qt.NewQVBoxLayout(p.root)
-	layout.AddLayout(top.QLayout)
-	layout.AddWidget(p.status.QWidget)
-	layout.AddWidget(tabs.QWidget)
+	layout := qtwidgets.NewQVBoxLayout(p.root)
+	layout.AddLayout(top.AsQLayout())
+	layout.AddWidget(p.status.AsQWidget())
+	layout.AddWidget(tabs.AsQWidget())
 
 	return p
 }
@@ -175,9 +176,9 @@ func (p *grpcPanel) targetKey() string {
 	return fmt.Sprintf("%s %t", p.url.Text(), p.tls.IsChecked())
 }
 
-func (p *grpcPanel) widget() *qt.QWidget { return p.root }
+func (p *grpcPanel) widget() *qtwidgets.QWidget { return p.root }
 
-func (p *grpcPanel) saveButton() *qt.QPushButton { return p.save }
+func (p *grpcPanel) saveButton() *qtwidgets.QPushButton { return p.save }
 
 func (p *grpcPanel) authorization() *authEditor { return p.auth }
 

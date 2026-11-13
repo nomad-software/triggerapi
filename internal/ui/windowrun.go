@@ -1,15 +1,15 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/capture"
@@ -78,7 +78,7 @@ type outcome struct {
 // when it keeps to the time limit of the settings itself, as rest.Send does
 // to the headers of a stream of events. What was typed into the request is
 // saved first.
-func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *history.Entry, authorize func(context.Context) error, limit time.Duration, work func(context.Context) (outcome, error)) {
+func (w *Window) run(button *qtwidgets.QPushButton, response *responsePanel, entry *history.Entry, authorize func(context.Context) error, limit time.Duration, work func(context.Context) (outcome, error)) {
 	w.commit()
 	if w.cancel != nil {
 		w.cancel()
@@ -116,7 +116,7 @@ func (w *Window) run(button *qt.QPushButton, response *responsePanel, entry *his
 		err = network.Explain(err)
 		elapsed := time.Since(start)
 
-		mainthread.Start(func() {
+		qute.Post(func() {
 			cancel()
 			w.cancel = nil
 			button.SetText(label)
@@ -219,7 +219,7 @@ func (w *Window) streamer(response *responsePanel) func(*rest.Response) {
 		if !pending.CompareAndSwap(false, true) {
 			return
 		}
-		mainthread.Start(func() {
+		qute.Post(func() {
 			pending.Store(false)
 			if shown == w.shown {
 				response.showStream(latest.Load(), true)

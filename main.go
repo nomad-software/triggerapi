@@ -4,10 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"runtime"
 
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtgui"
 
 	"github.com/nomad-software/triggerapi/internal/instance"
 	"github.com/nomad-software/triggerapi/internal/settings"
@@ -15,9 +14,12 @@ import (
 	"github.com/nomad-software/triggerapi/internal/workspace"
 )
 
-var files ui.Files
-
 func main() {
+	os.Exit(run())
+}
+
+// run runs the program, and returns what it exits with.
+func run() int {
 	// One copy runs at a time: one started while another runs, as from the
 	// desktop, has that one's window shown and leaves, passing on the
 	// desktop's leave to take the focus. Nothing else is done before, so
@@ -27,19 +29,21 @@ func main() {
 		claim, err = instance.Claim(dir, os.Getenv("XDG_ACTIVATION_TOKEN"))
 		switch {
 		case errors.Is(err, instance.ErrRunning):
-			return
+			return 0
 		case errors.Is(err, instance.ErrNoAnswer):
 			fmt.Fprintln(os.Stderr, "triggerapi:", err)
-			os.Exit(1)
+			return 1
 		case err != nil:
 			// The program runs, as it would without the check.
 			fmt.Fprintln(os.Stderr, "triggerapi: another copy could be started beside this one:", err)
 		default:
 			defer claim.Close()
 		}
-	} else if !errors.Is(err, errors.ErrUnsupported) {
+	} else {
 		fmt.Fprintln(os.Stderr, "triggerapi: another copy could be started beside this one:", err)
 	}
+
+	var files ui.Files
 
 	// The settings are kept where the system keeps the configuration of
 	// programs, or in the current directory if it has no such place.
@@ -61,29 +65,27 @@ func main() {
 		files.Workspaces = dir
 	}
 
-	qt.NewQApplication(os.Args)
-	// Under Wayland this is the name a window goes by, which a desktop
-	// matches to the desktop file of that name for its icon and its place
-	// in the task bar. It is the name of packaging/triggerapi.desktop.
-	qt.QGuiApplication_SetDesktopFileName("triggerapi")
+	return qute.Main(func() {
+		// Under Wayland this is the name a window goes by, which a desktop
+		// matches to the desktop file of that name for its icon and its
+		// place in the task bar. It is the name of
+		// packaging/triggerapi.desktop.
+		qtgui.QGuiApplicationSetDesktopFileName("triggerapi")
 
-	// On Linux the desktop is given an entry for the program, which starts
-	// the copy that is running now, wherever it is and whatever it is
-	// called, so that it can be started from the desktop's own menus and
-	// kept in a dock or sidebar.
-	if runtime.GOOS == "linux" {
+		// The desktop is given an entry for the program, which starts the
+		// copy that is running now, wherever it is and whatever it is
+		// called, so that it can be started from the desktop's own menus
+		// and kept in a dock or sidebar.
 		if err := ui.InstallDesktopEntry(); err != nil {
 			fmt.Fprintln(os.Stderr, "triggerapi: the desktop entry could not be written:", err)
 		}
-	}
 
-	window := ui.NewWindow(files)
-	window.Show()
-	if claim != nil {
-		claim.Serve(func(token string) {
-			mainthread.Start(func() { window.Activate(token) })
-		})
-	}
-
-	qt.QApplication_Exec()
+		window := ui.NewWindow(files)
+		window.Show()
+		if claim != nil {
+			claim.Serve(func(token string) {
+				qute.Post(func() { window.Activate(token) })
+			})
+		}
+	})
 }

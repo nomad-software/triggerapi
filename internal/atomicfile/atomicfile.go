@@ -49,9 +49,8 @@ func Write(path string, data []byte, perm fs.FileMode) error {
 }
 
 // syncDir flushes a folder to the disk, so that a file renamed into it stays
-// there after a crash of the system. Not every system can flush a folder
-// (Windows cannot open one), and the file is in place either way, so a
-// failure is not reported.
+// there after a crash of the system. Not every file system can flush a
+// folder, and the file is in place either way, so a failure is not reported.
 func syncDir(dir string) {
 	if d, err := os.Open(dir); err == nil {
 		_ = d.Sync()

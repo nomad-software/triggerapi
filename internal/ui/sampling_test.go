@@ -1,9 +1,9 @@
 package ui
 
 import (
-	"testing"
+	"github.com/nomad-software/qute"
 
-	"github.com/mappu/miqt/qt6/mainthread"
+	"testing"
 
 	"github.com/nomad-software/triggerapi/internal/mcp"
 )
@@ -21,7 +21,7 @@ func TestSamplingDialog(t *testing.T) {
 		t.Errorf("samplingText = %q, want %q", got, want)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		answered := false
 		var answer *mcp.SampleAnswer
 		d := newSamplingDialog(nil, "localhost", s)

@@ -1,9 +1,11 @@
 package ui
 
 import (
-	"slices"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
-	qt "github.com/mappu/miqt/qt6"
+	"slices"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 )
@@ -22,7 +24,7 @@ type requestTab struct {
 	// pinned tabs keep their request. The one tab that is not pinned shows
 	// whichever request was last selected in the sidebar.
 	pinned bool
-	button *qt.QToolButton
+	button *qtwidgets.QToolButton
 	// pinnedByClick is set when the click just before pinned the tab, so
 	// that the double click it may be the start of does not unpin it.
 	pinnedByClick bool
@@ -45,8 +47,8 @@ type requestTab struct {
 //
 // Each tab has a button before its name. On the tab that is not pinned it is
 // a pin, which pins the tab. On a pinned tab it shows the type of the
-// request, and turns into a pin, which unpins the tab, while the pointer is
-// over the tab.
+// request, and turns into the bin of the buttons which remove, which unpins
+// the tab by a double click, while the pointer is over the tab.
 //
 // Tabs are reordered by dragging them, and a tab that is not pinned is
 // pinned by being dragged to another place.
@@ -57,7 +59,7 @@ type requestTab struct {
 // out, so a position in the bar is turned into a tab by tabAt and back by
 // barIndex.
 type requestTabs struct {
-	bar *qt.QTabBar
+	bar *qtwidgets.QTabBar
 	// tabs are the tabs of requests in the order they are shown.
 	tabs []*requestTab
 	// newAt is the position of New in the bar.
@@ -73,8 +75,8 @@ type requestTabs struct {
 	pressed *requestTab
 	moved   bool
 
-	pinnedIcon   *qt.QIcon
-	unpinnedIcon *qt.QIcon
+	pinnedIcon   *qtgui.QIcon
+	unpinnedIcon *qtgui.QIcon
 
 	// onSelect is called when the user picks a tab, with the tab that was
 	// shown until then, which is nil if it has gone.
@@ -87,25 +89,24 @@ type requestTabs struct {
 }
 
 func newRequestTabs() *requestTabs {
-	s := &requestTabs{bar: qt.NewQTabBar2()}
+	s := &requestTabs{bar: qtwidgets.NewQTabBar(nil)}
 	s.drawPinIcons()
 
 	s.bar.SetExpanding(false)
 	s.bar.SetDrawBase(false)
 	s.bar.SetUsesScrollButtons(true)
-	s.bar.SetElideMode(qt.ElideRight)
+	s.bar.SetElideMode(qtcore.ElideRight)
 	s.bar.AddTab("New")
 	// New is drawn at half strength, background and text alike, by
 	// painting the background of the window over it at half opacity.
-	s.bar.OnPaintEvent(func(super func(*qt.QPaintEvent), event *qt.QPaintEvent) {
+	s.bar.OverridePaintEvent(func(super func(*qtgui.QPaintEvent), event *qtgui.QPaintEvent) {
 		super(event)
-		painter := qt.NewQPainter2(s.bar.QPaintDevice)
+		painter := qtgui.NewQPainterOn(s.bar.AsQPaintDevice())
 		defer painter.Delete()
 		// The palette's own colour is copied, not changed.
-		veil := qt.NewQColor10(s.bar.Palette().Color(qt.QPalette__Active, qt.QPalette__Window))
-		defer veil.Delete()
-		veil.SetAlpha(128)
-		painter.FillRect6(s.bar.TabRect(s.newAt), veil)
+		veil := s.bar.Palette().GroupColor(qtgui.QPaletteActive, qtgui.QPaletteWindow)
+		veil.A = 128
+		painter.FillRect(s.bar.TabRect(s.newAt), veil)
 		painter.End()
 	})
 
@@ -127,11 +128,11 @@ func newRequestTabs() *requestTabs {
 			s.moved = true
 		}
 	})
-	s.bar.OnMousePressEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
+	s.bar.OverrideMousePressEvent(func(super func(*qtgui.QMouseEvent), event *qtgui.QMouseEvent) {
 		index := s.bar.TabAt(event.Pos())
 		if index >= 0 && index == s.newAt {
 			// New is not chosen or dragged.
-			if event.Button() == qt.LeftButton && s.onNew != nil {
+			if event.Button() == qtcore.LeftButton && s.onNew != nil {
 				s.onNew()
 			}
 			return
@@ -139,7 +140,7 @@ func newRequestTabs() *requestTabs {
 		s.pressed, s.moved = s.tabAt(index), false
 		super(event)
 	})
-	s.bar.OnMouseReleaseEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
+	s.bar.OverrideMouseReleaseEvent(func(super func(*qtgui.QMouseEvent), event *qtgui.QMouseEvent) {
 		super(event)
 		dragged, moved := s.pressed, s.moved
 		s.pressed, s.moved = nil, false
@@ -160,11 +161,11 @@ func newRequestTabs() *requestTabs {
 
 	// The tab under the pointer is followed, to show the pin on it.
 	s.bar.SetMouseTracking(true)
-	s.bar.OnMouseMoveEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
+	s.bar.OverrideMouseMoveEvent(func(super func(*qtgui.QMouseEvent), event *qtgui.QMouseEvent) {
 		super(event)
 		s.hover(s.tabAt(s.bar.TabAt(event.Pos())))
 	})
-	s.bar.OnLeaveEvent(func(super func(*qt.QEvent), event *qt.QEvent) {
+	s.bar.OverrideLeaveEvent(func(super func(*qtcore.QEvent), event *qtcore.QEvent) {
 		super(event)
 		s.hover(nil)
 	})
@@ -270,17 +271,17 @@ func (s *requestTabs) quietly(change func()) {
 
 // add puts a tab at the end of the row, before New.
 func (s *requestTabs) add(tab *requestTab) {
-	tab.button = qt.NewQToolButton2()
-	tab.button.SetIconSize(qt.NewQSize2(pinIconSize, pinIconSize))
+	tab.button = qtwidgets.NewQToolButton(nil)
+	tab.button.SetIconSize(qtcore.QSize{Width: pinIconSize, Height: pinIconSize})
 	tab.button.SetAutoRaise(true)
-	tab.button.SetFocusPolicy(qt.NoFocus)
+	tab.button.SetFocusPolicy(qtcore.NoFocus)
 	// A click pins the tab, and it takes a double click to unpin it, so
 	// that a pinned tab is not unpinned by a stray click.
-	tab.button.OnMousePressEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
+	tab.button.OverrideMousePressEvent(func(super func(*qtgui.QMouseEvent), event *qtgui.QMouseEvent) {
 		tab.pinnedByClick, tab.doubleClicked = false, false
 		super(event)
 	})
-	tab.button.OnClicked(func() {
+	tab.button.OnClicked(func(_ bool) {
 		if tab.doubleClicked {
 			tab.doubleClicked = false
 			return
@@ -290,18 +291,18 @@ func (s *requestTabs) add(tab *requestTab) {
 			tab.pinnedByClick = tab.pinned
 		}
 	})
-	tab.button.OnMouseDoubleClickEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
+	tab.button.OverrideMouseDoubleClickEvent(func(super func(*qtgui.QMouseEvent), event *qtgui.QMouseEvent) {
 		// The button handles a double click as a press, which clears the
 		// flags, so they are read first.
 		justPinned := tab.pinnedByClick
 		super(event)
 		tab.doubleClicked = true
-		if event.Button() == qt.LeftButton && !justPinned && tab.pinned {
+		if event.Button() == qtcore.LeftButton && !justPinned && tab.pinned {
 			s.toggle(tab)
 		}
 	})
 	// The tab bar is not told of the pointer moving over the button.
-	tab.button.OnEnterEvent(func(super func(*qt.QEnterEvent), event *qt.QEnterEvent) {
+	tab.button.OverrideEnterEvent(func(super func(*qtgui.QEnterEvent), event *qtgui.QEnterEvent) {
 		super(event)
 		s.hover(tab)
 	})
@@ -310,7 +311,7 @@ func (s *requestTabs) add(tab *requestTab) {
 		s.tabs = append(s.tabs, tab)
 		index := s.bar.InsertTab(s.newAt, "")
 		s.newAt++
-		s.bar.SetTabButton(index, qt.QTabBar__LeftSide, tab.button.QWidget)
+		s.bar.SetTabButton(index, qtwidgets.QTabBarLeftSide, tab.button.AsQWidget())
 	})
 	s.refresh(tab)
 }

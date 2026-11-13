@@ -1,7 +1,9 @@
 package ui
 
 import (
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 )
@@ -11,7 +13,7 @@ import (
 // goes through this for everything that is the same for every type.
 type requestEditor interface {
 	// widget returns the panel.
-	widget() *qt.QWidget
+	widget() *qtwidgets.QWidget
 	// show fills the panel with a request of its type, without reporting
 	// a change.
 	show(r *collection.Request)
@@ -20,7 +22,7 @@ type requestEditor interface {
 	compose(name string) *collection.Request
 	// saveButton returns the button which saves a request that is not
 	// saved yet.
-	saveButton() *qt.QPushButton
+	saveButton() *qtwidgets.QPushButton
 	// authorization returns the editor of the authorization of the request.
 	authorization() *authEditor
 	// highlighter returns what colours the placeholders of the panel.
@@ -108,9 +110,9 @@ func (s *panelState) edited() {
 // typedText has what is typed into a text editor of the panel reported once
 // it is committed: when the editor loses the keyboard, or through
 // Window.commit.
-func (s *panelState) typedText(edit *qt.QPlainTextEdit) {
+func (s *panelState) typedText(edit *qtwidgets.QPlainTextEdit) {
 	edit.OnTextChanged(s.edited)
-	edit.OnFocusOutEvent(func(super func(*qt.QFocusEvent), event *qt.QFocusEvent) {
+	edit.OverrideFocusOutEvent(func(super func(*qtgui.QFocusEvent), event *qtgui.QFocusEvent) {
 		s.commit()
 		super(event)
 	})
@@ -118,7 +120,7 @@ func (s *panelState) typedText(edit *qt.QPlainTextEdit) {
 
 // typedLine does the same for a line edit, which is also committed on
 // Return.
-func (s *panelState) typedLine(edit *qt.QLineEdit) {
+func (s *panelState) typedLine(edit *qtwidgets.QLineEdit) {
 	edit.OnTextChanged(func(string) { s.edited() })
 	edit.OnEditingFinished(s.commit)
 }
@@ -159,8 +161,8 @@ func (s *panelState) escape() bool { return false }
 
 // newRequestPage returns the page of a request UI: the request above the
 // response, divided by a handle that is dragged to share the height.
-func newRequestPage(ui *requestUI) *qt.QSplitter {
-	split := qt.NewQSplitter3(qt.Vertical)
+func newRequestPage(ui *requestUI) *qtwidgets.QSplitter {
+	split := qtwidgets.NewQSplitterWithOrientation(qtcore.Vertical, nil)
 	split.AddWidget(ui.editor.widget())
 	split.AddWidget(ui.response.root)
 	split.SetChildrenCollapsible(false)

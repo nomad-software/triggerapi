@@ -1,10 +1,10 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtgui"
+
 	"errors"
 	"strings"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -19,11 +19,11 @@ type captureResult struct {
 
 // captureIcon returns a tick for a value that was captured, and a cross for
 // one that was not.
-func captureIcon(captured bool) *qt.QIcon {
+func captureIcon(captured bool) *qtgui.QIcon {
 	if captured {
-		return cachedIcon("captured", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourPassed), drawTick) })
+		return cachedIcon("captured", func() *qtgui.QIcon { return drawIcon(iconSize*2, themeColour(colourPassed), drawTick) })
 	}
-	return cachedIcon("not captured", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourFailed), drawCross) })
+	return cachedIcon("not captured", func() *qtgui.QIcon { return drawIcon(iconSize*2, themeColour(colourFailed), drawCross) })
 }
 
 // newCaptureTable returns the table of the Capture tab of a response panel:

@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"fmt"
 	"slices"
 	"strings"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/crypt"
@@ -29,15 +31,15 @@ const (
 // same order as the store, so an item is mapped to its folder or request by
 // position.
 type requestTree struct {
-	root *qt.QWidget
-	tree *qt.QTreeWidget
+	root *qtwidgets.QWidget
+	tree *qtwidgets.QTreeWidget
 	// search narrows the tree to the folders and requests that match what
 	// is typed in it.
-	search *qt.QLineEdit
+	search *qtwidgets.QLineEdit
 	// views is the tabs beneath the search, which show the requests or the
 	// sets, each in a page of pages.
-	views *qt.QTabBar
-	pages *qt.QStackedWidget
+	views *qtwidgets.QTabBar
+	pages *qtwidgets.QStackedWidget
 	// sets lists the sets, which are kept in the store with the folders.
 	sets *setList
 
@@ -100,11 +102,11 @@ func (t *requestTree) commitTyped() {
 
 func newRequestTree(store *collection.Store, path string) *requestTree {
 	t := &requestTree{
-		root:   qt.NewQWidget2(),
-		tree:   qt.NewQTreeWidget2(),
-		search: qt.NewQLineEdit2(),
-		views:  qt.NewQTabBar2(),
-		pages:  qt.NewQStackedWidget2(),
+		root:   qtwidgets.NewQWidget(nil),
+		tree:   qtwidgets.NewQTreeWidget(nil),
+		search: qtwidgets.NewQLineEdit(nil),
+		views:  qtwidgets.NewQTabBar(nil),
+		pages:  qtwidgets.NewQStackedWidget(nil),
 	}
 	t.sets = newSetList(t)
 
@@ -138,7 +140,7 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	})
 
 	t.confirm = func(question string) bool {
-		return qt.QMessageBox_Question(t.root, "TriggerAPI", question) == qt.QMessageBox__Yes
+		return qtwidgets.QMessageBoxQuestion(t.root, "TriggerAPI", question) == qtwidgets.QMessageBoxYes
 	}
 	t.create = func() (*collection.Request, bool) {
 		return collection.New(collection.TypeREST, "New Request"), true
@@ -157,9 +159,9 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	// and the folders under them have theirs in its place.
 	t.tree.SetRootIsDecorated(false)
 	// Names are only edited through the Rename button.
-	t.tree.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
+	t.tree.SetEditTriggers(qtwidgets.QAbstractItemViewNoEditTriggers)
 	// The headings are shaded, across the whole tree.
-	shadeHeadings(t.tree, func(index *qt.QModelIndex) bool {
+	shadeHeadings(t.tree, func(index *qtcore.QModelIndex) bool {
 		return !index.Parent().IsValid() && index.Row() < len(t.top) && t.top[index.Row()].group != ""
 	})
 
@@ -168,33 +170,33 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	// which removes, and the one which imports is apart at the right. There
 	// is none to open a request, as selecting it does that.
 	addFolder := newIconButton(colourRequests, drawRequestsPlus, "Add a folder")
-	addFolder.OnClicked(t.addFolder)
+	addFolder.OnClicked(func(_ bool) { t.addFolder() })
 	addRequest := newIconButton(colourRequests, drawPlus, "Add a request")
-	addRequest.OnClicked(t.addRequest)
+	addRequest.OnClicked(func(_ bool) { t.addRequest() })
 	duplicate := newIconButton(colourRequests, drawCopy, "Duplicate the selected folder or request")
-	duplicate.OnClicked(t.duplicate)
+	duplicate.OnClicked(func(_ bool) { t.duplicate() })
 	rename := newIconButton(colourRequests, drawLetters, "Rename the selected folder or request")
-	rename.OnClicked(t.rename)
+	rename.OnClicked(func(_ bool) { t.rename() })
 	remove := newIconButton(colourRemove, drawBin, "Remove the selected folder or request")
-	remove.OnClicked(t.remove)
+	remove.OnClicked(func(_ bool) { t.remove() })
 	importButton := newIconButton(colourRequests, drawImport, "Import a folder of requests from an OpenAPI document or a Postman collection")
-	importButton.OnClicked(t.importDocument)
+	importButton.OnClicked(func(_ bool) { t.importDocument() })
 
 	buttons := newButtonRow(addFolder, addRequest, duplicate, rename, remove)
-	buttons.AddWidget(importButton.QWidget)
+	buttons.AddWidget(importButton.AsQWidget())
 
-	requests := qt.NewQWidget2()
-	requestsLayout := qt.NewQVBoxLayout(requests)
-	requestsLayout.SetContentsMargins(0, 0, 0, 0)
-	requestsLayout.AddWidget2(t.tree.QWidget, 1)
-	requestsLayout.AddLayout(buttons.QLayout)
+	requests := qtwidgets.NewQWidget(nil)
+	requestsLayout := qtwidgets.NewQVBoxLayout(requests)
+	requestsLayout.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 0, Right: 0, Bottom: 0})
+	requestsLayout.AddWidgetFull(t.tree.AsQWidget(), 1, 0)
+	requestsLayout.AddLayout(buttons.AsQLayout())
 	t.pages.AddWidget(requests)
 	t.pages.AddWidget(t.sets.root)
 
-	layout := qt.NewQVBoxLayout(t.root)
-	layout.AddWidget(t.search.QWidget)
-	layout.AddWidget(t.views.QWidget)
-	layout.AddWidget2(t.pages.QWidget, 1)
+	layout := qtwidgets.NewQVBoxLayout(t.root)
+	layout.AddWidget(t.search.AsQWidget())
+	layout.AddWidget(t.views.AsQWidget())
+	layout.AddWidgetFull(t.pages.AsQWidget(), 1, 0)
 
 	t.load(store, path)
 
@@ -204,24 +206,24 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	t.tree.SetDragEnabled(true)
 	t.tree.SetAcceptDrops(true)
 	t.tree.SetDropIndicatorShown(true)
-	t.tree.SetDragDropMode(qt.QAbstractItemView__InternalMove)
-	t.tree.OnDropEvent(func(_ func(*qt.QDropEvent), event *qt.QDropEvent) {
+	t.tree.SetDragDropMode(qtwidgets.QAbstractItemViewInternalMove)
+	t.tree.OverrideDropEvent(func(_ func(*qtgui.QDropEvent), event *qtgui.QDropEvent) {
 		dragged := t.tree.CurrentItem()
 		target := t.tree.ItemAt(event.Position().ToPoint())
 
 		where := dropNowhere
-		switch t.tree.DropIndicatorPosition() {
-		case qt.QAbstractItemView__OnItem:
+		switch t.tree.Protected().DropIndicatorPosition() {
+		case qtwidgets.QAbstractItemViewOnItem:
 			where = dropOn
-		case qt.QAbstractItemView__AboveItem:
+		case qtwidgets.QAbstractItemViewAboveItem:
 			where = dropAbove
-		case qt.QAbstractItemView__BelowItem:
+		case qtwidgets.QAbstractItemViewBelowItem:
 			where = dropBelow
 		}
 
 		// Tell the tree that nothing was moved, so that it does not remove
 		// what was dragged.
-		event.SetDropAction(qt.IgnoreAction)
+		event.SetDropAction(qtcore.IgnoreAction)
 		event.Accept()
 
 		if dragged == nil {
@@ -239,14 +241,14 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 		}
 
 		// The items must not be replaced until the drag has finished.
-		mainthread.Start(func() {
+		qute.Post(func() {
 			t.drop(draggedFolder, draggedRequest, targetFolder, targetRequest, where)
 		})
 	})
 
 	// Clicking where there is no item clears the selection, which is how a
 	// folder is added at the top level once there are others.
-	t.tree.OnMousePressEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
+	t.tree.OverrideMousePressEvent(func(super func(*qtgui.QMouseEvent), event *qtgui.QMouseEvent) {
 		item := t.tree.ItemAt(event.Pos())
 		switch {
 		case item == nil:
@@ -259,10 +261,10 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	})
 
 	// Whether a folder is open or closed is kept with it.
-	t.tree.OnItemExpanded(func(item *qt.QTreeWidgetItem) { t.setCollapsed(item, false) })
-	t.tree.OnItemCollapsed(func(item *qt.QTreeWidgetItem) { t.setCollapsed(item, true) })
+	t.tree.OnItemExpanded(func(item *qtwidgets.QTreeWidgetItem) { t.setCollapsed(item, false) })
+	t.tree.OnItemCollapsed(func(item *qtwidgets.QTreeWidgetItem) { t.setCollapsed(item, true) })
 
-	t.tree.OnCurrentItemChanged(func(*qt.QTreeWidgetItem, *qt.QTreeWidgetItem) {
+	t.tree.OnCurrentItemChanged(func(*qtwidgets.QTreeWidgetItem, *qtwidgets.QTreeWidgetItem) {
 		if t.updating {
 			return
 		}
@@ -278,19 +280,19 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	// over: up and down from one item to the next, left to close a folder
 	// and right to open one, as a tree does by itself. Return opens the
 	// request it has got to.
-	t.tree.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
+	t.tree.OverrideKeyPressEvent(func(super func(*qtgui.QKeyEvent), event *qtgui.QKeyEvent) {
 		switch event.Key() {
-		case int(qt.Key_Return), int(qt.Key_Enter):
+		case int(qtcore.Key_Return), int(qtcore.Key_Enter):
 			t.activate()
-		case int(qt.Key_F2):
+		case int(qtcore.Key_F2):
 			// As the rename button does.
 			t.rename()
 		default:
 			switch {
-			case event.Matches(qt.QKeySequence__Copy):
+			case event.Matches(qtgui.QKeySequenceCopy):
 				t.copy()
 				return
-			case event.Matches(qt.QKeySequence__Paste):
+			case event.Matches(qtgui.QKeySequencePaste):
 				t.paste()
 				return
 			}
@@ -311,9 +313,9 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 
 	// A click also opens the request that is already selected, which the
 	// selection changing does not cover.
-	t.tree.OnItemClicked(func(*qt.QTreeWidgetItem, int) { t.open() })
+	t.tree.OnItemClicked(func(*qtwidgets.QTreeWidgetItem, int) { t.open() })
 
-	t.tree.OnItemChanged(func(item *qt.QTreeWidgetItem, column int) {
+	t.tree.OnItemChanged(func(item *qtwidgets.QTreeWidgetItem, column int) {
 		if t.updating || column != colName {
 			return
 		}
@@ -349,7 +351,7 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 
 		// The new name may belong somewhere else in the order. The items
 		// must not be replaced while one of them is reporting its change.
-		mainthread.Start(t.sort)
+		qute.Post(t.sort)
 	})
 
 	return t
@@ -395,8 +397,8 @@ func (t *requestTree) draw(selected any) {
 
 	t.tree.Clear()
 
-	var current *qt.QTreeWidgetItem
-	note := func(item *qt.QTreeWidgetItem, of any) {
+	var current *qtwidgets.QTreeWidgetItem
+	note := func(item *qtwidgets.QTreeWidgetItem, of any) {
 		if of == selected {
 			current = item
 		}
@@ -404,8 +406,8 @@ func (t *requestTree) draw(selected any) {
 
 	// fill adds the contents of a folder beneath its item: its folders
 	// first, then its requests.
-	var fill func(item *qt.QTreeWidgetItem, folder *collection.Folder)
-	fill = func(item *qt.QTreeWidgetItem, folder *collection.Folder) {
+	var fill func(item *qtwidgets.QTreeWidgetItem, folder *collection.Folder)
+	fill = func(item *qtwidgets.QTreeWidgetItem, folder *collection.Folder) {
 		note(item, folder)
 		for _, sub := range folder.Folders {
 			fill(t.newItem(item, sub.Name, ""), sub)
@@ -443,7 +445,7 @@ func (t *requestTree) selection() any {
 }
 
 // subject returns the folder or request of an item, or nil for a heading.
-func (t *requestTree) subject(item *qt.QTreeWidgetItem) any {
+func (t *requestTree) subject(item *qtwidgets.QTreeWidgetItem) any {
 	switch folder, request := t.locate(item); {
 	case request != nil:
 		return request
@@ -490,22 +492,22 @@ func (t *requestTree) order() []any {
 }
 
 // folderIcon returns the icon of a folder, the arrows of requests.
-func folderIcon() *qt.QIcon {
-	return cachedIcon("folder", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourRequests), drawRequests) })
+func folderIcon() *qtgui.QIcon {
+	return cachedIcon("folder", func() *qtgui.QIcon { return drawIcon(iconSize*2, themeColour(colourRequests), drawRequests) })
 }
 
 // newItem adds an item at the end of the children of a parent item, or with
 // no parent at the end of the top level. A request has the icon of its type
 // before its name, and an item with no type is a folder.
-func (t *requestTree) newItem(parent *qt.QTreeWidgetItem, name string, typ collection.Type) *qt.QTreeWidgetItem {
+func (t *requestTree) newItem(parent *qtwidgets.QTreeWidgetItem, name string, typ collection.Type) *qtwidgets.QTreeWidgetItem {
 	defer func(prev bool) { t.updating = prev }(t.updating)
 	t.updating = true
 
-	var item *qt.QTreeWidgetItem
+	var item *qtwidgets.QTreeWidgetItem
 	if parent == nil {
-		item = qt.NewQTreeWidgetItem3(t.tree)
+		item = qtwidgets.NewQTreeWidgetItemIn(t.tree)
 	} else {
-		item = qt.NewQTreeWidgetItem6(parent)
+		item = qtwidgets.NewQTreeWidgetItemUnder(parent)
 	}
 
 	item.SetText(colName, name)
@@ -514,10 +516,10 @@ func (t *requestTree) newItem(parent *qt.QTreeWidgetItem, name string, typ colle
 	} else {
 		item.SetIcon(colName, folderIcon())
 	}
-	flags := item.Flags() | qt.ItemIsEditable
+	flags := item.Flags() | qtcore.ItemIsEditable
 	if typ != "" {
 		// Nothing can be dropped onto a request.
-		flags &^= qt.ItemIsDropEnabled
+		flags &^= qtcore.ItemIsDropEnabled
 	}
 	item.SetFlags(flags)
 
@@ -528,11 +530,11 @@ func (t *requestTree) newItem(parent *qt.QTreeWidgetItem, name string, typ colle
 // icon of the type of request it lists, or for mixed ones that of a folder.
 // It is not a folder: it is always open, has no arrow, and cannot be
 // selected, renamed, dragged or dropped onto.
-func (t *requestTree) newHeading(group collection.Type) *qt.QTreeWidgetItem {
+func (t *requestTree) newHeading(group collection.Type) *qtwidgets.QTreeWidgetItem {
 	defer func(prev bool) { t.updating = prev }(t.updating)
 	t.updating = true
 
-	item := qt.NewQTreeWidgetItem3(t.tree)
+	item := qtwidgets.NewQTreeWidgetItemIn(t.tree)
 	item.SetText(colName, groupLabels[group])
 	icon := requestTypeIcon(group)
 	if icon == nil {
@@ -542,12 +544,12 @@ func (t *requestTree) newHeading(group collection.Type) *qt.QTreeWidgetItem {
 	font := item.Font(colName)
 	font.SetBold(true)
 	item.SetFont(colName, font)
-	item.SetFlags(qt.ItemIsEnabled)
+	item.SetFlags(qtcore.ItemIsEnabled)
 	return item
 }
 
 // isHeading reports if an item is that of a heading.
-func (t *requestTree) isHeading(item *qt.QTreeWidgetItem) bool {
+func (t *requestTree) isHeading(item *qtwidgets.QTreeWidgetItem) bool {
 	if item.Parent() != nil {
 		return false
 	}
@@ -559,7 +561,7 @@ func (t *requestTree) isHeading(item *qt.QTreeWidgetItem) bool {
 // folder that holds it. The item of a heading is neither, and gives nil for
 // both. The children of a folder's item are its folders followed by its
 // requests, as they are in the store.
-func (t *requestTree) locate(item *qt.QTreeWidgetItem) (*collection.Folder, *collection.Request) {
+func (t *requestTree) locate(item *qtwidgets.QTreeWidgetItem) (*collection.Folder, *collection.Request) {
 	// The position of the item at each level, from the top down.
 	var path []int
 	for {
@@ -593,7 +595,7 @@ func (t *requestTree) locate(item *qt.QTreeWidgetItem) (*collection.Folder, *col
 
 // setCollapsed records that the folder of an item was opened or closed by
 // the user, for the tree to be drawn again with it so. It is not saved.
-func (t *requestTree) setCollapsed(item *qt.QTreeWidgetItem, collapsed bool) {
+func (t *requestTree) setCollapsed(item *qtwidgets.QTreeWidgetItem, collapsed bool) {
 	// Folders opened and closed during a search are not remembered.
 	if t.updating || t.query() != nil {
 		return
@@ -613,7 +615,7 @@ func (t *requestTree) setCollapsed(item *qt.QTreeWidgetItem, collapsed bool) {
 // folderItem returns the item of the folder that something is to be added
 // to: the selected folder, or the folder of the selected request. It is nil
 // if nothing is selected, or a heading is.
-func (t *requestTree) folderItem() *qt.QTreeWidgetItem {
+func (t *requestTree) folderItem() *qtwidgets.QTreeWidgetItem {
 	item := t.tree.CurrentItem()
 	if item == nil || t.isHeading(item) {
 		return nil
@@ -641,8 +643,8 @@ func (t *requestTree) selectRequest(r *collection.Request) {
 		return
 	}
 
-	var find func(item *qt.QTreeWidgetItem) *qt.QTreeWidgetItem
-	find = func(item *qt.QTreeWidgetItem) *qt.QTreeWidgetItem {
+	var find func(item *qtwidgets.QTreeWidgetItem) *qtwidgets.QTreeWidgetItem
+	find = func(item *qtwidgets.QTreeWidgetItem) *qtwidgets.QTreeWidgetItem {
 		if _, request := t.locate(item); request == r {
 			return item
 		}
@@ -930,7 +932,7 @@ func (t *requestTree) remove() {
 // neighbour returns the folder or request to select once that of an item is
 // removed: the one after it beside it, or else the one before it, or else
 // the folder that holds it. It is nil if there is none of these.
-func (t *requestTree) neighbour(item *qt.QTreeWidgetItem) any {
+func (t *requestTree) neighbour(item *qtwidgets.QTreeWidgetItem) any {
 	parent := item.Parent()
 	count := t.tree.TopLevelItemCount()
 	child := t.tree.TopLevelItem

@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"context"
 	"fmt"
 	"net/http"
@@ -10,7 +12,6 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/mappu/miqt/qt6/mainthread"
 	"golang.org/x/oauth2"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
@@ -47,13 +48,13 @@ func browseForUser(t *testing.T) {
 }
 
 func tokenState(w *Window, a *authEditor) string {
-	return mainthread.Wait2(a.tokenState.Text)
+	return onGUI(a.tokenState.Text)
 }
 
 func TestOAuthClientCredentials(t *testing.T) {
 	s := oauthtest.New(t)
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		w.request.url.SetText(s.URL + "/resource")
@@ -69,15 +70,15 @@ func TestOAuthClientCredentials(t *testing.T) {
 	}
 
 	// The token is used again.
-	mainthread.Wait(func() { w.request.send.Click() })
+	qute.PostSync(func() { w.request.send.Click() })
 	waitFor(t, "the second response", func() bool {
-		return mainthread.Wait2(func() bool { return w.cancel == nil }) && fieldValue(w.response, "Status") == "200 OK"
+		return onGUI(func() bool { return w.cancel == nil }) && fieldValue(w.response, "Status") == "200 OK"
 	})
 	if s.Issued() != 1 {
 		t.Errorf("issued %d tokens", s.Issued())
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if !w.request.auth.clearToken.IsEnabled() {
 			t.Error("Clear Token is not enabled")
 		}
@@ -94,7 +95,7 @@ func TestOAuthSignIn(t *testing.T) {
 		t.Run(string(grant), func(t *testing.T) {
 			s := oauthtest.New(t)
 			var w *Window
-			mainthread.Wait(func() {
+			qute.PostSync(func() {
 				w = NewWindow(testFiles(t).Files)
 				w.Show()
 				w.request.url.SetText(s.URL + "/resource")
@@ -111,7 +112,7 @@ func TestGetToken(t *testing.T) {
 	s := oauthtest.New(t)
 	var w *Window
 	a := func() *authEditor { return w.request.auth }
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		auth := oauthAuth(s, "")
 		auth.OAuth.ClientSecret = "wrong"
@@ -123,12 +124,12 @@ func TestGetToken(t *testing.T) {
 		}
 	})
 	waitFor(t, "the problem", func() bool {
-		return mainthread.Wait2(func() bool {
+		return onGUI(func() bool {
 			return strings.Contains(a().problem.Text(), "invalid_client") && a().getToken.Text() == "Get Token"
 		})
 	})
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		a().clientSecret.SetText(oauthtest.ClientSecret)
 		if a().problem.IsVisible() {
 			t.Error("the problem is still shown")
@@ -138,15 +139,15 @@ func TestGetToken(t *testing.T) {
 	waitFor(t, "the token", func() bool { return strings.Contains(tokenState(w, a()), "There is a token") })
 
 	// Get Token gets a new one, whatever there is.
-	mainthread.Wait(func() { a().getToken.Click() })
-	waitFor(t, "another token", func() bool { return s.Issued() == 2 && mainthread.Wait2(func() bool { return a().cancel == nil }) })
+	qute.PostSync(func() { a().getToken.Click() })
+	waitFor(t, "another token", func() bool { return s.Issued() == 2 && onGUI(func() bool { return a().cancel == nil }) })
 }
 
 func TestOAuthCurl(t *testing.T) {
 	s := oauthtest.New(t)
 	var w *Window
-	command := func() string { return mainthread.Wait2(w.request.command.ToPlainText) }
-	mainthread.Wait(func() {
+	command := func() string { return onGUI(w.request.command.ToPlainText) }
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.request.url.SetText(s.URL + "/resource")
 		w.request.auth.load(oauthAuth(s, ""))
@@ -156,7 +157,7 @@ func TestOAuthCurl(t *testing.T) {
 		t.Errorf("without a token: %q", got)
 	}
 
-	mainthread.Wait(func() { w.request.auth.getToken.Click() })
+	qute.PostSync(func() { w.request.auth.getToken.Click() })
 	waitFor(t, "the token in the command", func() bool { return strings.Contains(command(), "Authorization: Bearer token-1") })
 	if strings.HasPrefix(command(), "#") {
 		t.Errorf("with a token: %q", command())
@@ -169,7 +170,7 @@ func TestOAuthInBackground(t *testing.T) {
 	s := oauthtest.New(t)
 	srv := mcptest.NewServer(t)
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		defer func(prev collection.Type) { testRequestType = prev }(testRequestType)
@@ -180,22 +181,22 @@ func TestOAuthInBackground(t *testing.T) {
 		w.mcp.reload.Click()
 	})
 	waitFor(t, "the reason", func() bool {
-		return mainthread.Wait2(func() bool { return strings.Contains(w.mcp.status.Text(), "needs you to sign in") })
+		return onGUI(func() bool { return strings.Contains(w.mcp.status.Text(), "needs you to sign in") })
 	})
 
 	// Once there is a token it is used.
 	browseForUser(t)
-	mainthread.Wait(func() { w.mcp.auth.getToken.Click() })
+	qute.PostSync(func() { w.mcp.auth.getToken.Click() })
 	waitFor(t, "the token", func() bool { return strings.Contains(tokenState(w, w.mcp.auth), "There is a token") })
-	mainthread.Wait(func() { w.mcp.reload.Click() })
-	waitFor(t, "the capabilities", func() bool { return mainthread.Wait2(w.mcp.endpoint.count) == 7 })
+	qute.PostSync(func() { w.mcp.reload.Click() })
+	waitFor(t, "the capabilities", func() bool { return onGUI(w.mcp.endpoint.count) == 7 })
 }
 
 func TestOAuthWebSocket(t *testing.T) {
 	s := oauthtest.New(t)
 	srv := wsGreeter(t)
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		defer func(prev collection.Type) { testRequestType = prev }(testRequestType)
@@ -206,9 +207,9 @@ func TestOAuthWebSocket(t *testing.T) {
 		w.ws.connect.Click()
 	})
 	waitFor(t, "the greeting", func() bool {
-		return mainthread.Wait2(func() bool { return strings.Contains(w.wsResponse.body.ToPlainText(), "hello Bearer token-1") })
+		return onGUI(func() bool { return strings.Contains(w.wsResponse.body.ToPlainText(), "hello Bearer token-1") })
 	})
-	mainthread.Wait(w.disconnectWS)
+	qute.PostSync(w.disconnectWS)
 }
 
 // wsGreeter accepts WebSocket connections, greeting each with the

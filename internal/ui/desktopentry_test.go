@@ -1,14 +1,14 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"bytes"
 	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mappu/miqt/qt6/mainthread"
 )
 
 func TestInstallDesktopEntry(t *testing.T) {
@@ -17,7 +17,7 @@ func TestInstallDesktopEntry(t *testing.T) {
 	t.Setenv("APPIMAGE", "/home/me/Apps/My TriggerAPI.AppImage")
 
 	var err error
-	mainthread.Wait(func() { err = InstallDesktopEntry() })
+	qute.PostSync(func() { err = InstallDesktopEntry() })
 	if err != nil {
 		t.Fatal(err)
 	}

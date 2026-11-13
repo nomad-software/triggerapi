@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"testing"
 )
@@ -23,17 +22,15 @@ func TestWrite(t *testing.T) {
 	if data, _ := os.ReadFile(path); string(data) != "second" {
 		t.Errorf("file = %q", data)
 	}
-	if runtime.GOOS != "windows" {
-		if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
-			t.Errorf("mode = %v", info.Mode())
-		}
-		other := filepath.Join(dir, "other")
-		if err := Write(other, []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		if info, _ := os.Stat(other); info.Mode().Perm() != 0o644 {
-			t.Errorf("mode = %v", info.Mode())
-		}
+	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v", info.Mode())
+	}
+	other := filepath.Join(dir, "other")
+	if err := Write(other, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if info, _ := os.Stat(other); info.Mode().Perm() != 0o644 {
+		t.Errorf("mode = %v", info.Mode())
 	}
 	// No temporary file is left behind.
 	if entries, _ := os.ReadDir(dir); len(entries) != 2 {

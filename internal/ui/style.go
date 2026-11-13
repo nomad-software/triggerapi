@@ -1,9 +1,11 @@
 package ui
 
 import (
-	"fmt"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
-	qt "github.com/mappu/miqt/qt6"
+	"fmt"
 )
 
 // primaryStyle returns the style sheet which makes a button stand out as the
@@ -13,8 +15,7 @@ import (
 // over it and darker while pressed. Its text is black or white, whichever
 // can be read against the colour.
 func primaryStyle() string {
-	colour := qt.NewQColor6(themeColour(colourSend))
-	defer colour.Delete()
+	colour := qcolour(themeColour(colourSend))
 	text := readableOn(colour)
 
 	return fmt.Sprintf(`
@@ -31,12 +32,12 @@ QPushButton:hover { background-color: %s; }
 QPushButton:pressed { background-color: %s; }
 QPushButton:focus { border: 1px solid %s; }
 QPushButton:disabled { background-color: #8a9aab; }
-`, colour.Name(), text, colour.LighterWithInt(112).Name(), colour.DarkerWithInt(112).Name(), colour.LighterWithInt(160).Name())
+`, colour.Name(), text, colour.Lighter(112).Name(), colour.Darker(112).Name(), colour.Lighter(160).Name())
 }
 
 // readableOn returns the colour of text that can be read against a colour:
 // black on a light one, and white on a dark one.
-func readableOn(colour *qt.QColor) string {
+func readableOn(colour qtgui.QColor) string {
 	if colour.Lightness() > 140 {
 		return "#000000"
 	}
@@ -45,23 +46,20 @@ func readableOn(colour *qt.QColor) string {
 
 // makePrimary styles a button as the main action of its page. It is called
 // again when the colour changes.
-func makePrimary(button *qt.QPushButton) {
+func makePrimary(button *qtwidgets.QPushButton) {
 	button.SetStyleSheet(primaryStyle())
 }
 
 // shadeHeadings has the rows of a tree which are headings, as headingAt
 // reports of an index, drawn on a background of the colour of text at 3%
 // opacity, the whole width of the tree.
-func shadeHeadings(tree *qt.QTreeWidget, headingAt func(index *qt.QModelIndex) bool) {
-	tree.OnDrawRow(func(super func(*qt.QPainter, *qt.QStyleOptionViewItem, *qt.QModelIndex), painter *qt.QPainter, options *qt.QStyleOptionViewItem, index *qt.QModelIndex) {
+func shadeHeadings(tree *qtwidgets.QTreeWidget, headingAt func(index *qtcore.QModelIndex) bool) {
+	tree.OverrideDrawRow(func(super func(*qtgui.QPainter, *qtwidgets.QStyleOptionViewItem, *qtcore.QModelIndex), painter *qtgui.QPainter, options *qtwidgets.QStyleOptionViewItem, index *qtcore.QModelIndex) {
 		if headingAt(index) {
-			colour := qt.NewQColor10(tree.Palette().ColorWithCr(qt.QPalette__Text))
-			defer colour.Delete()
-			colour.SetAlphaF(0.03)
+			colour := tree.Palette().Color(qtgui.QPaletteText).WithAlphaF(0.03)
 			rect := tree.VisualRect(index)
-			row := qt.NewQRect4(0, rect.Top(), tree.Viewport().Width(), rect.Height())
-			defer row.Delete()
-			painter.FillRect6(row, colour)
+			row := qtcore.QRect{X: 0, Y: rect.Top(), Width: tree.Viewport().Width(), Height: rect.Height}
+			painter.FillRect(row, colour)
 		}
 		super(painter, options, index)
 	})
@@ -71,12 +69,12 @@ func shadeHeadings(tree *qt.QTreeWidget, headingAt func(index *qt.QModelIndex) b
 // the text beside it: the colour of text mixed half and half with the colour
 // of the window behind it, as if it were half transparent.
 func fadedTextColour() string {
-	palette := qt.QGuiApplication_Palette()
-	window := palette.ColorWithCr(qt.QPalette__Window)
-	text := palette.ColorWithCr(qt.QPalette__WindowText)
+	palette := qtgui.QGuiApplicationPalette()
+	window := palette.Color(qtgui.QPaletteWindow)
+	text := palette.Color(qtgui.QPaletteWindowText)
 
 	mix := func(a, b int) int { return (a + b) / 2 }
-	return fmt.Sprintf("#%02x%02x%02x", mix(text.Red(), window.Red()), mix(text.Green(), window.Green()), mix(text.Blue(), window.Blue()))
+	return fmt.Sprintf("#%02x%02x%02x", mix(int(text.R), int(window.R)), mix(int(text.G), int(window.G)), mix(int(text.B), int(window.B)))
 }
 
 // plainPage gives the page of a tab widget the background of the window.
@@ -84,8 +82,8 @@ func fadedTextColour() string {
 // desktop's own, draw the pages of a tab widget lighter than the window,
 // which in a dark theme leaves dimmed text hard to read and an empty page a
 // slab of grey. The page is returned.
-func plainPage(page *qt.QWidget) *qt.QWidget {
-	page.SetBackgroundRole(qt.QPalette__Window)
+func plainPage(page *qtwidgets.QWidget) *qtwidgets.QWidget {
+	page.SetBackgroundRole(qtgui.QPaletteWindow)
 	page.SetAutoFillBackground(true)
 	return page
 }
@@ -93,14 +91,14 @@ func plainPage(page *qt.QWidget) *qt.QWidget {
 // newPanel returns a sunken frame with the background of a text field, as
 // an editor or a list has, with a widget filling it. It is what stands in
 // for an editor where there is nothing to edit.
-func newPanel(content *qt.QWidget) *qt.QWidget {
-	panel := qt.NewQFrame2()
-	panel.SetFrameStyle(int(qt.QFrame__StyledPanel) | int(qt.QFrame__Sunken))
-	panel.SetBackgroundRole(qt.QPalette__Base)
+func newPanel(content *qtwidgets.QWidget) *qtwidgets.QWidget {
+	panel := qtwidgets.NewQFrame(nil)
+	panel.SetFrameStyle(int(qtwidgets.QFrameStyledPanel) | int(qtwidgets.QFrameSunken))
+	panel.SetBackgroundRole(qtgui.QPaletteBase)
 	panel.SetAutoFillBackground(true)
 
-	layout := qt.NewQVBoxLayout(panel.QWidget)
-	layout.SetContentsMargins(0, 0, 0, 0)
+	layout := qtwidgets.NewQVBoxLayout(panel.AsQWidget())
+	layout.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 0, Right: 0, Bottom: 0})
 	layout.AddWidget(content)
-	return panel.QWidget
+	return panel.AsQWidget()
 }

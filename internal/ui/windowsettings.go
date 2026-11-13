@@ -1,11 +1,11 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"errors"
 	"fmt"
 	"path/filepath"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/settings"
 )
@@ -34,7 +34,7 @@ func (w *Window) settings() settings.Settings {
 	s.Width, s.Height, s.Maximized = w.Width(), w.Height(), w.IsMaximized()
 	if s.Maximized {
 		normal := w.NormalGeometry()
-		s.Width, s.Height = normal.Width(), normal.Height()
+		s.Width, s.Height = normal.Width, normal.Height
 		if s.Width <= 0 || s.Height <= 0 {
 			s.Width, s.Height = w.config.Width, w.config.Height
 		}
@@ -44,17 +44,17 @@ func (w *Window) settings() settings.Settings {
 
 // openSettings lets the user edit the settings in a dialog.
 func (w *Window) openSettings() {
-	dialog := newSettingsDialog(w.QWidget, w.config, w.files)
+	dialog := newSettingsDialog(w.AsQWidget(), w.config, w.files)
 	// A dialog is not destroyed by being closed.
 	defer dialog.DeleteLater()
 	dialog.onExport = w.chooseExport
 	dialog.onImport = w.chooseImport
 
-	if dialog.Exec() != int(qt.QDialog__Accepted) {
+	if dialog.Exec() != int(qtwidgets.QDialogAccepted) {
 		return
 	}
 	if err := w.applySettings(dialog.settings(w.config)); err != nil {
-		qt.QMessageBox_Warning(w.QWidget, "Settings", err.Error())
+		qtwidgets.QMessageBoxWarning(w.AsQWidget(), "Settings", err.Error())
 	}
 }
 
@@ -105,7 +105,7 @@ func (w *Window) applySettings(s settings.Settings) error {
 	// Keys that could not be opened are tried again, as the passphrase may
 	// not have been given.
 	if s.PublicKey != w.config.PublicKey || s.PrivateKey != w.config.PrivateKey || w.keys.Err() != nil {
-		if keys, err := openKeys(w.QWidget, s); err != nil {
+		if keys, err := openKeys(w.AsQWidget(), s); err != nil {
 			failed = append(failed, err)
 		} else {
 			w.config.PublicKey, w.config.PrivateKey = s.PublicKey, s.PrivateKey

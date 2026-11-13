@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -222,9 +221,6 @@ func TestDuplicate(t *testing.T) {
 }
 
 func TestDefaultDir(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("the place for data is only chosen here on Linux")
-	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -247,9 +243,6 @@ func TestDefaultDir(t *testing.T) {
 }
 
 func TestPermissions(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("permissions are not kept this way on Windows")
-	}
 	dir := filepath.Join(t.TempDir(), "workspaces")
 	if err := Create(dir, "Mine"); err != nil {
 		t.Fatal(err)

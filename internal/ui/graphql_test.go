@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"encoding/json"
 	"io"
 	"net/http"
@@ -8,8 +10,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/collection"
@@ -63,9 +63,9 @@ func TestGraphQLRequest(t *testing.T) {
 
 	var w *Window
 	field := func(label string) string { return fieldValue(w.graphqlResponse, label) }
-	body := func() string { return mainthread.Wait2(func() string { return w.graphqlResponse.body.ToPlainText() }) }
+	body := func() string { return onGUI(func() string { return w.graphqlResponse.body.ToPlainText() }) }
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 
@@ -88,7 +88,7 @@ func TestGraphQLRequest(t *testing.T) {
 	// It is sent with the environment applied, and what it captures is
 	// kept in the environment.
 	waitFor(t, "the response", func() bool { return strings.Contains(body(), `"header": "world"`) })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if field(fieldCode) != "200 OK" || field(fieldError) != "" || !strings.Contains(body(), `"id": 7`) {
 			t.Errorf("status %q, error %q, body %s", field(fieldCode), field(fieldError), body())
 		}
@@ -100,8 +100,8 @@ func TestGraphQLRequest(t *testing.T) {
 		w.graphql.query.SetPlainText("{ fail }")
 		w.graphql.send.Click()
 	})
-	waitFor(t, "the errors", func() bool { return mainthread.Wait2(func() bool { return field(fieldError) != "" }) })
-	mainthread.Wait(func() {
+	waitFor(t, "the errors", func() bool { return onGUI(func() bool { return field(fieldError) != "" }) })
+	qute.PostSync(func() {
 		if field(fieldError) != "no such field" || field(fieldCode) != "200 OK" {
 			t.Errorf("status %q, error %q", field(fieldCode), field(fieldError))
 		}
@@ -111,28 +111,28 @@ func TestGraphQLRequest(t *testing.T) {
 		w.graphql.send.Click()
 	})
 	waitFor(t, "the variables error", func() bool {
-		return mainthread.Wait2(func() bool { return strings.Contains(field(fieldError), "JSON object") })
+		return onGUI(func() bool { return strings.Contains(field(fieldError), "JSON object") })
 	})
 
 	// The schema is asked for when its tab is shown.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if w.graphql.schema.ToPlainText() != "" {
 			t.Error("the schema was asked for before its tab was shown")
 		}
 		w.graphql.tabs.SetCurrentIndex(tabGraphQLSchema)
 	})
 	waitFor(t, "the schema", func() bool {
-		return mainthread.Wait2(func() bool { return strings.Contains(w.graphql.schema.ToPlainText(), "type Query {") })
+		return onGUI(func() bool { return strings.Contains(w.graphql.schema.ToPlainText(), "type Query {") })
 	})
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// A server that cannot be asked is reported.
 		w.graphql.url.SetText("http://127.0.0.1:1/graphql")
 		w.graphql.reload.Click()
 	})
 	waitFor(t, "the schema failure", func() bool {
-		return mainthread.Wait2(func() bool { return strings.Contains(w.graphql.status.Text(), "could not be loaded") })
+		return onGUI(func() bool { return strings.Contains(w.graphql.status.Text(), "could not be loaded") })
 	})
-	mainthread.Wait(func() { w.Close() })
+	qute.PostSync(func() { w.Close() })
 
 	saved, err := loadRequests(files.Requests)
 	if err != nil {
@@ -162,7 +162,7 @@ func TestGraphQLGroupAndDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree

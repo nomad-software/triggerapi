@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"cmp"
 	"slices"
 	"strconv"
 	"strings"
-
-	qt "github.com/mappu/miqt/qt6"
 )
 
 // sortKey is one of the columns rows are shown sorted by.
@@ -53,14 +55,10 @@ func (t *keyValueTable) sortByHeadings() {
 	// The header is one of the table's own making, as the modifiers of a
 	// click can only be had from its events, and its sections are painted
 	// with their marks.
-	header := qt.NewQHeaderView(qt.Horizontal)
+	header := &sortHeader{table: t}
+	qtwidgets.NewQHeaderViewWith(header, qtcore.Horizontal, nil)
 	header.SetSectionsClickable(true)
 	header.SetHighlightSections(true)
-	header.OnMouseReleaseEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
-		t.adding = event.Modifiers()&qt.ShiftModifier != 0
-		super(event)
-		t.adding = false
-	})
 	header.OnSectionClicked(func(column int) {
 		if !slices.Contains(sortColumns, column) {
 			return
@@ -70,13 +68,30 @@ func (t *keyValueTable) sortByHeadings() {
 			t.onSort(slices.Clone(t.sortKeys))
 		}
 	})
-	header.OnPaintSection(func(super func(*qt.QPainter, *qt.QRect, int), painter *qt.QPainter, rect *qt.QRect, column int) {
-		super(painter, rect, column)
-		t.paintSortMark(header, painter, rect, column)
-	})
 	// The table takes the header, and deletes the one it had.
 	t.table.SetHorizontalHeader(header)
 	t.sizeColumns()
+}
+
+// sortHeader is the header of a table sorted by its headings, which reads
+// the modifiers of a click and paints the marks of the columns sorted by.
+type sortHeader struct {
+	qtwidgets.QHeaderViewBase
+	table *keyValueTable
+}
+
+// MouseReleaseEvent notes whether Shift is held as a heading is clicked,
+// which adds its column to those sorted by.
+func (h *sortHeader) MouseReleaseEvent(event *qtgui.QMouseEvent) {
+	h.table.adding = event.Modifiers()&qtcore.ShiftModifier != 0
+	h.Super().MouseReleaseEvent(event)
+	h.table.adding = false
+}
+
+// PaintSection paints a heading with its mark.
+func (h *sortHeader) PaintSection(painter *qtgui.QPainter, rect qtcore.QRect, column int) {
+	h.Super().PaintSection(painter, rect, column)
+	h.table.paintSortMark(h.QHeaderView, painter, rect, column)
 }
 
 // setSort shows the rows sorted by the columns given, or in the order they
@@ -144,7 +159,7 @@ func sortMarkLayout(section box, size, numberWidth, margin float64) (triangle, n
 // colour of its text at half opacity: a triangle pointing up for ascending
 // or down for descending, and its place among the columns when there are
 // several, at the right of the heading.
-func (t *keyValueTable) paintSortMark(header *qt.QHeaderView, painter *qt.QPainter, rect *qt.QRect, column int) {
+func (t *keyValueTable) paintSortMark(header *qtwidgets.QHeaderView, painter *qtgui.QPainter, rect qtcore.QRect, column int) {
 	at := slices.IndexFunc(t.sortKeys, func(k sortKey) bool { return k.column == column })
 	if at < 0 {
 		return
@@ -152,46 +167,42 @@ func (t *keyValueTable) paintSortMark(header *qt.QHeaderView, painter *qt.QPaint
 	key := t.sortKeys[at]
 
 	// The number is a little smaller than the heading.
-	font := qt.NewQFont5(header.Font())
-	defer font.Delete()
+	font := header.Font()
 	font.SetPointSizeF(font.PointSizeF() * 0.85)
 	number, numberWidth := "", 0.0
 	if len(t.sortKeys) > 1 {
 		number = strconv.Itoa(at + 1)
-		metrics := qt.NewQFontMetrics(font)
-		numberWidth = float64(metrics.HorizontalAdvance(number))
-		metrics.Delete()
+		numberWidth = float64(qtgui.NewQFontMetricsWithFont(font).HorizontalAdvance(number))
 	}
 	size := float64(header.FontMetrics().Height()) / 2
-	margin := float64(header.Style().PixelMetric(qt.QStyle__PM_HeaderMargin, nil, header.QWidget))
-	section := box{float64(rect.X()), float64(rect.Y()), float64(rect.Width()), float64(rect.Height())}
+	margin := float64(header.Style().PixelMetricFull(qtwidgets.QStylePM_HeaderMargin, nil, header.AsQWidget()))
+	section := box{float64(rect.X), float64(rect.Y), float64(rect.Width), float64(rect.Height)}
 	triangle, place := sortMarkLayout(section, size, numberWidth, margin)
 
 	painter.Save()
 	defer painter.Restore()
-	painter.SetRenderHint(qt.QPainter__Antialiasing)
+	painter.SetRenderHint(qtgui.QPainterAntialiasing)
 	painter.SetOpacity(0.5)
-	colour := header.Palette().ColorWithCr(qt.QPalette__ButtonText)
+	colour := header.Palette().Color(qtgui.QPaletteButtonText)
 
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	defer path.Delete()
 	top, bottom := triangle.y, triangle.y+triangle.h
 	if key.descending {
 		top, bottom = bottom, top
 	}
-	path.MoveTo2(triangle.x, bottom)
-	path.LineTo2(triangle.x+triangle.w, bottom)
-	path.LineTo2(triangle.x+triangle.w/2, top)
+	path.MoveTo(qtcore.QPointF{X: triangle.x, Y: bottom})
+	path.LineTo(qtcore.QPointF{X: triangle.x + triangle.w, Y: bottom})
+	path.LineTo(qtcore.QPointF{X: triangle.x + triangle.w/2, Y: top})
 	path.CloseSubpath()
-	brush := qt.NewQBrush3(colour)
+	brush := qtgui.NewQBrushWithColor(colour)
 	defer brush.Delete()
 	painter.FillPath(path, brush)
 
 	if number != "" {
 		painter.SetFont(font)
-		painter.SetPen(colour)
-		area := qt.NewQRectF4(place.x, place.y, place.w, place.h)
-		defer area.Delete()
-		painter.DrawText5(area, int(qt.AlignLeft|qt.AlignVCenter), number)
+		painter.SetPenColor(colour)
+		area := qtcore.QRectF{X: place.x, Y: place.y, Width: place.w, Height: place.h}
+		painter.DrawTextInF(area, int(qtcore.AlignLeft|qtcore.AlignVCenter), number)
 	}
 }

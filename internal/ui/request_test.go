@@ -1,6 +1,11 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,9 +16,6 @@ import (
 	"testing"
 	"time"
 
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
-
 	"github.com/nomad-software/triggerapi/internal/env"
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/settings"
@@ -21,10 +23,10 @@ import (
 
 // pressEscape presses the Escape key in a widget. It must be called on the
 // main thread.
-func pressEscape(widget *qt.QWidget) {
-	event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(qt.Key_Escape), qt.NoModifier)
+func pressEscape(widget *qtwidgets.QWidget) {
+	event := qtgui.NewQKeyEvent(qtcore.QEventKeyPress, int(qtcore.Key_Escape), qtcore.NoModifier)
 	defer event.Delete()
-	qt.QCoreApplication_SendEvent(widget.QObject, event.QEvent)
+	qtcore.QCoreApplicationSendEvent(widget.AsQObject(), event.AsQEvent())
 }
 
 func TestSendRequest(t *testing.T) {
@@ -50,7 +52,7 @@ func TestSendRequest(t *testing.T) {
 	defer srv.Close()
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
@@ -80,7 +82,7 @@ func TestSendRequest(t *testing.T) {
 		return fieldValue(w.response, "Status") == "201 Created"
 	})
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if want := "{\n  \"id\": 1\n}"; w.response.body.ToPlainText() != want {
 			t.Errorf("body = %q, want %q", w.response.body.ToPlainText(), want)
 		}
@@ -97,7 +99,7 @@ func TestSendRequest(t *testing.T) {
 }
 
 func TestParamsShownInURL(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		p := w.request
 
@@ -110,7 +112,7 @@ func TestParamsShownInURL(t *testing.T) {
 		}
 
 		// A disabled param is taken out of the URL but stays in the table.
-		p.params.table.Item(0, colEnabled).SetCheckState(qt.Unchecked)
+		p.params.table.Item(0, colEnabled).SetCheckState(qtcore.Unchecked)
 		if got, want := p.url.Text(), "{{host}}/users?q=a%26b"; got != want {
 			t.Errorf("url = %q, want %q", got, want)
 		}
@@ -163,14 +165,14 @@ func TestRESTErrorStatus(t *testing.T) {
 	var w *Window
 	send := func(path, code string) {
 		t.Helper()
-		mainthread.Wait(func() {
+		qute.PostSync(func() {
 			w.request.url.SetText(srv.URL + path)
 			w.request.send.Click()
 		})
 		waitFor(t, "the response to "+path, func() bool { return fieldValue(w.response, "Status") == code })
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		// The response is empty until there is one, with no hint in it.
@@ -182,7 +184,7 @@ func TestRESTErrorStatus(t *testing.T) {
 	// An error status goes in the bar beneath the response, in red, with
 	// the time taken. The response holds the body alone.
 	send("/missing", "404 Not Found")
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if got, want := w.response.body.ToPlainText(), "{\n  \"error\": \"no such user\"\n}"; got != want {
 			t.Errorf("body = %q, want %q", got, want)
 		}
@@ -200,7 +202,7 @@ func TestRESTErrorStatus(t *testing.T) {
 	})
 
 	send("/empty", "500 Internal Server Error")
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if w.response.body.ToPlainText() != "" || fieldValue(w.response, "Status") != "500 Internal Server Error" || !isFailure(w.response) {
 			t.Errorf("body = %q, bar = %+v", w.response.body.ToPlainText(), w.response.fields)
 		}
@@ -208,7 +210,7 @@ func TestRESTErrorStatus(t *testing.T) {
 
 	// A success has its status in the bar too, but not as a failure.
 	send("/ok", "200 OK")
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if w.response.body.ToPlainText() != "fine" || fieldValue(w.response, "Status") != "200 OK" || isFailure(w.response) {
 			t.Errorf("body = %q, bar = %+v", w.response.body.ToPlainText(), w.response.fields)
 		}
@@ -233,7 +235,7 @@ func TestURLPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		p := w.request
@@ -256,12 +258,12 @@ func TestURLPreview(t *testing.T) {
 		// The value is in the colour of a placeholder that is found, the
 		// marks in that of one that is not, and the rest in neither.
 		colourAt := func(position int) string {
-			cursor := qt.NewQTextCursor2(p.resolved.Document())
+			cursor := qtgui.NewQTextCursorWithTextDocument(p.resolved.Document())
 			defer cursor.Delete()
 			// The format of a cursor is that of the character before it.
 			cursor.SetPosition(position + 1)
 			format := cursor.CharFormat()
-			if !format.HasProperty(int(qt.QTextFormat__ForegroundBrush)) {
+			if !format.HasProperty(int(qtgui.QTextFormatForegroundBrush)) {
 				return ""
 			}
 			return formatColour(format)
@@ -288,7 +290,7 @@ func TestURLPreview(t *testing.T) {
 		}
 
 		// Escape goes back to the field, as does the button.
-		pressEscape(p.resolved.QWidget)
+		pressEscape(p.resolved.AsQWidget())
 		if p.preview.IsChecked() || p.url.IsHidden() || !p.resolved.IsHidden() {
 			t.Error("Escape did not close the preview")
 		}
@@ -301,11 +303,11 @@ func TestURLPreview(t *testing.T) {
 		// The curl command is closed before the preview beneath it.
 		p.preview.Click()
 		p.curl.Click()
-		pressEscape(p.command.QWidget)
+		pressEscape(p.command.AsQWidget())
 		if p.pages.CurrentIndex() != pageFields || !p.preview.IsChecked() {
 			t.Errorf("after Escape: page %d, preview %v", p.pages.CurrentIndex(), p.preview.IsChecked())
 		}
-		pressEscape(p.resolved.QWidget)
+		pressEscape(p.resolved.AsQWidget())
 		if p.preview.IsChecked() {
 			t.Error("Escape did not close the preview")
 		}
@@ -317,7 +319,7 @@ func TestURLPreview(t *testing.T) {
 		if w.stack.CurrentIndex() != pageEditor {
 			t.Error("the editor did not open")
 		}
-		pressEscape(w.QWidget)
+		pressEscape(w.AsQWidget())
 		if w.stack.CurrentIndex() != pageRequest || !p.preview.IsChecked() {
 			t.Errorf("after Escape: page %d, preview %v", w.stack.CurrentIndex(), p.preview.IsChecked())
 		}
@@ -330,14 +332,14 @@ func TestURLWraps(t *testing.T) {
 	var short int
 	sent := 0
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.request.url.SetText("example.test/users")
 	})
 	waitFor(t, "the URL field to be laid out", func() bool { return w.request.url.Height() > 0 && w.request.url.Width() > 100 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		url := w.request.url
 		short = url.Height()
 
@@ -350,13 +352,13 @@ func TestURLWraps(t *testing.T) {
 	})
 	waitFor(t, "the URL field to grow", func() bool { return w.request.url.Height() >= 3*short-short/2 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		url := w.request.url
 		url.SetText("example.test/users")
 	})
 	waitFor(t, "the URL field to shrink", func() bool { return w.request.url.Height() == short })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		url := w.request.url
 
 		// It is one line however it is filled.
@@ -374,16 +376,16 @@ func TestURLWraps(t *testing.T) {
 		typed := 0
 		report := url.onChange
 		url.onChange = func(text string) { typed++; report(text) }
-		url.MoveCursor(qt.QTextCursor__End)
-		key := qt.NewQKeyEvent3(qt.QEvent__KeyPress, int(qt.Key_S), qt.NoModifier, "s")
+		url.MoveCursor(qtgui.QTextCursorEnd)
+		key := qtgui.NewQKeyEventFull(qtcore.QEventKeyPress, int(qtcore.Key_S), qtcore.NoModifier, "s", false, 1)
 		defer key.Delete()
-		qt.QCoreApplication_SendEvent(url.QObject, key.QEvent)
+		qtcore.QCoreApplicationSendEvent(url.AsQObject(), key.AsQEvent())
 		if typed != 0 || url.Text() != "example.test/userss" {
 			t.Errorf("typing reported %d changes, text = %q", typed, url.Text())
 		}
-		event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(qt.Key_Return), qt.NoModifier)
+		event := qtgui.NewQKeyEvent(qtcore.QEventKeyPress, int(qtcore.Key_Return), qtcore.NoModifier)
 		defer event.Delete()
-		qt.QCoreApplication_SendEvent(url.QObject, event.QEvent)
+		qtcore.QCoreApplicationSendEvent(url.AsQObject(), event.AsQEvent())
 		if sent != 1 || typed != 1 || url.Text() != "example.test/userss" {
 			t.Errorf("return: %d calls, %d changes, text = %q", sent, typed, url.Text())
 		}
@@ -401,7 +403,7 @@ func TestURLWraps(t *testing.T) {
 }
 
 func TestParamsOrder(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 
 		// A request is shown with its params and headers in order, in the
@@ -445,7 +447,7 @@ func TestCurlView(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		p := w.request
@@ -478,7 +480,7 @@ func TestCurlView(t *testing.T) {
 
 		// It can be copied.
 		p.copy.Click()
-		if got := qt.QGuiApplication_Clipboard().Text(); got != want {
+		if got := qtgui.QGuiApplicationClipboard().Text(); got != want {
 			t.Errorf("copied %q", got)
 		}
 
@@ -512,7 +514,7 @@ func TestCurlView(t *testing.T) {
 		}
 
 		// The gRPC page has no such button.
-		if w.grpc.root.IsAncestorOf(p.curl.QWidget) || !p.root.IsAncestorOf(p.curl.QWidget) || w.response.root.IsAncestorOf(p.curl.QWidget) {
+		if w.grpc.root.IsAncestorOf(p.curl.AsQWidget()) || !p.root.IsAncestorOf(p.curl.AsQWidget()) || w.response.root.IsAncestorOf(p.curl.AsQWidget()) {
 			t.Error("the button is not in the REST request panel alone")
 		}
 	})
@@ -542,7 +544,7 @@ func TestExecuteCurl(t *testing.T) {
 	}
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.request.load(rest.Request{Method: "GET", URL: "{{host}}/a", Headers: []rest.KeyValue{{Key: "X-Key", Value: "abc", Enabled: true}}})
@@ -552,7 +554,7 @@ func TestExecuteCurl(t *testing.T) {
 
 	// The response to the command is shown as any other is.
 	waitFor(t, "the response", func() bool { return fieldValue(w.response, "Status") != "" })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if got := fieldValue(w.response, "Status"); got != "200 OK" || isFailure(w.response) {
 			t.Errorf("code = %q", got)
 		}
@@ -569,7 +571,7 @@ func TestExecuteCurl(t *testing.T) {
 
 	// So is a failure.
 	waitFor(t, "the failure", func() bool { return strings.HasPrefix(fieldValue(w.response, "Status"), "404") })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if !isFailure(w.response) {
 			t.Error("a 404 is not shown as a failure")
 		}
@@ -587,7 +589,7 @@ func TestExecuteCurl(t *testing.T) {
 func TestRequestTabFollowsMethod(t *testing.T) {
 	files := testFiles(t)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		p := w.request
 
@@ -624,7 +626,7 @@ func TestRequestTabFollowsMethod(t *testing.T) {
 func TestFormatJSONButton(t *testing.T) {
 	files := testFiles(t)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		w.requests.addFolder()
@@ -632,7 +634,7 @@ func TestFormatJSONButton(t *testing.T) {
 		p := w.request
 
 		// The button is beside the type of the body, for a JSON body only.
-		if !p.root.IsAncestorOf(p.format.button.QWidget) || !p.format.button.IsHidden() {
+		if !p.root.IsAncestorOf(p.format.button.AsQWidget()) || !p.format.button.IsHidden() {
 			t.Fatal("the button is shown without a JSON body, or is not in the panel")
 		}
 		for i, kind := range bodyTypes {
@@ -673,7 +675,7 @@ func TestFormatJSONButton(t *testing.T) {
 		// The message of a gRPC request is set out the same way.
 		addGRPCRequest(w)
 		g := w.grpc
-		if !g.root.IsAncestorOf(g.format.button.QWidget) || g.format.button.IsHidden() {
+		if !g.root.IsAncestorOf(g.format.button.AsQWidget()) || g.format.button.IsHidden() {
 			t.Fatal("the button of the message is not shown")
 		}
 		g.message.SetPlainText(`{"text":"{{said}}","count":2}`)
@@ -706,14 +708,14 @@ func TestRequestSettings(t *testing.T) {
 
 	files := testFiles(t)
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 
 		// There is no limit, and redirects are followed, to begin with.
-		d := newSettingsDialog(w.QWidget, w.config, files.Files)
+		d := newSettingsDialog(w.AsQWidget(), w.config, files.Files)
 		defer d.DeleteLater()
-		if page := d.tabs.Widget(settingsTabRequests); !page.IsAncestorOf(d.timeout.QWidget) || !page.IsAncestorOf(d.redirects.QWidget) {
+		if page := d.tabs.Widget(settingsTabRequests); !page.IsAncestorOf(d.timeout.AsQWidget()) || !page.IsAncestorOf(d.redirects.AsQWidget()) {
 			t.Error("the timeout and the redirects are not on the Requests tab")
 		}
 		if d.timeout.Value() != 0 || d.timeout.Text() != "No limit" || !d.redirects.IsChecked() {
@@ -728,8 +730,8 @@ func TestRequestSettings(t *testing.T) {
 	})
 	waitFor(t, "the redirect to be followed", func() bool { return fieldValue(w.response, "Status") == "200 OK" })
 
-	mainthread.Wait(func() {
-		d := newSettingsDialog(w.QWidget, w.config, files.Files)
+	qute.PostSync(func() {
+		d := newSettingsDialog(w.AsQWidget(), w.config, files.Files)
 		defer d.DeleteLater()
 		d.timeout.SetValue(1)
 		d.redirects.SetChecked(false)
@@ -754,12 +756,12 @@ func TestRequestSettings(t *testing.T) {
 	})
 	waitFor(t, "the redirect to be shown", func() bool { return strings.HasPrefix(fieldValue(w.response, "Status"), "302") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.request.load(rest.Request{Method: "GET", URL: srv.URL + "/slow"})
 		w.request.send.Click()
 	})
 	waitFor(t, "the request to time out", func() bool { return fieldValue(w.response, "Error") != "" })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if got := fieldValue(w.response, "Error"); got != "timed out after 1 second, which is the limit in the settings" || !isFailure(w.response) || w.request.send.Text() != "Send" {
 			t.Errorf("error = %q, button %q", got, w.request.send.Text())
 		}
@@ -775,7 +777,7 @@ func TestCancelRequest(t *testing.T) {
 	files := testFiles(t)
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.request.url.SetText(srv.URL)
@@ -787,9 +789,9 @@ func TestCancelRequest(t *testing.T) {
 		w.request.send.Click()
 	})
 	waitFor(t, "the cancel", func() bool {
-		return mainthread.Wait2(func() bool { return fieldValue(w.response, fieldError) == "Cancelled" })
+		return onGUI(func() bool { return fieldValue(w.response, fieldError) == "Cancelled" })
 	})
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if w.request.send.Text() != "Send" || !isFailure(w.response) || fieldValue(w.response, "Time") == "" || w.response.body.ToPlainText() != "" {
 			t.Errorf("after cancelling: button %q, body %q", w.request.send.Text(), w.response.body.ToPlainText())
 		}

@@ -1,9 +1,11 @@
 package ui
 
 import (
-	"strings"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
-	qt "github.com/mappu/miqt/qt6"
+	"strings"
 
 	"github.com/nomad-software/triggerapi/internal/network"
 )
@@ -27,59 +29,59 @@ var minTLSChoices = []struct{ label, value string }{
 // version of TLS, and a list of hosts with what is particular to each, which
 // is edited in the form beside the list for the host selected in it.
 type networkTab struct {
-	root *qt.QWidget
+	root *qtwidgets.QWidget
 
-	proxyMode *qt.QComboBox
-	proxy     *qt.QLineEdit
-	noProxy   *qt.QLineEdit
-	minTLS    *qt.QComboBox
+	proxyMode *qtwidgets.QComboBox
+	proxy     *qtwidgets.QLineEdit
+	noProxy   *qtwidgets.QLineEdit
+	minTLS    *qtwidgets.QComboBox
 
 	// hosts are the entries being edited, in the order of the list.
 	hosts []network.Host
-	list  *qt.QListWidget
+	list  *qtwidgets.QListWidget
 	// form holds the fields of the host selected, and is disabled while
 	// none is.
-	form     *qt.QWidget
-	pattern  *qt.QLineEdit
-	ca       *qt.QLineEdit
-	cert     *qt.QLineEdit
-	key      *qt.QLineEdit
-	insecure *qt.QCheckBox
-	address  *qt.QLineEdit
-	remove   *qt.QPushButton
+	form     *qtwidgets.QWidget
+	pattern  *qtwidgets.QLineEdit
+	ca       *qtwidgets.QLineEdit
+	cert     *qtwidgets.QLineEdit
+	key      *qtwidgets.QLineEdit
+	insecure *qtwidgets.QCheckBox
+	address  *qtwidgets.QLineEdit
+	remove   *qtwidgets.QPushButton
 	// updating is set while the form is filled, which is not an edit.
 	updating bool
 	// choose asks for a file, offering the path given; tests replace it.
 	choose func(caption, start string) string
 	// browse is the button beside each field of a file.
-	browse map[*qt.QLineEdit]*qt.QPushButton
+	browse map[*qtwidgets.QLineEdit]*qtwidgets.QPushButton
 }
 
 // noHostName is what the list shows for a host whose name is empty.
 const noHostName = "(no host)"
 
-func newNetworkTab(parent *qt.QWidget, current network.Config) *networkTab {
+func newNetworkTab(parent *qtwidgets.QWidget, current network.Config) *networkTab {
 	t := &networkTab{
-		proxyMode: qt.NewQComboBox2(),
-		proxy:     qt.NewQLineEdit2(),
-		noProxy:   qt.NewQLineEdit2(),
-		minTLS:    qt.NewQComboBox2(),
-		list:      qt.NewQListWidget2(),
-		form:      qt.NewQWidget2(),
-		pattern:   qt.NewQLineEdit2(),
-		ca:        qt.NewQLineEdit2(),
-		cert:      qt.NewQLineEdit2(),
-		key:       qt.NewQLineEdit2(),
-		insecure:  qt.NewQCheckBox3("Do not check the server's certificate"),
-		address:   qt.NewQLineEdit2(),
+		proxyMode: qtwidgets.NewQComboBox(nil),
+		proxy:     qtwidgets.NewQLineEdit(nil),
+		noProxy:   qtwidgets.NewQLineEdit(nil),
+		minTLS:    qtwidgets.NewQComboBox(nil),
+		list:      qtwidgets.NewQListWidget(nil),
+		form:      qtwidgets.NewQWidget(nil),
+		pattern:   qtwidgets.NewQLineEdit(nil),
+		ca:        qtwidgets.NewQLineEdit(nil),
+		cert:      qtwidgets.NewQLineEdit(nil),
+		key:       qtwidgets.NewQLineEdit(nil),
+		insecure:  qtwidgets.NewQCheckBoxWithText("Do not check the server's certificate", nil),
+		address:   qtwidgets.NewQLineEdit(nil),
 		hosts:     append([]network.Host(nil), current.Hosts...),
-		browse:    map[*qt.QLineEdit]*qt.QPushButton{},
+		browse:    map[*qtwidgets.QLineEdit]*qtwidgets.QPushButton{},
 	}
 	t.choose = func(caption, start string) string {
 		if start == "" {
-			start = qt.QDir_HomePath()
+			start = qtcore.QDirHomePath()
 		}
-		return qt.QFileDialog_GetOpenFileName3(parent, caption, start)
+		return askOpenFile(parent, caption, start, "")
 	}
 
 	t.proxyMode.AddItems([]string{"From the environment", "None", "This proxy"})
@@ -95,9 +97,9 @@ func newNetworkTab(parent *qt.QWidget, current network.Config) *networkTab {
 	t.proxy.SetPlaceholderText("Such as http://proxy:3128 or socks5://user@proxy:1080")
 	t.proxy.SetEnabled(t.proxyMode.CurrentIndex() == proxyAddress)
 	t.proxyMode.OnCurrentIndexChanged(func(i int) { t.proxy.SetEnabled(i == proxyAddress) })
-	proxyRow := qt.NewQHBoxLayout2()
-	proxyRow.AddWidget(t.proxyMode.QWidget)
-	proxyRow.AddWidget2(t.proxy.QWidget, 1)
+	proxyRow := qtwidgets.NewQHBoxLayout(nil)
+	proxyRow.AddWidget(t.proxyMode.AsQWidget())
+	proxyRow.AddWidgetFull(t.proxy.AsQWidget(), 1, 0)
 
 	t.noProxy.SetText(strings.Join(current.NoProxy, ", "))
 	t.noProxy.SetPlaceholderText("Such as localhost, .internal.example.com")
@@ -109,79 +111,79 @@ func newNetworkTab(parent *qt.QWidget, current network.Config) *networkTab {
 		t.minTLS.SetCurrentIndex(1)
 	}
 
-	proxyNote := qt.NewQLabel3("A proxy can name a user; the password is asked for once a session and never saved. " +
-		"Hosts under Not for, and the hosts inside them, are reached directly.")
+	proxyNote := qtwidgets.NewQLabelWithText("A proxy can name a user; the password is asked for once a session and never saved. "+
+		"Hosts under Not for, and the hosts inside them, are reached directly.", nil)
 	proxyNote.SetWordWrap(true)
 	proxyNote.SetEnabled(false)
 
 	// The settings have buttons of the style, as the rest of the dialog
 	// does, not the icon buttons of the window.
-	add := qt.NewQPushButton3("Add")
-	add.OnClicked(t.add)
-	t.remove = qt.NewQPushButton3("Remove")
-	t.remove.OnClicked(t.removeSelected)
+	add := qtwidgets.NewQPushButtonWithText("Add", nil)
+	add.OnClicked(func(_ bool) { t.add() })
+	t.remove = qtwidgets.NewQPushButtonWithText("Remove", nil)
+	t.remove.OnClicked(func(_ bool) { t.removeSelected() })
 	for i := range t.hosts {
-		t.list.AddItem(hostLabel(t.hosts[i]))
+		t.list.AddItemText(hostLabel(t.hosts[i]))
 	}
 	t.list.OnCurrentRowChanged(func(int) { t.fill() })
 
-	listColumn := qt.NewQVBoxLayout2()
-	listColumn.AddWidget2(t.list.QWidget, 1)
-	buttons := qt.NewQHBoxLayout2()
-	buttons.AddWidget(add.QWidget)
-	buttons.AddWidget(t.remove.QWidget)
+	listColumn := qtwidgets.NewQVBoxLayout(nil)
+	listColumn.AddWidgetFull(t.list.AsQWidget(), 1, 0)
+	buttons := qtwidgets.NewQHBoxLayout(nil)
+	buttons.AddWidget(add.AsQWidget())
+	buttons.AddWidget(t.remove.AsQWidget())
 	buttons.AddStretch()
-	listColumn.AddLayout(buttons.QLayout)
+	listColumn.AddLayout(buttons.AsQLayout())
 
 	t.pattern.SetPlaceholderText("Such as api.example.com, *.example.com or *")
 	t.ca.SetPlaceholderText("Trust only the authorities in this file, in PEM")
 	t.cert.SetPlaceholderText("A certificate in PEM, or a PKCS #12 file")
 	t.key.SetPlaceholderText("Its private key in PEM, for a certificate in PEM")
 	t.address.SetPlaceholderText("Such as 10.0.0.5 or 10.0.0.5:8443")
-	form := qt.NewQFormLayout(t.form)
-	form.SetContentsMargins(0, 0, 0, 0)
-	form.AddRow3("Host", t.pattern.QWidget)
-	form.AddRow4("Trusted CA", t.fileRow(t.ca, "Certificate Authority"))
-	form.AddRow4("Client certificate", t.fileRow(t.cert, "Client Certificate"))
-	form.AddRow4("Key", t.fileRow(t.key, "Private Key"))
-	form.AddRow3("", t.insecure.QWidget)
-	form.AddRow3("Connect to", t.address.QWidget)
-	for _, edit := range []*qt.QLineEdit{t.pattern, t.ca, t.cert, t.key, t.address} {
+	form := qtwidgets.NewQFormLayout(t.form)
+	form.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 0, Right: 0, Bottom: 0})
+	form.AddRowText("Host", t.pattern.AsQWidget())
+	form.AddRowTextLayout("Trusted CA", t.fileRow(t.ca, "Certificate Authority"))
+	form.AddRowTextLayout("Client certificate", t.fileRow(t.cert, "Client Certificate"))
+	form.AddRowTextLayout("Key", t.fileRow(t.key, "Private Key"))
+	form.AddRowText("", t.insecure.AsQWidget())
+	form.AddRowText("Connect to", t.address.AsQWidget())
+	for _, edit := range []*qtwidgets.QLineEdit{t.pattern, t.ca, t.cert, t.key, t.address} {
 		edit.OnTextChanged(func(string) { t.edited() })
 	}
 	t.insecure.OnToggled(func(bool) { t.edited() })
 
-	hostsRow := qt.NewQHBoxLayout2()
-	hostsRow.AddLayout2(listColumn.QLayout, 1)
-	hostsRow.AddWidget2(t.form, 3)
+	hostsRow := qtwidgets.NewQHBoxLayout(nil)
+	hostsRow.AddLayoutFull(listColumn.AsQLayout(), 1)
+	hostsRow.AddWidgetFull(t.form, 3, 0)
 
-	hostsNote := qt.NewQLabel3("A request uses the most particular host that matches its own: a name before *.name, and *.name before *. " +
-		"A trusted CA replaces the system's authorities for it. A passphrase is asked for once a session and never saved. " +
-		"These settings belong to this computer, not to a workspace.")
+	hostsNote := qtwidgets.NewQLabelWithText("A request uses the most particular host that matches its own: a name before *.name, and *.name before *. "+
+		"A trusted CA replaces the system's authorities for it. A passphrase is asked for once a session and never saved. "+
+		"These settings belong to this computer, not to a workspace.", nil)
 	hostsNote.SetWordWrap(true)
 	hostsNote.SetEnabled(false)
 
 	// The page is a column, as notes that wrap are given too little height
 	// in the rows of a form.
-	proxyForm := qt.NewQFormLayout2()
-	proxyForm.AddRow4("Proxy", proxyRow.QLayout)
-	proxyForm.AddRow3("Not for", t.noProxy.QWidget)
-	proxyForm.AddRow3("Least TLS version", t.minTLS.QWidget)
+	proxyForm := qtwidgets.NewQFormLayout(nil)
+	proxyForm.AddRowTextLayout("Proxy", proxyRow.AsQLayout())
+	proxyForm.AddRowText("Not for", t.noProxy.AsQWidget())
+	proxyForm.AddRowText("Least TLS version", t.minTLS.AsQWidget())
 
-	t.root = qt.NewQWidget2()
-	page := qt.NewQVBoxLayout(t.root)
-	page.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
-	page.AddWidget(sectionHeading("Connection").QWidget)
-	page.AddLayout(proxyForm.QLayout)
-	page.AddWidget(proxyNote.QWidget)
+	t.root = qtwidgets.NewQWidget(nil)
+	page := qtwidgets.NewQVBoxLayout(t.root)
+	page.SetContentsMargins(qtcore.QMargins{Left: tabMargin, Top: tabMargin, Right: tabMargin, Bottom: tabMargin})
+	page.AddWidget(sectionHeading("Connection").AsQWidget())
+	page.AddLayout(proxyForm.AsQLayout())
+	page.AddWidget(proxyNote.AsQWidget())
 	page.AddSpacing(12)
-	page.AddWidget(sectionHeading("Hosts").QWidget)
-	page.AddLayout2(hostsRow.QLayout, 1)
-	page.AddWidget(hostsNote.QWidget)
+	page.AddWidget(sectionHeading("Hosts").AsQWidget())
+	page.AddLayoutFull(hostsRow.AsQLayout(), 1)
+	page.AddWidget(hostsNote.AsQWidget())
 	// The least height of a page is worked out before the width of its notes
 	// is known, which makes it too little for them once they wrap, so the
 	// page asks for the height it needs at the width it is given.
-	t.root.OnResizeEvent(func(super func(*qt.QResizeEvent), event *qt.QResizeEvent) {
+	t.root.OverrideResizeEvent(func(super func(*qtgui.QResizeEvent), event *qtgui.QResizeEvent) {
 		super(event)
 		if need := t.root.HeightForWidth(t.root.Width()); need > t.root.MinimumHeight() {
 			t.root.SetMinimumHeight(need)
@@ -197,7 +199,7 @@ func newNetworkTab(parent *qt.QWidget, current network.Config) *networkTab {
 
 // fileRow lays out a path field beside a button to browse for the file,
 // which is kept in browse.
-func (t *networkTab) fileRow(edit *qt.QLineEdit, caption string) *qt.QLayout {
+func (t *networkTab) fileRow(edit *qtwidgets.QLineEdit, caption string) *qtwidgets.QLayout {
 	button := browseButton(edit, func() string { return t.choose(caption, strings.TrimSpace(edit.Text())) })
 	t.browse[edit] = button
 	return pathRow(edit, button)
@@ -253,7 +255,7 @@ func (t *networkTab) edited() {
 // add adds a host and selects it, with the keyboard in its name.
 func (t *networkTab) add() {
 	t.hosts = append(t.hosts, network.Host{})
-	t.list.AddItem(noHostName)
+	t.list.AddItemText(noHostName)
 	t.list.SetCurrentRow(len(t.hosts) - 1)
 	t.pattern.SetFocus()
 }

@@ -1,14 +1,14 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -24,7 +24,7 @@ func TestGRPCRequest(t *testing.T) {
 	var w *Window
 	var request *collection.Request
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 
@@ -59,7 +59,7 @@ func TestGRPCRequest(t *testing.T) {
 
 	waitFor(t, "the methods", func() bool { return w.grpc.method.count() == 4 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// A request with no method takes the first one.
 		if request.GRPC.Method != "test.v1.Echo/Fail" || request.GRPC.URL != "{{server}}" {
 			t.Errorf("request = %+v", request.GRPC)
@@ -88,11 +88,11 @@ func TestGRPCRequest(t *testing.T) {
 	waitFor(t, "the response", func() bool {
 		return fieldValue(w.grpcResponse, "Status") == "0 OK"
 	})
-	if got := mainthread.Wait2(func() string { return fieldValue(w.grpcResponse, "Protocol") }); got != "gRPC (proto)" {
+	if got := onGUI(func() string { return fieldValue(w.grpcResponse, "Protocol") }); got != "gRPC (proto)" {
 		t.Errorf("protocol = %q", got)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		want := "{\n  \"text\": \"hello\",\n  \"authorization\": \"Bearer secret\",\n  \"trace\": \"abc\"\n}"
 		if got := w.grpcResponse.body.ToPlainText(); got != want {
 			t.Errorf("body = %q, want %q", got, want)
@@ -117,7 +117,7 @@ func TestGRPCRequest(t *testing.T) {
 
 	waitFor(t, "the failure", func() bool { return fieldValue(w.grpcResponse, "Status") == "5 NOT_FOUND" })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// The failure is in the bar beneath the response, not in it.
 		if !isFailure(w.grpcResponse) || w.grpcResponse.body.ToPlainText() != "" || fieldValue(w.grpcResponse, "Error") != "no such thing" || fieldValue(w.grpcResponse, "Time") == "" {
 			t.Errorf("response = %q, bar = %+v", w.grpcResponse.body.ToPlainText(), w.grpcResponse.fields)
@@ -127,7 +127,7 @@ func TestGRPCRequest(t *testing.T) {
 		}
 	})
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// A message that is not valid is reported as an error.
 		w.grpc.method.selectMethod("test.v1.Echo/Say")
 		w.grpc.message.SetPlainText("{oops")
@@ -136,7 +136,7 @@ func TestGRPCRequest(t *testing.T) {
 
 	waitFor(t, "the error", func() bool { return strings.Contains(fieldValue(w.grpcResponse, "Error"), "invalid message") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if got := w.grpcResponse.body.ToPlainText(); got != "" || !isFailure(w.grpcResponse) {
 			t.Errorf("response = %q", got)
 		}
@@ -163,7 +163,7 @@ func TestGRPCRequest(t *testing.T) {
 
 	// A new window restores the request, and loads the methods when it is
 	// opened without changing the one that was saved.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 
@@ -176,7 +176,7 @@ func TestGRPCRequest(t *testing.T) {
 
 	waitFor(t, "the methods", func() bool { return w.grpc.method.count() == 4 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if got := w.grpc.request(); !reflect.DeepEqual(got, want) {
 			t.Errorf("loaded %+v, want %+v", got, want)
 		}
@@ -184,7 +184,7 @@ func TestGRPCRequest(t *testing.T) {
 }
 
 func TestGRPCAndRESTRequests(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		w.Show()
 		tree := w.requests.tree
@@ -251,7 +251,7 @@ func TestGRPCDefinitionError(t *testing.T) {
 	defer srv.Close()
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
@@ -262,7 +262,7 @@ func TestGRPCDefinitionError(t *testing.T) {
 
 	waitFor(t, "the error", func() bool { return strings.Contains(w.grpc.status.Text(), "does not support reflection") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if w.grpc.method.count() != 0 {
 			t.Errorf("methods = %d", w.grpc.method.count())
 		}
@@ -274,7 +274,7 @@ func TestGRPCCancel(t *testing.T) {
 	defer srv.Close()
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
@@ -285,7 +285,7 @@ func TestGRPCCancel(t *testing.T) {
 
 	waitFor(t, "the methods", func() bool { return w.grpc.method.count() == 4 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.grpc.method.selectMethod("test.v1.Echo/Forever")
 		w.grpc.message.SetPlainText(`{"text": "one"}`)
 		w.grpc.invoke.Click()
@@ -296,12 +296,12 @@ func TestGRPCCancel(t *testing.T) {
 
 	// Give the server time to send its one message before cancelling.
 	time.Sleep(300 * time.Millisecond)
-	mainthread.Wait(func() { w.grpc.invoke.Click() })
+	qute.PostSync(func() { w.grpc.invoke.Click() })
 
 	// The message received before the cancel is still shown.
 	waitFor(t, "the cancel", func() bool { return fieldValue(w.grpcResponse, "Status") == "1 CANCELED" })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// The response holds the message alone.
 		got := w.grpcResponse.body.ToPlainText()
 		if !strings.HasPrefix(got, "{\n  \"text\": \"one\"") || strings.Contains(got, "CANCELED") {
@@ -311,7 +311,7 @@ func TestGRPCCancel(t *testing.T) {
 }
 
 func TestMethodCombo(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		c := newMethodCombo()
 		changes := 0
 		c.OnCurrentIndexChanged(func(int) { changes++ })
@@ -377,7 +377,7 @@ func TestMethodCombo(t *testing.T) {
 
 func TestGRPCRequestBarOrder(t *testing.T) {
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		addGRPCRequest(w)
@@ -386,9 +386,9 @@ func TestGRPCRequestBarOrder(t *testing.T) {
 	// The positions are only known once the page has been laid out.
 	waitFor(t, "the layout", func() bool { return w.grpc.url.Width() > 0 && w.grpc.invoke.X() > 0 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		g := w.grpc
-		row := []*qt.QWidget{g.url.QWidget, g.method.QWidget, g.reload.QWidget, g.tls.QWidget, g.invoke.QWidget}
+		row := []*qtwidgets.QWidget{g.url.AsQWidget(), g.method.AsQWidget(), g.reload.AsQWidget(), g.tls.AsQWidget(), g.invoke.AsQWidget()}
 
 		// The method is given three times the width of the address.
 		if ratio := float64(g.method.Width()) / float64(g.url.Width()); ratio < 2.8 || ratio > 3.2 {
@@ -415,7 +415,7 @@ func TestGRPCClientStream(t *testing.T) {
 
 	var w *Window
 	body := func() string { return w.grpcResponse.body.ToPlainText() }
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		addGRPCRequest(w)
@@ -427,7 +427,7 @@ func TestGRPCClientStream(t *testing.T) {
 	})
 	waitFor(t, "the methods", func() bool { return w.grpc.method.count() == 6 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.grpc.method.selectMethod("test.v1.Echo/Say")
 		if w.grpc.streaming.IsVisibleTo(w.grpc.root) {
 			t.Error("Say is said to take a stream")
@@ -452,7 +452,7 @@ func TestGRPCClientStream(t *testing.T) {
 		w.grpc.invoke.Click()
 	})
 	waitFor(t, "the response", func() bool { return strings.Contains(body(), `"text": "a b"`) })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if fieldValue(w.grpcResponse, fieldCode) != "0 OK" || !strings.Contains(body(), `"index": 2`) {
 			t.Errorf("status %q, body %s", fieldValue(w.grpcResponse, fieldCode), body())
 		}

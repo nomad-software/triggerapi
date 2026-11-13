@@ -1,10 +1,10 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"fmt"
 	"reflect"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/network"
 )
@@ -15,7 +15,7 @@ import (
 // askNetworkSecret asks for the passphrase of a key or the password of a
 // proxy that the network settings need. Tests replace it rather than let the
 // dialog open.
-var askNetworkSecret = func(parent *qt.QWidget, secret network.Secret) (string, error) {
+var askNetworkSecret = func(parent *qtwidgets.QWidget, secret network.Secret) (string, error) {
 	title, label := "Client Certificate", "Passphrase of "+secret.Path
 	if secret.Proxy {
 		title, label = "Proxy", "Password for the proxy "+secret.Path
@@ -24,21 +24,30 @@ var askNetworkSecret = func(parent *qt.QWidget, secret network.Secret) (string, 
 }
 
 // loadNetwork loads network settings, asking for each passphrase or password
-// they need that has not been given in this session. See network.Load.
+// they need that has not been given in this session. One that did not open
+// what it was for is not kept, so that it is asked for again and not tried
+// again. See network.Load.
 func (w *Window) loadNetwork(config network.Config) (*network.Client, error) {
 	if w.secrets == nil {
 		w.secrets = map[network.Secret]string{}
 	}
+	var asked []network.Secret
 	client, err := network.Load(config, func(secret network.Secret) (string, error) {
 		if value, ok := w.secrets[secret]; ok {
 			return value, nil
 		}
-		value, err := askNetworkSecret(w.QWidget, secret)
+		value, err := askNetworkSecret(w.AsQWidget(), secret)
 		if err == nil {
 			w.secrets[secret] = value
+			asked = append(asked, secret)
 		}
 		return value, err
 	})
+	for _, secret := range asked {
+		if !client.Accepted(secret) {
+			delete(w.secrets, secret)
+		}
+	}
 	if err != nil {
 		err = fmt.Errorf("the network settings cannot all be used: %w", err)
 	}

@@ -1,11 +1,12 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"reflect"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -34,7 +35,7 @@ func TestDragAndDrop(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
@@ -49,7 +50,7 @@ func TestDragAndDrop(t *testing.T) {
 			t.Fatalf("store is not as expected: %q %q %q %q", other.Name, restFolder.Name, get.Name, health.Name)
 		}
 
-		check := func(what string, item *qt.QTreeWidgetItem, want ...string) {
+		check := func(what string, item *qtwidgets.QTreeWidgetItem, want ...string) {
 			t.Helper()
 			if item == nil {
 				t.Errorf("%s: no such item", what)
@@ -61,7 +62,7 @@ func TestDragAndDrop(t *testing.T) {
 		}
 
 		// Nothing can be dropped onto a request, only beside it.
-		if treeItem(tree, "service", "Health").Flags()&qt.ItemIsDropEnabled != 0 || treeItem(tree, "service").Flags()&qt.ItemIsDropEnabled == 0 {
+		if treeItem(tree, "service", "Health").Flags()&qtcore.ItemIsDropEnabled != 0 || treeItem(tree, "service").Flags()&qtcore.ItemIsDropEnabled == 0 {
 			t.Error("drop flags are wrong")
 		}
 

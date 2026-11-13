@@ -1,17 +1,17 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"reflect"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
 func TestAuthEditor(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		a := newAuthEditor(new(newPanelState()))
 
 		// With nothing of OAuth filled in, there are no settings of it,
@@ -41,9 +41,9 @@ func TestAuthEditor(t *testing.T) {
 		} {
 			a.grant.SetCurrentIndex(i)
 			got := struct{ auth, redirect, device bool }{
-				a.oauthForm.IsRowVisibleWithWidget(a.authURL.QWidget),
-				a.oauthForm.IsRowVisibleWithWidget(a.redirectURL.QWidget),
-				a.oauthForm.IsRowVisibleWithWidget(a.deviceURL.QWidget),
+				a.oauthForm.IsRowVisibleOf(a.authURL.AsQWidget()),
+				a.oauthForm.IsRowVisibleOf(a.redirectURL.AsQWidget()),
+				a.oauthForm.IsRowVisibleOf(a.deviceURL.AsQWidget()),
 			}
 			if got != want {
 				t.Errorf("grant %d shows %+v", i, got)
@@ -64,18 +64,18 @@ func TestAuthEditor(t *testing.T) {
 // squeezed into a narrow column and cut off.
 func TestTokenStateWidth(t *testing.T) {
 	var a *authEditor
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		a = newAuthEditor(new(newPanelState()))
-		a.oauthForm.SetFieldGrowthPolicy(qt.QFormLayout__FieldsStayAtSizeHint)
+		a.oauthForm.SetFieldGrowthPolicy(qtwidgets.QFormLayoutFieldsStayAtSizeHint)
 		a.typ.SetCurrentIndex(3) // OAuth 2.0
 		a.showToken("There is no token yet. One is got when the request is sent, or with Get Token.", false)
 		a.root.Resize(900, 600)
 		a.root.Show()
 	})
 	waitFor(t, "the layout", func() bool {
-		return mainthread.Wait2(func() bool { return a.tokenState.Width() > 0 })
+		return onGUI(func() bool { return a.tokenState.Width() > 0 })
 	})
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		page := a.tokenState.ParentWidget()
 		if a.tokenState.Width() < page.Width()*3/4 {
 			t.Errorf("the token state is %d wide on a page of %d", a.tokenState.Width(), page.Width())

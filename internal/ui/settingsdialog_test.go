@@ -1,14 +1,15 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -17,7 +18,7 @@ import (
 )
 
 func TestSettingsDialog(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		defaults := Files{Workspaces: "workspaces"}
 		current := settings.Settings{Width: 900, Height: 650, ResponseFont: "A Font That Is Not Installed"}
 
@@ -33,7 +34,7 @@ func TestSettingsDialog(t *testing.T) {
 		}
 
 		d.workspaces.SetText("  /data/workspaces ")
-		d.font.SetCurrentFont(qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont))
+		d.font.SetCurrentFont(qtgui.QFontDatabaseGetSystemFont(qtgui.QFontDatabaseFixedFont))
 
 		got := d.settings(current)
 		want := current
@@ -49,15 +50,15 @@ func TestSettingsDialog(t *testing.T) {
 			t.Errorf("default location recorded as %q", got.WorkspacesDir)
 		}
 
-		d.buttons.Button(qt.QDialogButtonBox__Ok).Click()
-		if d.Result() != int(qt.QDialog__Accepted) {
+		d.buttons.Button(qtwidgets.QDialogButtonBoxOk).Click()
+		if d.Result() != int(qtwidgets.QDialogAccepted) {
 			t.Error("OK did not accept the dialog")
 		}
 	})
 }
 
 func TestHistorySettingsDialog(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		current := settings.Settings{ResponseFont: "Monospace"}
 		d := newSettingsDialog(nil, current, Files{})
 		defer d.DeleteLater()
@@ -69,12 +70,12 @@ func TestHistorySettingsDialog(t *testing.T) {
 		if d.tabs.TabText(settingsTabHistory) != "History" || settingsTabHistory != settingsTabInterface-1 {
 			t.Errorf("tab %d is %q", settingsTabHistory, d.tabs.TabText(settingsTabHistory))
 		}
-		for _, widget := range []*qt.QWidget{d.history.QWidget, d.historyLimit.QWidget, d.diffCommand.QWidget} {
+		for _, widget := range []*qtwidgets.QWidget{d.history.AsQWidget(), d.historyLimit.AsQWidget(), d.diffCommand.AsQWidget()} {
 			if !page.IsAncestorOf(widget) {
 				t.Error("something is missing from the History tab")
 			}
 		}
-		if d.tabs.Widget(settingsTabRequests).IsAncestorOf(d.history.QWidget) {
+		if d.tabs.Widget(settingsTabRequests).IsAncestorOf(d.history.AsQWidget()) {
 			t.Error("the history is still on the Requests tab")
 		}
 		if !d.history.IsChecked() || d.historyLimit.Value() != settings.DefaultHistoryLimit || !d.historyLimit.IsEnabled() {
@@ -112,7 +113,7 @@ func TestApplySettings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 
@@ -137,7 +138,7 @@ func TestApplySettings(t *testing.T) {
 		}
 		// The request body, the gRPC message and the curl command have it
 		// too.
-		for name, editor := range map[string]*qt.QPlainTextEdit{"body": w.request.bodyRaw, "message": w.grpc.message, "command": w.request.command} {
+		for name, editor := range map[string]*qtwidgets.QPlainTextEdit{"body": w.request.bodyRaw, "message": w.grpc.message, "command": w.request.command} {
 			if got := editor.Font().Families()[0]; got != "Some Font" {
 				t.Errorf("%s font = %q", name, got)
 			}
@@ -170,7 +171,7 @@ func TestApplySettings(t *testing.T) {
 	}
 
 	// The next run uses the new location.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		if w.environments.list.Count() != 1 || len(w.environments.store.Environments[0].Variables) != 2 {
 			t.Errorf("environments = %+v", w.environments.store.Environments)
@@ -218,9 +219,9 @@ func TestApplySettings(t *testing.T) {
 
 func TestJSONColourSettings(t *testing.T) {
 	files := testFiles(t)
-	defaults := defaultJSONColours()
+	defaults := onGUI(defaultJSONColours)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 
@@ -229,7 +230,7 @@ func TestJSONColourSettings(t *testing.T) {
 			t.Errorf("key colour = %s, want %s", got, defaults[tokenKey])
 		}
 
-		d := newSettingsDialog(w.QWidget, w.config, files.Files)
+		d := newSettingsDialog(w.AsQWidget(), w.config, files.Files)
 		if got := d.json[tokenKey].button.Text(); got != defaults[tokenKey] {
 			t.Errorf("swatch = %q", got)
 		}
@@ -276,7 +277,7 @@ func TestJSONColourSettings(t *testing.T) {
 	}
 
 	// The colours are used from the start of the next run.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		if got := formatColour(w.grpcResponse.formats[tokenKey]); got != "#112233" {
 			t.Errorf("key colour = %s", got)
@@ -292,14 +293,14 @@ func TestJSONColourSettings(t *testing.T) {
 func TestCurlColourSetting(t *testing.T) {
 	files := testFiles(t)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
-		text := func() string { return w.request.command.Palette().ColorWithCr(qt.QPalette__Text).Name() }
+		text := func() string { return w.request.command.Palette().Color(qtgui.QPaletteText).Name() }
 		if want := defaultJSONColours()[tokenKey]; text() != want {
 			t.Errorf("curl colour = %s, want the colour of keys %s", text(), want)
 		}
 
-		d := newSettingsDialog(w.QWidget, w.config, files.Files)
+		d := newSettingsDialog(w.AsQWidget(), w.config, files.Files)
 		d.json[tokenCurl].set("#112233")
 		chosen := d.settings(w.config)
 		if chosen.JSONColours != (settings.JSONColours{Curl: "#112233"}) {
@@ -321,7 +322,7 @@ func TestCurlColourSetting(t *testing.T) {
 func TestColourSettings(t *testing.T) {
 	files := testFiles(t)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		w.requests.addFolder()
@@ -329,7 +330,7 @@ func TestColourSettings(t *testing.T) {
 		addGRPCRequest(w)
 		w.tabs.toggle(w.tabs.current())
 
-		folder := func() *qt.QTreeWidgetItem { return topFolder(w.requests.tree, 0) }
+		folder := func() *qtwidgets.QTreeWidgetItem { return topFolder(w.requests.tree, 0) }
 		shown := func() map[string]string {
 			return map[string]string{
 				"workspaces tab":   iconColour(w.sidebar.TabIcon(tabWorkspaces)),
@@ -390,7 +391,7 @@ func TestColourSettings(t *testing.T) {
 			t.Errorf("placeholders are %v, want %v", got, want)
 		}
 
-		d := newSettingsDialog(w.QWidget, w.config, files.Files)
+		d := newSettingsDialog(w.AsQWidget(), w.config, files.Files)
 		if d.tabs.Count() != 5 || d.tabs.TabText(settingsTabRequests) != "Requests" || d.tabs.TabText(settingsTabNetwork) != "Network" || d.tabs.TabText(settingsTabWorkspaces) != "Workspaces" || d.tabs.TabText(settingsTabHistory) != "History" || d.tabs.TabText(settingsTabInterface) != "User interface" {
 			t.Errorf("the dialog has %d tabs", d.tabs.Count())
 		}
@@ -432,7 +433,7 @@ func TestColourSettings(t *testing.T) {
 			t.Errorf("unpin is %s", got)
 		}
 		w.tabs.hover(nil)
-		for name, button := range map[string]*qt.QPushButton{"Send": w.request.send, "Execute": w.request.execute, "Invoke": w.grpc.invoke} {
+		for name, button := range map[string]*qtwidgets.QPushButton{"Send": w.request.send, "Execute": w.request.execute, "Invoke": w.grpc.invoke} {
 			if !strings.Contains(button.StyleSheet(), "background-color: #aa0000;") {
 				t.Errorf("%s is styled %q", name, button.StyleSheet())
 			}
@@ -469,7 +470,7 @@ func TestColourSettings(t *testing.T) {
 
 	// The colours are used from the start of the next run, and the defaults
 	// again once they are given up.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		if got := iconColour(w.request.curl.Icon()); got != "#770000" {
 			t.Errorf("curl is %s", got)
@@ -490,17 +491,17 @@ func TestColourSettings(t *testing.T) {
 }
 
 func TestSettingsTabs(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		d := newSettingsDialog(nil, settings.Settings{}, Files{Workspaces: "workspaces"})
 		defer d.DeleteLater()
 
 		workspaces, ui := d.tabs.Widget(settingsTabWorkspaces), d.tabs.Widget(settingsTabInterface)
-		for _, widget := range []*qt.QWidget{d.workspaces.QWidget, d.publicKey.QWidget, d.privateKey.QWidget, d.exportButton.QWidget, d.importButton.QWidget} {
+		for _, widget := range []*qtwidgets.QWidget{d.workspaces.AsQWidget(), d.publicKey.AsQWidget(), d.privateKey.AsQWidget(), d.exportButton.AsQWidget(), d.importButton.AsQWidget()} {
 			if !workspaces.IsAncestorOf(widget) {
 				t.Error("something is missing from the Workspaces tab")
 			}
 		}
-		if !ui.IsAncestorOf(d.font.QWidget) || !ui.IsAncestorOf(d.swatches[colourSend].button.QWidget) {
+		if !ui.IsAncestorOf(d.font.AsQWidget()) || !ui.IsAncestorOf(d.swatches[colourSend].button.AsQWidget()) {
 			t.Error("the font or the colours are not on the User interface tab")
 		}
 
@@ -514,12 +515,12 @@ func TestSettingsTabs(t *testing.T) {
 			t.Errorf("first rows = %q, %q", table.Item(0, colColourName).Text(), table.Item(1, colColourName).Text())
 		}
 		for kind, s := range d.swatches {
-			if !table.IsAncestorOf(s.button.QWidget) {
+			if !table.IsAncestorOf(s.button.AsQWidget()) {
 				t.Errorf("the swatch of %v is not in the table", kind)
 			}
 		}
 		for kind, s := range d.json {
-			if !table.IsAncestorOf(s.button.QWidget) {
+			if !table.IsAncestorOf(s.button.AsQWidget()) {
 				t.Errorf("the swatch of JSON %v is not in the table", kind)
 			}
 		}
@@ -527,8 +528,8 @@ func TestSettingsTabs(t *testing.T) {
 		// The buttons are given the dialog, to be the parent of what they
 		// show.
 		exported, imported := 0, 0
-		d.onExport = func(parent *qt.QWidget) { exported++ }
-		d.onImport = func(parent *qt.QWidget) { imported++ }
+		d.onExport = func(parent *qtwidgets.QWidget) { exported++ }
+		d.onImport = func(parent *qtwidgets.QWidget) { imported++ }
 		d.exportButton.Click()
 		d.importButton.Click()
 		if exported != 1 || imported != 1 {
@@ -538,7 +539,7 @@ func TestSettingsTabs(t *testing.T) {
 }
 
 func TestEncryptionSettings(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		current := settings.Settings{PublicKey: "/keys/id.pub", PrivateKey: "/keys/id"}
 		d := newSettingsDialog(nil, current, Files{Workspaces: "workspaces"})
 		defer d.DeleteLater()

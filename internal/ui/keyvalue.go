@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"cmp"
 	"slices"
 	"strings"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
@@ -45,7 +47,7 @@ func compareDescribed(a, b describedPair) int {
 // rowStatus is what is shown of a row in its status column: an icon, with
 // what it means as its tooltip.
 type rowStatus struct {
-	icon *qt.QIcon
+	icon *qtgui.QIcon
 	tip  string
 }
 
@@ -56,7 +58,7 @@ type rowStatus struct {
 // a button at its right which removes it. A table can also have a
 // description of each pair (describe).
 type keyValueTable struct {
-	table    *qt.QTableWidget
+	table    *qtwidgets.QTableWidget
 	updating bool
 
 	// onChange is called after the user edits or removes a row.
@@ -76,7 +78,7 @@ type keyValueTable struct {
 	// fainter. faint is the brush they are otherwise written with, once
 	// made.
 	plain bool
-	faint *qt.QBrush
+	faint *qtgui.QBrush
 
 	// sortable keeps the pairs in the order they were added, which is the
 	// order they are read in, and shows them sorted only as the user
@@ -104,21 +106,21 @@ func newExclusiveTable(keyLabel, valueLabel string) *keyValueTable {
 }
 
 func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
-	t := &keyValueTable{table: qt.NewQTableWidget3(0, 6)}
+	t := &keyValueTable{table: qtwidgets.NewQTableWidgetWithRows(0, 6, nil)}
 
 	t.table.SetHorizontalHeaderLabels([]string{"", keyLabel, valueLabel, "", "", ""})
 	t.table.SetColumnHidden(colDescription, true)
 	t.table.SetColumnHidden(colStatus, true)
-	t.table.SetIconSize(qt.NewQSize2(removeIconSize, removeIconSize))
+	t.table.SetIconSize(qtcore.QSize{Width: removeIconSize, Height: removeIconSize})
 	t.table.VerticalHeader().SetVisible(false)
 	// The row being worked on is highlighted as a whole.
-	t.table.SetSelectionBehavior(qt.QAbstractItemView__SelectRows)
-	t.table.SetSelectionMode(qt.QAbstractItemView__SingleSelection)
+	t.table.SetSelectionBehavior(qtwidgets.QAbstractItemViewSelectRows)
+	t.table.SetSelectionMode(qtwidgets.QAbstractItemViewSingleSelection)
 	t.delegateColumns()
 
 	t.sizeColumns()
 
-	t.table.OnItemChanged(func(item *qt.QTableWidgetItem) {
+	t.table.OnItemChanged(func(item *qtwidgets.QTableWidgetItem) {
 		if t.updating {
 			return
 		}
@@ -135,9 +137,9 @@ func newKeyValueTable(keyLabel, valueLabel string) *keyValueTable {
 	// The rows are put in order once a key has been edited, but not while
 	// the user is moving on to edit another cell, which would move the row
 	// from under them.
-	t.table.OnCloseEditor(func(super func(*qt.QWidget, qt.QAbstractItemDelegate__EndEditHint), editor *qt.QWidget, hint qt.QAbstractItemDelegate__EndEditHint) {
+	t.table.OverrideCloseEditor(func(super func(*qtwidgets.QWidget, qtwidgets.QAbstractItemDelegateEndEditHint), editor *qtwidgets.QWidget, hint qtwidgets.QAbstractItemDelegateEndEditHint) {
 		super(editor, hint)
-		mainthread.Start(func() {
+		qute.Post(func() {
 			if !t.editing() {
 				t.sort()
 			}
@@ -159,7 +161,7 @@ func (t *keyValueTable) delegateColumns() {
 
 // editing reports whether a cell is being edited.
 func (t *keyValueTable) editing() bool {
-	focus := qt.QApplication_FocusWidget()
+	focus := qtwidgets.QApplicationFocusWidget()
 	return focus != nil && t.table.Viewport().IsAncestorOf(focus)
 }
 
@@ -167,7 +169,7 @@ func (t *keyValueTable) editing() bool {
 // switched on, after a cell has been changed. Switching one on switches the
 // others off. A pair given the key of one that is on is itself switched off,
 // so that typing in another value for a key does not put it into use.
-func (t *keyValueTable) keepOne(changed *qt.QTableWidgetItem) {
+func (t *keyValueTable) keepOne(changed *qtwidgets.QTableWidgetItem) {
 	row := changed.Row()
 	pair := t.pair(row)
 	if pair.Key == "" || !pair.Enabled {
@@ -183,9 +185,9 @@ func (t *keyValueTable) keepOne(changed *qt.QTableWidgetItem) {
 		}
 		switch changed.Column() {
 		case colEnabled:
-			t.table.Item(other, colEnabled).SetCheckState(qt.Unchecked)
+			t.table.Item(other, colEnabled).SetCheckState(qtcore.Unchecked)
 		case colKey:
-			t.table.Item(row, colEnabled).SetCheckState(qt.Unchecked)
+			t.table.Item(row, colEnabled).SetCheckState(qtcore.Unchecked)
 			return
 		}
 	}
@@ -195,12 +197,12 @@ func (t *keyValueTable) keepOne(changed *qt.QTableWidgetItem) {
 // the others leave, which are as wide as what is in them.
 func (t *keyValueTable) sizeColumns() {
 	header := t.table.HorizontalHeader()
-	header.SetSectionResizeMode2(colEnabled, qt.QHeaderView__ResizeToContents)
-	header.SetSectionResizeMode2(colKey, qt.QHeaderView__Stretch)
-	header.SetSectionResizeMode2(colValue, qt.QHeaderView__Stretch)
-	header.SetSectionResizeMode2(colDescription, qt.QHeaderView__Stretch)
-	header.SetSectionResizeMode2(colStatus, qt.QHeaderView__ResizeToContents)
-	header.SetSectionResizeMode2(colRemove, qt.QHeaderView__ResizeToContents)
+	header.SetSectionResizeMode(colEnabled, qtwidgets.QHeaderViewResizeToContents)
+	header.SetSectionResizeMode(colKey, qtwidgets.QHeaderViewStretch)
+	header.SetSectionResizeMode(colValue, qtwidgets.QHeaderViewStretch)
+	header.SetSectionResizeMode(colDescription, qtwidgets.QHeaderViewStretch)
+	header.SetSectionResizeMode(colStatus, qtwidgets.QHeaderViewResizeToContents)
+	header.SetSectionResizeMode(colRemove, qtwidgets.QHeaderViewResizeToContents)
 }
 
 // describe shows the column of descriptions, under a heading.
@@ -280,7 +282,7 @@ func (t *keyValueTable) pair(row int) rest.KeyValue {
 	return rest.KeyValue{
 		Key:     t.text(row, colKey),
 		Value:   t.text(row, colValue),
-		Enabled: t.table.Item(row, colEnabled).CheckState() == qt.Checked,
+		Enabled: t.table.Item(row, colEnabled).CheckState() == qtcore.Checked,
 	}
 }
 
@@ -289,8 +291,8 @@ func (t *keyValueTable) described(row int) describedPair {
 	return describedPair{t.pair(row), t.text(row, colDescription)}
 }
 
-func (t *keyValueTable) widget() *qt.QWidget {
-	return t.table.QWidget
+func (t *keyValueTable) widget() *qtwidgets.QWidget {
+	return t.table.AsQWidget()
 }
 
 // showStatuses shows a status against each row whose pair is enabled and
@@ -301,7 +303,7 @@ func (t *keyValueTable) showStatuses(statuses map[string]rowStatus) {
 	t.updating = true
 
 	t.statuses = len(statuses) > 0
-	none := qt.NewQIcon()
+	none := qtgui.NewQIcon()
 	defer none.Delete()
 
 	for row := range t.table.RowCount() {
@@ -338,22 +340,22 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 	t.places = append(t.places, t.next)
 	t.next++
 
-	check := qt.NewQTableWidgetItem()
-	check.SetFlags(qt.ItemIsEnabled | qt.ItemIsSelectable | qt.ItemIsUserCheckable)
+	check := qtwidgets.NewQTableWidgetItem()
+	check.SetFlags(qtcore.ItemIsEnabled | qtcore.ItemIsSelectable | qtcore.ItemIsUserCheckable)
 	check.SetCheckState(checkState(enabled))
 
 	t.table.SetItem(row, colEnabled, check)
-	t.table.SetItem(row, colKey, qt.NewQTableWidgetItem2(key))
-	t.table.SetItem(row, colValue, qt.NewQTableWidgetItem2(value))
+	t.table.SetItem(row, colKey, qtwidgets.NewQTableWidgetItemWithText(key))
+	t.table.SetItem(row, colValue, qtwidgets.NewQTableWidgetItemWithText(value))
 
 	// A description is fainter than what it describes: the colour of the
 	// text beside it, half transparent.
-	description := qt.NewQTableWidgetItem()
+	description := qtwidgets.NewQTableWidgetItem()
 	if !t.plain {
 		if t.faint == nil {
 			// The colour is copied, as the one returned is the palette's own.
-			text := t.table.Palette().ColorWithCr(qt.QPalette__Text)
-			t.faint = qt.NewQBrush3(qt.NewQColor11(text.Red(), text.Green(), text.Blue(), 127))
+			text := t.table.Palette().Color(qtgui.QPaletteText)
+			t.faint = qtgui.NewQBrushWithColor(text.WithAlpha(127))
 		}
 		description.SetForeground(t.faint)
 	}
@@ -363,11 +365,11 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 	// that its icon is not greyed, or in that of the button. The status is
 	// highlighted with the rest of its row, and the button is drawn so (see
 	// delegateColumns).
-	status := qt.NewQTableWidgetItem()
-	status.SetFlags(qt.ItemIsEnabled | qt.ItemIsSelectable)
+	status := qtwidgets.NewQTableWidgetItem()
+	status.SetFlags(qtcore.ItemIsEnabled | qtcore.ItemIsSelectable)
 	t.table.SetItem(row, colStatus, status)
-	blank := qt.NewQTableWidgetItem()
-	blank.SetFlags(qt.NoItemFlags)
+	blank := qtwidgets.NewQTableWidgetItem()
+	blank.SetFlags(qtcore.NoItemFlags)
 	t.table.SetItem(row, colRemove, blank)
 
 	// The row above is no longer the empty one, so it can now be removed.
@@ -377,7 +379,7 @@ func (t *keyValueTable) addRow(key, value string, enabled bool) {
 }
 
 // newRemoveButton returns a button which removes the row it is in.
-func (t *keyValueTable) newRemoveButton() *qt.QWidget {
+func (t *keyValueTable) newRemoveButton() *qtwidgets.QWidget {
 	return newRowRemoveButton(t.table, colRemove, t.remove)
 }
 

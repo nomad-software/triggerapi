@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"net/http"
 	"slices"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/env"
@@ -44,19 +46,19 @@ const (
 
 // requestPanel holds the widgets used to compose a request.
 type requestPanel struct {
-	root *qt.QWidget
+	root *qtwidgets.QWidget
 
-	method *qt.QComboBox
+	method *qtwidgets.QComboBox
 	// url is the URL field, which wraps a URL too long for it and grows
 	// taller to show it all.
 	url  *wrapEdit
-	send *qt.QPushButton
+	send *qtwidgets.QPushButton
 	// save saves a request that is not saved yet.
-	save *qt.QPushButton
+	save *qtwidgets.QPushButton
 
 	// preview, the button between the URL field and Send, shows in place
 	// of the field what the URL resolves to.
-	preview *qt.QToolButton
+	preview *qtwidgets.QToolButton
 	// resolved is the URL with the variables of the active environment in
 	// place, and a mark where a placeholder has no value. It cannot be
 	// edited.
@@ -76,10 +78,10 @@ type requestPanel struct {
 	auth *authEditor
 
 	// tabs holds the parts of the request (tabBody, tabParams, ...).
-	tabs *qt.QTabWidget
+	tabs *qtwidgets.QTabWidget
 
-	bodyType *qt.QComboBox
-	bodyRaw  *qt.QPlainTextEdit
+	bodyType *qtwidgets.QComboBox
+	bodyRaw  *qtwidgets.QPlainTextEdit
 	bodyForm *keyValueTable
 	// bodyFold folds the objects and arrays of a JSON body.
 	bodyFold *folder
@@ -90,15 +92,15 @@ type requestPanel struct {
 	// pages shows the fields of the request, or the request as a command
 	// (pageFields / pageCurl), as chosen with the curl button beside the
 	// tabs.
-	pages *qt.QStackedWidget
-	curl  *qt.QToolButton
+	pages *qtwidgets.QStackedWidget
+	curl  *qtwidgets.QToolButton
 	// command is the request as a curl command.
-	command *qt.QPlainTextEdit
-	copy    *qt.QPushButton
+	command *qtwidgets.QPlainTextEdit
+	copy    *qtwidgets.QPushButton
 	// execute runs the command and shows the response to it.
-	execute *qt.QPushButton
+	execute *qtwidgets.QPushButton
 	// closeCurl goes back from the command to the fields.
-	closeCurl *qt.QPushButton
+	closeCurl *qtwidgets.QPushButton
 	// expand substitutes the variables of the active environment into text.
 	expand func(string) string
 	// expander returns a function which does the same, giving a variable
@@ -126,9 +128,9 @@ type requestPanel struct {
 }
 
 func newRequestPanel() *requestPanel {
-	p := &requestPanel{root: qt.NewQWidget2(), panelState: newPanelState()}
+	p := &requestPanel{root: qtwidgets.NewQWidget(nil), panelState: newPanelState()}
 
-	p.method = qt.NewQComboBox2()
+	p.method = qtwidgets.NewQComboBox(nil)
 	p.method.AddItems(rest.Methods)
 	p.method.OnCurrentIndexChanged(func(int) {
 		p.showLikelyTab()
@@ -139,16 +141,16 @@ func newRequestPanel() *requestPanel {
 	p.url.SetPlaceholderText("Enter URL, e.g. https://api.example.com/users or {{host}}/users")
 	p.url.onChange = func(string) { p.urlChanged() }
 	p.url.onPaste = p.pasteCurl
-	p.warnPaste = warnBeneath(p.url.QWidget)
+	p.warnPaste = warnBeneath(p.url.AsQWidget())
 
 	p.highlight.document(p.url.Document(), func() bool { return false })
 
-	p.send = qt.NewQPushButton3("Send")
+	p.send = qtwidgets.NewQPushButtonWithText("Send", nil)
 	makePrimary(p.send)
 
 	// Save is only for a request that is not saved, as one that is saved is
 	// saved with every change.
-	p.save = qt.NewQPushButton3("Save")
+	p.save = qtwidgets.NewQPushButtonWithText("Save", nil)
 
 	// Only one of the two is on show, and the other takes no room.
 	p.resolved = newWrapEdit()
@@ -170,27 +172,27 @@ func newRequestPanel() *requestPanel {
 
 	// What is beside the URL stays level with its first line as it grows:
 	// each is put in the middle of a line as tall as the tallest of them.
-	bar := qt.NewQHBoxLayout2()
-	line := max(p.method.SizeHint().Height(), p.preview.SizeHint().Height(), p.send.SizeHint().Height())
-	beside := func(widget *qt.QWidget) {
-		widget.SetFixedHeight(widget.SizeHint().Height())
-		holder := qt.NewQVBoxLayout2()
-		holder.SetContentsMargins(0, (line-widget.SizeHint().Height())/2, 0, 0)
+	bar := qtwidgets.NewQHBoxLayout(nil)
+	line := max(p.method.SizeHint().Height, p.preview.SizeHint().Height, p.send.SizeHint().Height)
+	beside := func(widget *qtwidgets.QWidget) {
+		widget.SetFixedHeight(widget.SizeHint().Height)
+		holder := qtwidgets.NewQVBoxLayout(nil)
+		holder.SetContentsMargins(qtcore.QMargins{Left: 0, Top: (line - widget.SizeHint().Height) / 2, Right: 0, Bottom: 0})
 		holder.AddWidget(widget)
 		holder.AddStretch()
-		bar.AddLayout(holder.QLayout)
+		bar.AddLayout(holder.AsQLayout())
 	}
-	urls := qt.NewQVBoxLayout2()
-	urls.SetContentsMargins(0, max(0, (line-p.url.Height())/2), 0, 0)
-	urls.AddWidget(p.url.QWidget)
-	urls.AddWidget(p.resolved.QWidget)
+	urls := qtwidgets.NewQVBoxLayout(nil)
+	urls.SetContentsMargins(qtcore.QMargins{Left: 0, Top: max(0, (line-p.url.Height())/2), Right: 0, Bottom: 0})
+	urls.AddWidget(p.url.AsQWidget())
+	urls.AddWidget(p.resolved.AsQWidget())
 	urls.AddStretch()
 
-	beside(p.method.QWidget)
-	bar.AddLayout2(urls.QLayout, 1)
-	beside(p.preview.QWidget)
-	beside(p.send.QWidget)
-	beside(p.save.QWidget)
+	beside(p.method.AsQWidget())
+	bar.AddLayoutFull(urls.AsQLayout(), 1)
+	beside(p.preview.AsQWidget())
+	beside(p.send.AsQWidget())
+	beside(p.save.AsQWidget())
 
 	p.params = newExclusiveTable("Key", "Value")
 	p.params.onChange = p.paramsChanged
@@ -226,50 +228,50 @@ func newRequestPanel() *requestPanel {
 	p.tabs.AddTab(p.auth.root, "Authorization")
 	p.tabs.AddTab(p.headers.widget(), "Headers")
 
-	fields := qt.NewQWidget2()
-	fieldsLayout := qt.NewQVBoxLayout(fields)
-	fieldsLayout.SetContentsMargins(0, 0, 0, 0)
-	fieldsLayout.AddLayout(bar.QLayout)
+	fields := qtwidgets.NewQWidget(nil)
+	fieldsLayout := qtwidgets.NewQVBoxLayout(fields)
+	fieldsLayout.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 0, Right: 0, Bottom: 0})
+	fieldsLayout.AddLayout(bar.AsQLayout())
 	// The line of the URL is only as tall as the URL makes it.
-	fieldsLayout.AddWidget2(p.tabs.QWidget, 1)
+	fieldsLayout.AddWidgetFull(p.tabs.AsQWidget(), 1, 0)
 
-	p.pages = qt.NewQStackedWidget2()
+	p.pages = qtwidgets.NewQStackedWidget(nil)
 	p.pages.AddWidget(fields)
 	p.pages.AddWidget(p.newCurlPage())
 
-	layout := qt.NewQVBoxLayout(p.root)
-	layout.AddWidget2(p.pages.QWidget, 1)
+	layout := qtwidgets.NewQVBoxLayout(p.root)
+	layout.AddWidgetFull(p.pages.AsQWidget(), 1, 0)
 
 	return p
 }
 
 // newCurlPage returns the page which shows the request as a curl command.
-func (p *requestPanel) newCurlPage() *qt.QWidget {
-	p.command = qt.NewQPlainTextEdit2()
+func (p *requestPanel) newCurlPage() *qtwidgets.QWidget {
+	p.command = qtwidgets.NewQPlainTextEdit(nil)
 	p.command.SetReadOnly(true)
 
-	p.copy = qt.NewQPushButton3("Copy")
-	p.copy.OnClicked(func() {
-		qt.QGuiApplication_Clipboard().SetText(p.command.ToPlainText())
+	p.copy = qtwidgets.NewQPushButtonWithText("Copy", nil)
+	p.copy.OnClicked(func(_ bool) {
+		qtgui.QGuiApplicationClipboard().SetText(p.command.ToPlainText())
 	})
 
-	p.closeCurl = qt.NewQPushButton3("Close")
-	p.closeCurl.OnClicked(func() { p.curl.SetChecked(false) })
+	p.closeCurl = qtwidgets.NewQPushButtonWithText("Close", nil)
+	p.closeCurl.OnClicked(func(_ bool) { p.curl.SetChecked(false) })
 
-	p.execute = qt.NewQPushButton3("Execute")
+	p.execute = qtwidgets.NewQPushButtonWithText("Execute", nil)
 	makePrimary(p.execute)
 
-	buttons := qt.NewQHBoxLayout2()
+	buttons := qtwidgets.NewQHBoxLayout(nil)
 	buttons.AddStretch()
-	buttons.AddWidget(p.execute.QWidget)
-	buttons.AddWidget(p.copy.QWidget)
-	buttons.AddWidget(p.closeCurl.QWidget)
+	buttons.AddWidget(p.execute.AsQWidget())
+	buttons.AddWidget(p.copy.AsQWidget())
+	buttons.AddWidget(p.closeCurl.AsQWidget())
 
-	page := qt.NewQWidget2()
-	layout := qt.NewQVBoxLayout(page)
-	layout.SetContentsMargins(0, 0, 0, 0)
-	layout.AddWidget2(p.command.QWidget, 1)
-	layout.AddLayout(buttons.QLayout)
+	page := qtwidgets.NewQWidget(nil)
+	layout := qtwidgets.NewQVBoxLayout(page)
+	layout.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 0, Right: 0, Bottom: 0})
+	layout.AddWidgetFull(p.command.AsQWidget(), 1, 0)
+	layout.AddLayout(buttons.AsQLayout())
 
 	return page
 }
@@ -284,11 +286,10 @@ func (p *requestPanel) setCodeFont(family string) {
 // role of the text is set in the widget's palette, so the rest follows the
 // theme.
 func (p *requestPanel) setCurlColour(colour string) {
-	palette := qt.NewQPalette()
-	c := qt.NewQColor6(colour)
-	palette.SetColor2(qt.QPalette__Text, c)
+	palette := qtgui.NewQPalette()
+	c := qcolour(colour)
+	palette.SetColor(qtgui.QPaletteText, c)
 	p.command.SetPalette(palette)
-	c.Delete()
 	palette.Delete()
 }
 
@@ -385,14 +386,14 @@ func (p *requestPanel) updateCurl() {
 	p.command.SetPlainText(command)
 }
 
-func (p *requestPanel) newBodyTab() *qt.QWidget {
-	p.bodyType = qt.NewQComboBox2()
+func (p *requestPanel) newBodyTab() *qtwidgets.QWidget {
+	p.bodyType = qtwidgets.NewQComboBox(nil)
 	for _, t := range bodyTypes {
 		p.bodyType.AddItem(t.label)
 	}
 
-	p.bodyRaw = qt.NewQPlainTextEdit2()
-	p.bodyRaw.SetFont(qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont))
+	p.bodyRaw = qtwidgets.NewQPlainTextEdit(nil)
+	p.bodyRaw.SetFont(qtgui.QFontDatabaseGetSystemFont(qtgui.QFontDatabaseFixedFont))
 	p.typedText(p.bodyRaw)
 	p.highlight.document(p.bodyRaw.Document(), p.bodyIsJSON)
 	p.bodyFold = newFolder(p.bodyRaw, p.bodyIsJSON)
@@ -403,9 +404,9 @@ func (p *requestPanel) newBodyTab() *qt.QWidget {
 	p.bodyForm.onChange = p.changed
 	p.highlight.table(p.bodyForm.table)
 
-	stack := qt.NewQStackedWidget2()
+	stack := qtwidgets.NewQStackedWidget(nil)
 	stack.AddWidget(newHint("This request does not have a body."))
-	stack.AddWidget(p.bodyRaw.QWidget)
+	stack.AddWidget(p.bodyRaw.AsQWidget())
 	stack.AddWidget(p.bodyForm.widget())
 
 	p.bodyType.OnCurrentIndexChanged(func(index int) {
@@ -424,25 +425,25 @@ func (p *requestPanel) newBodyTab() *qt.QWidget {
 		p.changed()
 	})
 
-	return newSelectorTab("Type", p.bodyType, stack, p.format.button.QWidget)
+	return newSelectorTab("Type", p.bodyType, stack, p.format.button.AsQWidget())
 }
 
 // newSelectorTab lays out a combo box above the stack of pages it controls,
 // with anything else that is to be beside it.
-func newSelectorTab(label string, selector *qt.QComboBox, stack *qt.QStackedWidget, beside ...*qt.QWidget) *qt.QWidget {
-	tab := qt.NewQWidget2()
+func newSelectorTab(label string, selector *qtwidgets.QComboBox, stack *qtwidgets.QStackedWidget, beside ...*qtwidgets.QWidget) *qtwidgets.QWidget {
+	tab := qtwidgets.NewQWidget(nil)
 
-	top := qt.NewQHBoxLayout2()
-	top.AddWidget(qt.NewQLabel3(label).QWidget)
-	top.AddWidget(selector.QWidget)
+	top := qtwidgets.NewQHBoxLayout(nil)
+	top.AddWidget(qtwidgets.NewQLabelWithText(label, nil).AsQWidget())
+	top.AddWidget(selector.AsQWidget())
 	for _, widget := range beside {
 		top.AddWidget(widget)
 	}
 	top.AddStretch()
 
-	layout := qt.NewQVBoxLayout(tab)
-	layout.AddLayout(top.QLayout)
-	layout.AddWidget2(stack.QWidget, 1)
+	layout := qtwidgets.NewQVBoxLayout(tab)
+	layout.AddLayout(top.AsQLayout())
+	layout.AddWidgetFull(stack.AsQWidget(), 1, 0)
 
 	return plainPage(tab)
 }
@@ -461,11 +462,11 @@ func selectorIndex[T any](entries []T, is func(T) bool) int {
 
 // newHint returns a page which says why it has nothing else on it, set out
 // as the editor it takes the place of.
-func newHint(text string) *qt.QWidget {
-	label := qt.NewQLabel3(text)
-	label.SetAlignment(qt.AlignCenter)
+func newHint(text string) *qtwidgets.QWidget {
+	label := qtwidgets.NewQLabelWithText(text, nil)
+	label.SetAlignment(qtcore.AlignCenter)
 	label.SetEnabled(false)
-	return newPanel(label.QWidget)
+	return newPanel(label.AsQWidget())
 }
 
 // bodyIsJSON reports if the body type is JSON.
@@ -510,9 +511,9 @@ func (p *requestPanel) recolour() {
 	p.refreshPlaceholders()
 }
 
-func (p *requestPanel) widget() *qt.QWidget { return p.root }
+func (p *requestPanel) widget() *qtwidgets.QWidget { return p.root }
 
-func (p *requestPanel) saveButton() *qt.QPushButton { return p.save }
+func (p *requestPanel) saveButton() *qtwidgets.QPushButton { return p.save }
 
 func (p *requestPanel) authorization() *authEditor { return p.auth }
 

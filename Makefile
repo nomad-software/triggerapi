@@ -4,7 +4,7 @@ BINARY := triggerapi
 # halves the size of the binary.
 LDFLAGS := -s -w
 
-.PHONY: build run test vet screenshot icons mcp-server rest-server grpc-server appimage macos clean
+.PHONY: build run test bench vet screenshot icons mcp-server rest-server grpc-server appimage clean
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o $(BINARY) .
@@ -13,7 +13,14 @@ run: build
 	./$(BINARY)
 
 test:
-	go test ./...
+	go test -timeout 120s ./...
+
+# Measures the work of the user interface that costs the most: making the
+# window, drawing the request tree and the history, searching the tree,
+# showing a large JSON response, switching requests and drawing icons.
+# Compare runs with benchstat (golang.org/x/perf/cmd/benchstat).
+bench:
+	go test -timeout 600s -run '^$$' -bench . -benchmem -count 5 ./internal/ui
 
 vet:
 	go vet ./...
@@ -23,9 +30,8 @@ vet:
 screenshot:
 	TRIGGERAPI_SCREENSHOT=$(CURDIR)/docs/screenshot.png go test -timeout 90s -run '^TestScreenshot$$' -count=1 ./internal/ui/
 
-# Draws the program's icon into its files: internal/appicon/appicon.png,
-# which is built into the program, and packaging/macos/triggerapi.png. Run it
-# again whenever the icon changes.
+# Draws the program's icon into internal/appicon/appicon.png, which is built
+# into the program. Run it again whenever the icon changes.
 icons:
 	TRIGGERAPI_ICONS=$(CURDIR) go test -timeout 90s -run '^TestWriteIcons$$' -count=1 ./internal/ui/
 
@@ -48,17 +54,11 @@ grpc-server:
 	go run ./test/grpcserver $(ARGS)
 
 # Packs the program and the Qt libraries it uses into one file that runs
-# without installing anything. Releases are made by the GitHub workflow, on
-# an old distribution so that they run on more systems.
+# without installing anything. It is built in /tmp, and only the AppImage is
+# left here. Releases are made by the GitHub workflow, on an old
+# distribution so that they run on more systems.
 appimage:
 	packaging/appimage.sh
 
-# Builds the macOS app for Apple Silicon, with Qt inside it, in a disk image.
-# It runs on a Mac with Homebrew's Qt; releases are made by the GitHub
-# workflow.
-macos:
-	packaging/macos.sh
-
 clean:
-	rm -f $(BINARY)
-	rm -rf build
+	rm -f $(BINARY) *.AppImage

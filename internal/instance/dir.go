@@ -1,5 +1,3 @@
-//go:build unix
-
 package instance
 
 import (
@@ -12,8 +10,8 @@ import (
 
 // Dir is the folder the lock and the socket are kept in: the user's runtime
 // folder (XDG_RUNTIME_DIR), which only they can open and which goes when they
-// log out, or else a folder of their own in the temporary folder (macOS has a
-// temporary folder for each user, Linux one for all).
+// log out, or else a folder of their own in the temporary folder, which is
+// one for all users.
 func Dir() (string, error) {
 	if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
 		return dir, nil

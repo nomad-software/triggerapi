@@ -1,12 +1,12 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtgui"
+
 	"net/http"
 	"reflect"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
@@ -43,7 +43,7 @@ func TestFindAll(t *testing.T) {
 // counted, the one gone to is selected, and what it is folded away in is
 // unfolded.
 func TestFindInResponse(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		w.Show()
 
@@ -51,7 +51,7 @@ func TestFindInResponse(t *testing.T) {
 			f := p.find
 			selected := func() string {
 				cursor := p.body.TextCursor()
-				defer release(cursor)
+				defer cursor.Delete()
 				return cursor.SelectedText()
 			}
 			show := func(body string) {
@@ -59,10 +59,10 @@ func TestFindInResponse(t *testing.T) {
 			}
 
 			// The bar is above the body, and hidden until it is asked for.
-			if !f.root.IsHidden() || f.isOpen() || !p.root.IsAncestorOf(f.button.QWidget) || !p.root.IsAncestorOf(f.root) {
+			if !f.root.IsHidden() || f.isOpen() || !p.root.IsAncestorOf(f.button.AsQWidget()) || !p.root.IsAncestorOf(f.root) {
 				t.Fatal("the bar is shown at first, or it or its button is not in the panel")
 			}
-			if layout := f.root.ParentWidget().Layout(); layout.IndexOf(f.root) != 0 || layout.IndexOf(p.body.QWidget) != 1 {
+			if layout := f.root.ParentWidget().Layout(); layout.IndexOf(f.root) != 0 || layout.IndexOf(p.body.AsQWidget()) != 1 {
 				t.Error("the bar is not above the body")
 			}
 
@@ -138,7 +138,7 @@ func TestFindInResponse(t *testing.T) {
 			// Text selected in the response is what is looked for.
 			cursor := p.body.TextCursor()
 			cursor.SetPosition(5)
-			cursor.SetPosition2(6, qt.QTextCursor__KeepAnchor)
+			cursor.SetPositionFull(6, qtgui.QTextCursorKeepAnchor)
 			p.body.SetTextCursor(cursor)
 			w.find()
 			if !f.isOpen() || f.field.Text() != `a` || f.count.Text() != "1 of 4" {

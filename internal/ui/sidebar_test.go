@@ -1,13 +1,13 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/mappu/miqt/qt6/mainthread"
 )
 
 // The stores are written in the background, and a failure is shown in the
@@ -15,7 +15,7 @@ import (
 func TestSaveStoreInBackground(t *testing.T) {
 	files := testFiles(t)
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.request.url.SetText("one.test")
@@ -27,25 +27,25 @@ func TestSaveStoreInBackground(t *testing.T) {
 	}
 
 	// A file that cannot be written is reported on the GUI thread.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.requests.path = filepath.Join(t.TempDir(), "gone", "requests.json")
 		w.requests.save()
 	})
 	waitFor(t, "the failure", func() bool {
-		return mainthread.Wait2(func() bool {
+		return onGUI(func() bool {
 			return strings.Contains(w.StatusBar().CurrentMessage(), "Changes could not be saved")
 		})
 	})
 	// It is what is not on disk until the file is written.
 	var path string
-	mainthread.Wait(func() { path = w.requests.path })
-	if err := mainthread.Wait2(w.writeFiles); err == nil || !strings.Contains(err.Error(), path) {
+	qute.PostSync(func() { path = w.requests.path })
+	if err := onGUI(w.writeFiles); err == nil || !strings.Contains(err.Error(), path) {
 		t.Errorf("writeFiles = %v", err)
 	}
 	if err := os.Mkdir(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	mainthread.Wait(func() { w.requests.save() })
+	qute.PostSync(func() { w.requests.save() })
 	if err := writer.Flush(); err != nil {
 		t.Errorf("Flush = %v", err)
 	}
@@ -57,7 +57,7 @@ func TestRemoveWorkspaceWithWrites(t *testing.T) {
 	files := testFiles(t)
 	dir := files.Workspaces
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		ws := w.workspaces

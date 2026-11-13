@@ -1,21 +1,23 @@
 package ui
 
-import qt "github.com/mappu/miqt/qt6"
+import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtwidgets"
+)
 
 // warnDialog returns what tells the user of a problem in a dialog over a
 // widget, which they close.
-func warnDialog(parent *qt.QWidget) func(message string) {
+func warnDialog(parent *qtwidgets.QWidget) func(message string) {
 	return func(message string) {
-		qt.QMessageBox_Warning(parent, "TriggerAPI", message)
+		qtwidgets.QMessageBoxWarning(parent, "TriggerAPI", message)
 	}
 }
 
 // warnBeneath returns what tells the user of a problem in a tooltip beneath
 // a widget, which goes away by itself.
-func warnBeneath(widget *qt.QWidget) func(message string) {
+func warnBeneath(widget *qtwidgets.QWidget) func(message string) {
 	return func(message string) {
-		below := qt.NewQPoint2(0, widget.Height())
-		defer below.Delete()
-		qt.QToolTip_ShowText2(widget.MapToGlobalWithQPoint(below), message, widget)
+		below := qtcore.QPoint{X: 0, Y: widget.Height()}
+		qtwidgets.QToolTipShowTextFull(widget.MapToGlobal(below), message, widget, qtcore.QRect{}, -1)
 	}
 }

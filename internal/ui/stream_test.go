@@ -1,14 +1,14 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/env"
@@ -56,7 +56,7 @@ func TestStream(t *testing.T) {
 	var w *Window
 	field := func(label string) string { return fieldValue(w.response, label) }
 	body := func() string { return w.response.body.ToPlainText() }
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.request.load(rest.Request{Method: "GET", URL: srv.URL + "/events"})
@@ -66,7 +66,7 @@ func TestStream(t *testing.T) {
 
 	// The events are shown as they come, while the stream is open.
 	waitFor(t, "the first events", func() bool { return strings.Contains(body(), `{"n": 2}`) })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if field("Stream") != streamOpen || field(fieldCode) != "200 OK" || field("Events") != "2" || w.request.send.Text() != "Cancel" {
 			t.Errorf("stream %q, status %q, events %q, button %q", field("Stream"), field(fieldCode), field("Events"), w.request.send.Text())
 		}
@@ -80,7 +80,7 @@ func TestStream(t *testing.T) {
 
 	close(release)
 	waitFor(t, "the end of the stream", func() bool { return field("Stream") == streamEnded })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if field("Events") != "3" || !strings.HasSuffix(body(), `{"n": 3}`) || strings.Count(body(), "← ") != 3 {
 			t.Errorf("events %q, body %q", field("Events"), body())
 		}
@@ -111,7 +111,7 @@ func TestStreamStopped(t *testing.T) {
 	srv := streamServer(t, nil)
 	var w *Window
 	field := func(label string) string { return fieldValue(w.response, label) }
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.config.Timeout = 1
 		w.Show()
@@ -120,14 +120,14 @@ func TestStreamStopped(t *testing.T) {
 	})
 	waitFor(t, "the event", func() bool { return field("Events") == "1" })
 	time.Sleep(1200 * time.Millisecond)
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if field("Stream") != streamOpen {
 			t.Errorf("stream %q after the time limit, error %q", field("Stream"), field(fieldError))
 		}
 		w.request.send.Click()
 	})
 	waitFor(t, "the stream to stop", func() bool { return field("Stream") == rest.StreamStopped })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if field("Events") != "1" || field(fieldCode) != "200 OK" || !strings.Contains(w.response.body.ToPlainText(), `{"n": 1}`) {
 			t.Errorf("events %q, status %q, body %q", field("Events"), field(fieldCode), w.response.body.ToPlainText())
 		}

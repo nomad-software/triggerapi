@@ -74,6 +74,29 @@ func TestLoadInvalidIconColours(t *testing.T) {
 	}
 }
 
+// TestEveryColourChecked checks that no colour is left out of those emptied
+// when they are not of the form #rrggbb, as one added later could be.
+func TestEveryColourChecked(t *testing.T) {
+	for _, colours := range []any{&Colours{}, &JSONColours{}} {
+		value := reflect.ValueOf(colours).Elem()
+		for i := range value.NumField() {
+			value.Field(i).SetString("nope")
+		}
+		var valid reflect.Value
+		switch c := colours.(type) {
+		case *Colours:
+			valid = reflect.ValueOf(c.valid())
+		case *JSONColours:
+			valid = reflect.ValueOf(c.valid())
+		}
+		for i := range valid.NumField() {
+			if got := valid.Field(i).String(); got != "" {
+				t.Errorf("%s of %s is not checked: %q was kept", valid.Type().Field(i).Name, valid.Type().Name(), got)
+			}
+		}
+	}
+}
+
 // TestCaptureColours checks that the colours of the marks of capturing in a
 // file from before they were those of passing and failing are kept as them,
 // unless those are there too, and are written only as them.
@@ -109,11 +132,7 @@ func TestDefaultColoursNotSaved(t *testing.T) {
 
 func TestPath(t *testing.T) {
 	config := t.TempDir()
-	// These are where the configuration of programs is kept on Linux and
-	// on Windows. On macOS it is in the home folder.
 	t.Setenv("XDG_CONFIG_HOME", config)
-	t.Setenv("AppData", config)
-	t.Setenv("HOME", config)
 
 	path, err := Path()
 	if err != nil {

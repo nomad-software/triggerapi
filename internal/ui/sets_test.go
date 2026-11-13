@@ -1,13 +1,15 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"reflect"
 	"slices"
 	"strconv"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -50,17 +52,17 @@ func TestSets(t *testing.T) {
 	// drag moves a tab as dragging it does: pressed, moved, and let go.
 	drag := func(from, to int) {
 		centre := w.tabs.bar.TabRect(from).Center()
-		at := qt.NewQPointF3(float64(centre.X()), float64(centre.Y()))
-		press := qt.NewQMouseEvent(qt.QEvent__MouseButtonPress, at, qt.LeftButton, qt.LeftButton, qt.NoModifier)
+		at := qtcore.QPointF{X: float64(centre.X), Y: float64(centre.Y)}
+		press := qtgui.NewQMouseEvent(qtcore.QEventMouseButtonPress, at, at, qtcore.LeftButton, qtcore.LeftButton, qtcore.NoModifier)
 		defer press.Delete()
-		qt.QCoreApplication_SendEvent(w.tabs.bar.QObject, press.QEvent)
+		qtcore.QCoreApplicationSendEvent(w.tabs.bar.AsQObject(), press.AsQEvent())
 		w.tabs.bar.MoveTab(from, to)
-		release := qt.NewQMouseEvent(qt.QEvent__MouseButtonRelease, at, qt.LeftButton, qt.NoButton, qt.NoModifier)
+		release := qtgui.NewQMouseEvent(qtcore.QEventMouseButtonRelease, at, at, qtcore.LeftButton, qtcore.NoButton, qtcore.NoModifier)
 		defer release.Delete()
-		qt.QCoreApplication_SendEvent(w.tabs.bar.QObject, release.QEvent)
+		qtcore.QCoreApplicationSendEvent(w.tabs.bar.AsQObject(), release.AsQEvent())
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
@@ -92,12 +94,12 @@ func TestSets(t *testing.T) {
 		rt.sets.list.CurrentItem().SetText("Work")
 	})
 	waitFor(t, "the set to be renamed", func() bool {
-		return mainthread.Wait2(func() bool {
+		return onGUI(func() bool {
 			return w.requests.sets.list.Item(0).Text() == "Work" && w.requests.store.Sets[0].Name == "Work"
 		})
 	})
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		rt := w.requests
 		tree := rt.tree
 		pick := func(folder, name string) { tree.SetCurrentItem(treeItem(tree, folder, name)) }
@@ -168,9 +170,9 @@ func TestSets(t *testing.T) {
 		treeItem(tree, "Two", "C").SetText(colName, "Charlie")
 	})
 	waitFor(t, "the rename to be sorted", func() bool {
-		return mainthread.Wait2(func() bool { return treeItem(w.requests.tree, "Two", "Charlie") != nil })
+		return onGUI(func() bool { return treeItem(w.requests.tree, "Two", "Charlie") != nil })
 	})
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		rt := w.requests
 		rt.confirm = func(string) bool { return true }
 		if got := setNames(); !reflect.DeepEqual(got, []string{`New Set["Charlie" "D"]`, `Work["B" "Charlie" "A"]`}) {
@@ -193,7 +195,7 @@ func TestSets(t *testing.T) {
 	})
 
 	// The set chosen is chosen again when its workspace is gone back to.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.workspaces.warn = func(message string) { t.Error(message) }
 		w.workspaces.add()
 		if w.requests.sets.active != nil {
@@ -212,7 +214,7 @@ func TestSets(t *testing.T) {
 	if err != nil || len(saved.Sets) != 2 || saved.Sets[1].Name != "Work" || len(saved.Sets[1].Requests) != 2 {
 		t.Fatalf("saved %+v", saved.Sets)
 	}
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.Close()
 		w = NewWindow(files.Files)
 		if w.requests.sets.active != nil || w.requests.sets.selected() != nil || w.requests.tree.CurrentItem() != nil || w.open != nil {
@@ -244,7 +246,7 @@ func TestSetButtons(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
@@ -260,7 +262,7 @@ func TestSetButtons(t *testing.T) {
 			t.Errorf("after duplicating: active %+v, sets %d", sets.active, len(rt.store.Sets))
 			return
 		}
-		if list.State() != qt.QAbstractItemView__EditingState {
+		if list.Protected().State() != qtwidgets.QAbstractItemViewEditingState {
 			t.Error("the name of the copy is not open for editing")
 		}
 		if names := tabNames(w); !slices.Equal(names, []string{"A*", "B*"}) {
@@ -273,7 +275,7 @@ func TestSetButtons(t *testing.T) {
 		// does nothing.
 		list.SetCurrentItem(list.Item(0))
 		sets.rename()
-		if list.State() != qt.QAbstractItemView__EditingState {
+		if list.Protected().State() != qtwidgets.QAbstractItemViewEditingState {
 			t.Error("rename did not open the name")
 		}
 		list.Reset()
@@ -281,16 +283,15 @@ func TestSetButtons(t *testing.T) {
 		// Clicking where there is no set chooses none, leaving one empty
 		// tab.
 		viewport := list.Viewport()
-		at := qt.NewQPointF3(5, float64(viewport.Height()-5))
-		defer at.Delete()
-		press := qt.NewQMouseEvent(qt.QEvent__MouseButtonPress, at, qt.LeftButton, qt.LeftButton, qt.NoModifier)
+		at := qtcore.QPointF{X: 5, Y: float64(viewport.Height() - 5)}
+		press := qtgui.NewQMouseEvent(qtcore.QEventMouseButtonPress, at, at, qtcore.LeftButton, qtcore.LeftButton, qtcore.NoModifier)
 		defer press.Delete()
-		qt.QCoreApplication_SendEvent(viewport.QObject, press.QEvent)
+		qtcore.QCoreApplicationSendEvent(viewport.AsQObject(), press.AsQEvent())
 		if sets.active != nil || sets.selected() != nil || len(w.tabs.tabs) != 1 || w.open != nil {
 			t.Errorf("after clicking empty space: set %+v, %d tabs", sets.active, len(w.tabs.tabs))
 		}
 		sets.rename()
-		if list.State() == qt.QAbstractItemView__EditingState {
+		if list.Protected().State() == qtwidgets.QAbstractItemViewEditingState {
 			t.Error("rename opened a name with no set selected")
 		}
 
@@ -301,7 +302,7 @@ func TestSetButtons(t *testing.T) {
 		// A window that is not on a screen is not the active one, so it is
 		// asked which of its widgets the keyboard goes to.
 		focused := w.FocusWidget()
-		if item := list.CurrentItem(); item == nil || item.Text() != "Work copy" || sets.active != nil || focused == nil || focused.UnsafePointer() != list.QWidget.UnsafePointer() {
+		if item := list.CurrentItem(); item == nil || item.Text() != "Work copy" || sets.active != nil || focused == nil || focused.Ptr() != list.Ptr() {
 			t.Errorf("browsing: current %v, active %+v", item, sets.active)
 		}
 	})

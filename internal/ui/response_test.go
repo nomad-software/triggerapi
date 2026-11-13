@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"io"
 	"net/http"
 	"os"
@@ -9,8 +11,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
@@ -21,7 +21,7 @@ func TestResponseFont(t *testing.T) {
 	files := testFiles(t)
 	settings.Settings{Width: 800, Height: 600, ResponseFont: "Some Font", PublicKey: testPublic, PrivateKey: testPrivate}.Save(files.Settings)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 
@@ -42,7 +42,7 @@ func TestResponseFont(t *testing.T) {
 func TestSaveResponse(t *testing.T) {
 	dir := t.TempDir()
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		w.Show()
 
@@ -55,7 +55,7 @@ func TestSaveResponse(t *testing.T) {
 			p.now = func() time.Time { return time.Date(2026, time.October, 11, 17, 30, 5, 0, time.Local) }
 
 			// There is nothing to save until there is a response.
-			if p.save.IsEnabled() || !p.root.IsAncestorOf(p.save.QWidget) {
+			if p.save.IsEnabled() || !p.root.IsAncestorOf(p.save.AsQWidget()) {
 				t.Fatal("the save button is enabled without a response, or is not in the panel")
 			}
 

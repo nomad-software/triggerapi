@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"fmt"
 	"slices"
 	"strings"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/workspace"
 )
@@ -15,8 +17,8 @@ import (
 // and requests. The selected workspace is the one in use. A workspace is a
 // folder on disk, so every change is made there at once.
 type workspaceList struct {
-	root *qt.QWidget
-	list *qt.QListWidget
+	root *qtwidgets.QWidget
+	list *qtwidgets.QListWidget
 
 	// dir returns the folder the workspaces are kept in.
 	dir func() string
@@ -40,22 +42,22 @@ type workspaceList struct {
 
 func newWorkspaceList(dir func() string) *workspaceList {
 	s := &workspaceList{
-		root: qt.NewQWidget2(),
-		list: qt.NewQListWidget2(),
+		root: qtwidgets.NewQWidget(nil),
+		list: qtwidgets.NewQListWidget(nil),
 		dir:  dir,
 	}
 
 	s.confirm = func(question string) bool {
-		return qt.QMessageBox_Question(s.root, "TriggerAPI", question) == qt.QMessageBox__Yes
+		return qtwidgets.QMessageBoxQuestion(s.root, "TriggerAPI", question) == qtwidgets.QMessageBoxYes
 	}
 	s.warn = warnDialog(s.root)
 
 	// Names are only edited through the rename button.
-	s.list.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
+	s.list.SetEditTriggers(qtwidgets.QAbstractItemViewNoEditTriggers)
 
 	// F2 does what the rename button does.
-	s.list.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
-		if event.Key() == int(qt.Key_F2) {
+	s.list.OverrideKeyPressEvent(func(super func(*qtgui.QKeyEvent), event *qtgui.QKeyEvent) {
+		if event.Key() == int(qtcore.Key_F2) {
 			s.rename()
 			return
 		}
@@ -66,29 +68,29 @@ func newWorkspaceList(dir func() string) *workspaceList {
 	// its tooltip. They are the colour of the icon of the tab, but for the
 	// one which removes.
 	add := newIconButton(colourWorkspaces, drawPlus, "Add a workspace")
-	add.OnClicked(s.add)
+	add.OnClicked(func(_ bool) { s.add() })
 	duplicate := newIconButton(colourWorkspaces, drawCopy, "Duplicate the selected workspace")
-	duplicate.OnClicked(s.duplicate)
+	duplicate.OnClicked(func(_ bool) { s.duplicate() })
 	rename := newIconButton(colourWorkspaces, drawPencil, "Rename the selected workspace")
-	rename.OnClicked(s.rename)
+	rename.OnClicked(func(_ bool) { s.rename() })
 	remove := newIconButton(colourRemove, drawBin, "Remove the selected workspace")
-	remove.OnClicked(s.remove)
+	remove.OnClicked(func(_ bool) { s.remove() })
 
-	hint := qt.NewQLabel3("Each workspace has its own environments and requests. The selected workspace is the one in use.")
+	hint := qtwidgets.NewQLabelWithText("Each workspace has its own environments and requests. The selected workspace is the one in use.", nil)
 	hint.SetWordWrap(true)
 	hint.SetEnabled(false)
 
-	layout := qt.NewQVBoxLayout(s.root)
-	layout.AddWidget2(s.list.QWidget, 1)
-	layout.AddWidget(hint.QWidget)
-	layout.AddLayout(newButtonRow(add, duplicate, rename, remove).QLayout)
+	layout := qtwidgets.NewQVBoxLayout(s.root)
+	layout.AddWidgetFull(s.list.AsQWidget(), 1, 0)
+	layout.AddWidget(hint.AsQWidget())
+	layout.AddLayout(newButtonRow(add, duplicate, rename, remove).AsQLayout())
 
 	s.list.OnCurrentRowChanged(func(row int) {
 		if !s.updating && row >= 0 && row < len(s.names) && s.onOpen != nil {
 			s.onOpen(s.names[row])
 		}
 	})
-	s.list.OnItemChanged(func(item *qt.QListWidgetItem) {
+	s.list.OnItemChanged(func(item *qtwidgets.QListWidgetItem) {
 		if !s.updating {
 			s.renamed(s.list.Row(item), item.Text())
 		}
@@ -115,10 +117,10 @@ func (s *workspaceList) load(selected string) (string, error) {
 
 	s.list.Clear()
 	for _, name := range names {
-		item := qt.NewQListWidgetItem2(name)
+		item := qtwidgets.NewQListWidgetItemWithText(name, nil)
 		item.SetIcon(workspaceIcon())
-		item.SetFlags(item.Flags() | qt.ItemIsEditable)
-		s.list.AddItemWithItem(item)
+		item.SetFlags(item.Flags() | qtcore.ItemIsEditable)
+		s.list.AddItem(item)
 	}
 	if len(names) == 0 {
 		return "", err
@@ -222,7 +224,7 @@ func (s *workspaceList) renamed(row int, name string) {
 
 	// The items must not be replaced while one of them is reporting its
 	// change. The name may belong somewhere else in the order.
-	mainthread.Start(func() {
+	qute.Post(func() {
 		if _, listErr := s.load(name); listErr != nil {
 			s.warn(fmt.Sprintf("The workspaces could not be listed: %v.", listErr))
 		}
@@ -265,6 +267,6 @@ func (s *workspaceList) remove() {
 }
 
 // workspaceIcon returns the icon shown before the name of a workspace.
-func workspaceIcon() *qt.QIcon {
-	return cachedIcon("workspace", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourWorkspaces), drawMonitor) })
+func workspaceIcon() *qtgui.QIcon {
+	return cachedIcon("workspace", func() *qtgui.QIcon { return drawIcon(iconSize*2, themeColour(colourWorkspaces), drawMonitor) })
 }

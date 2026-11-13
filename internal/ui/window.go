@@ -2,15 +2,17 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"context"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 	"time"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/crypt"
@@ -45,7 +47,7 @@ const reflectTimeout = 15 * time.Second
 // askRequestType asks the user what type of request to create. It reports
 // false if they decide against creating one. It is a variable so that tests
 // can answer without a dialog being shown.
-var askRequestType = func(parent *qt.QWidget) (collection.Type, bool) {
+var askRequestType = func(parent *qtwidgets.QWidget) (collection.Type, bool) {
 	return newRequestTypeDialog(parent).ask()
 }
 
@@ -68,12 +70,12 @@ const (
 
 // Window is the main application window.
 type Window struct {
-	*qt.QMainWindow
+	qtwidgets.QMainWindowBase
 
 	// preferences, quit and about are the menu bar actions.
-	preferences *qt.QAction
-	quit        *qt.QAction
-	about       *qt.QAction
+	preferences *qtgui.QAction
+	quit        *qtgui.QAction
+	about       *qtgui.QAction
 
 	// files are the default locations of the saved data, and config the
 	// settings in effect, which can keep the workspaces elsewhere.
@@ -104,15 +106,15 @@ type Window struct {
 	secrets map[network.Secret]string
 	// sidebar has a tab for the workspaces, and one each for the
 	// environments, the requests and the history of the workspace in use.
-	sidebar      *qt.QTabWidget
+	sidebar      *qtwidgets.QTabWidget
 	workspaces   *workspaceList
 	environments *envList
 	requests     *requestTree
 	history      *historyList
 	// split divides the sidebar from the rest of the window, and splits
 	// divide the request from the response on each page that has them.
-	split  *qt.QSplitter
-	splits map[int]*qt.QSplitter
+	split  *qtwidgets.QSplitter
+	splits map[int]*qtwidgets.QSplitter
 	// responseHeight is the height the response was last dragged to, which
 	// every page with a response is given. It is zero if it never was.
 	responseHeight int
@@ -127,7 +129,7 @@ type Window struct {
 	environment *environmentSelector
 	// stack shows the UI of a type of request (see uis) or the environment
 	// editor.
-	stack    *qt.QStackedWidget
+	stack    *qtwidgets.QStackedWidget
 	editor   *envEditor
 	request  *requestPanel
 	response *responsePanel
@@ -186,7 +188,6 @@ type Window struct {
 // must be called on the main thread after the QApplication has been created.
 func NewWindow(files Files) *Window {
 	w := &Window{
-		QMainWindow: qt.NewQMainWindow2(),
 		request:     newRequestPanel(),
 		grpc:        newGRPCPanel(),
 		ws:          newWSPanel(),
@@ -197,11 +198,12 @@ func NewWindow(files Files) *Window {
 		tabs:        newRequestTabs(),
 		environment: newEnvironmentSelector(),
 	}
+	qtwidgets.NewQMainWindowWith(w, nil)
 
 	w.SetWindowTitle("TriggerAPI")
 	w.SetWindowIcon(appIcon())
 	// Dialogs take their icon from the application.
-	qt.QGuiApplication_SetWindowIcon(appIcon())
+	qtgui.QGuiApplicationSetWindowIcon(appIcon())
 
 	// The status bar has a handle at its right to resize the window by.
 	w.StatusBar().SetSizeGripEnabled(true)
@@ -262,32 +264,15 @@ func NewWindow(files Files) *Window {
 	}
 	w.Resize(w.config.Width, w.config.Height)
 	if w.config.Maximized {
-		w.SetWindowState(qt.WindowMaximized)
+		w.SetWindowState(qtcore.WindowMaximized)
 	}
-	w.OnCloseEvent(func(super func(*qt.QCloseEvent), event *qt.QCloseEvent) {
-		if err := w.settings().Save(files.Settings); err != nil {
-			// The window is going away, so there is nowhere to show this.
-			fmt.Fprintln(os.Stderr, "triggerapi: settings could not be saved:", err)
-		}
-		// An open connection is closed with the window, as is the client of
-		// an MCP server. The connection goes in the history, which is then
-		// written with everything else that is waiting to be.
-		w.disconnectWS()
-		w.closeMCP()
-		if err := w.writeFiles(); err != nil {
-			// The status bar is going away with the window.
-			fmt.Fprintln(os.Stderr, "triggerapi: changes could not be saved:", err)
-		}
-		w.removeDiffFiles()
-		super(event)
-	})
 
 	// The workspace that was last in use is opened, which is the first
 	// there is if this is the first run with workspaces.
 	w.workspaces = newWorkspaceList(w.workspacesDir)
 	w.firstWorkspace()
 	// A failure to open the keys is reported when the files are loaded.
-	w.keys, _ = openKeys(w.QWidget, w.config)
+	w.keys, _ = openKeys(w.AsQWidget(), w.config)
 	currentKeys := func() *crypt.Keys { return w.keys }
 	// Requests to a host whose settings could not be loaded fail with the
 	// reason; the others are sent as the settings say.
@@ -336,7 +321,7 @@ func NewWindow(files Files) *Window {
 
 	w.editor.onChange = w.environments.update
 	w.editor.onSort = w.environments.setSort
-	w.editor.close.OnClicked(w.closeEditor)
+	w.editor.close.OnClicked(func(_ bool) { w.closeEditor() })
 
 	w.workspaces.onOpen = w.openWorkspace
 	w.workspaces.onRename = w.renamedWorkspace
@@ -379,7 +364,7 @@ func NewWindow(files Files) *Window {
 	// another tab of the sidebar does.
 	w.requests.onSelect = w.closeEditor
 	w.requests.create = func() (*collection.Request, bool) {
-		switch typ, ok := askRequestType(w.QWidget); {
+		switch typ, ok := askRequestType(w.AsQWidget()); {
 		case !ok:
 			return nil, false
 		case w.open == nil && w.unsaved == typ:
@@ -394,10 +379,10 @@ func NewWindow(files Files) *Window {
 		if ui.endpoints != nil {
 			ui.endpoints.table.onCreate = func(endpoints []string) { w.createRequests(ui, endpoints) }
 		}
-		ui.editor.saveButton().OnClicked(w.saveRequest)
+		ui.editor.saveButton().OnClicked(func(_ bool) { w.saveRequest() })
 		auth := ui.editor.authorization()
-		auth.getToken.OnClicked(func() { w.getToken(ui) })
-		auth.clearToken.OnClicked(func() { w.clearToken(ui) })
+		auth.getToken.OnClicked(func(_ bool) { w.getToken(ui) })
+		auth.clearToken.OnClicked(func(_ bool) { w.clearToken(ui) })
 		auth.onEdited = func() { w.showToken(ui) }
 		ui.editor.setCodeFont(w.config.ResponseFont)
 		// Every edit of a saved request is written back to it and saved.
@@ -413,26 +398,26 @@ func NewWindow(files Files) *Window {
 	w.request.expander = w.expander
 	w.request.options = w.options
 	w.request.authorize = w.keptToken
-	w.request.send.OnClicked(w.send)
-	w.request.execute.OnClicked(w.executeCurl)
+	w.request.send.OnClicked(func(_ bool) { w.send() })
+	w.request.execute.OnClicked(func(_ bool) { w.executeCurl() })
 
 	w.grpc.onTarget = func() { w.reflect(false) }
-	w.grpc.reload.OnClicked(func() { w.reflect(true) })
-	w.grpc.example.OnClicked(w.useExample)
-	w.grpc.invoke.OnClicked(w.invoke)
+	w.grpc.reload.OnClicked(func(_ bool) { w.reflect(true) })
+	w.grpc.example.OnClicked(func(_ bool) { w.useExample() })
+	w.grpc.invoke.OnClicked(func(_ bool) { w.invoke() })
 
-	w.ws.connect.OnClicked(w.toggleWS)
-	w.ws.send.OnClicked(w.sendWS)
+	w.ws.connect.OnClicked(func(_ bool) { w.toggleWS() })
+	w.ws.send.OnClicked(func(_ bool) { w.sendWS() })
 
-	w.graphql.send.OnClicked(w.sendGraphQL)
+	w.graphql.send.OnClicked(func(_ bool) { w.sendGraphQL() })
 	w.graphql.onSchema = w.loadGraphQLSchema
 
 	w.mcp.onTarget = func() { w.discoverMCP(false) }
-	w.mcp.reload.OnClicked(func() { w.discoverMCP(true) })
-	w.mcp.example.OnClicked(w.useMCPExample)
-	w.mcp.call.OnClicked(w.callMCP)
+	w.mcp.reload.OnClicked(func(_ bool) { w.discoverMCP(true) })
+	w.mcp.example.OnClicked(func(_ bool) { w.useMCPExample() })
+	w.mcp.call.OnClicked(func(_ bool) { w.callMCP() })
 
-	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+Return"), w.QObject).OnActivated(func() {
+	qtgui.NewQShortcutWithKeySequence(qtgui.NewQKeySequenceWithKey("Ctrl+Return"), w.AsQObject()).OnActivated(func() {
 		if ui := w.pageUI(w.stack.CurrentIndex()); ui != nil {
 			ui.send()
 		}
@@ -441,13 +426,13 @@ func NewWindow(files Files) *Window {
 	// The order matches the page constants. Dragging the response on one
 	// page sets its height on the others, which are given it when they are
 	// next shown.
-	w.stack = qt.NewQStackedWidget2()
+	w.stack = qtwidgets.NewQStackedWidget(nil)
 	w.responseHeight = w.config.ResponseHeight
-	w.splits = map[int]*qt.QSplitter{}
+	w.splits = map[int]*qtwidgets.QSplitter{}
 	for _, ui := range w.uis {
 		split := newRequestPage(ui)
 		split.OnSplitterMoved(func(int, int) { w.responseHeight = split.Sizes()[1] })
-		w.splits[w.stack.AddWidget(split.QWidget)] = split
+		w.splits[w.stack.AddWidget(split.AsQWidget())] = split
 	}
 	w.stack.AddWidget(w.editor.root)
 	w.stack.OnCurrentChanged(func(page int) {
@@ -461,9 +446,9 @@ func NewWindow(files Files) *Window {
 
 	// The tabs are down the left edge and have icons in place of names,
 	// which are given as tooltips.
-	w.sidebar = qt.NewQTabWidget2()
-	w.sidebar.SetTabPosition(qt.QTabWidget__West)
-	w.sidebar.SetIconSize(qt.NewQSize2(sidebarIconSize, sidebarIconSize))
+	w.sidebar = qtwidgets.NewQTabWidget(nil)
+	w.sidebar.SetTabPosition(qtwidgets.QTabWidgetWest)
+	w.sidebar.SetIconSize(qtcore.QSize{Width: sidebarIconSize, Height: sidebarIconSize})
 	// The order matches the tab constants.
 	w.sidebar.AddTab(plainPage(w.workspaces.root), "")
 	w.sidebar.AddTab(plainPage(w.environments.root), "")
@@ -484,67 +469,42 @@ func NewWindow(files Files) *Window {
 		}
 	})
 
-	w.split = qt.NewQSplitter3(qt.Horizontal)
-	w.split.AddWidget(w.sidebar.QWidget)
+	w.split = qtwidgets.NewQSplitterWithOrientation(qtcore.Horizontal, nil)
+	w.split.AddWidget(w.sidebar.AsQWidget())
 	// The tabs of the requests are above whichever page is shown.
-	pages := qt.NewQWidget2()
-	pagesLayout := qt.NewQVBoxLayout(pages)
-	pagesLayout.SetContentsMargins(0, 0, 0, 0)
+	pages := qtwidgets.NewQWidget(nil)
+	pagesLayout := qtwidgets.NewQVBoxLayout(pages)
+	pagesLayout.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 0, Right: 0, Bottom: 0})
 	pagesLayout.SetSpacing(0)
 	// The workspace and the environment are selected on a line of their
 	// own above them, which leaves the tabs the whole width and stays
 	// there when the tabs are put away.
 	pagesLayout.AddWidget(w.environment.root)
-	pagesLayout.AddWidget(w.tabs.bar.QWidget)
-	pagesLayout.AddWidget2(w.stack.QWidget, 1)
+	pagesLayout.AddWidget(w.tabs.bar.AsQWidget())
+	pagesLayout.AddWidgetFull(w.stack.AsQWidget(), 1, 0)
 	w.split.AddWidget(pages)
 	w.split.SetStretchFactor(0, 0)
 	w.split.SetStretchFactor(1, 1)
 	w.split.SetSizes([]int{defaultSidebarWidth, 1024 - defaultSidebarWidth})
-	w.SetCentralWidget(w.split.QWidget)
+	w.SetCentralWidget(w.split.AsQWidget())
 
-	// The saved layout is restored the first time the window is shown, as
-	// the sizes to divide up are not known before then.
-	w.OnShowEvent(func(super func(*qt.QShowEvent), event *qt.QShowEvent) {
-		super(event)
-		if !w.laidOut {
-			w.laidOut = true
-			w.later(w.restoreLayout)
-			// A run without keys, as the first is, cannot do anything
-			// until it is given them.
-			if w.keys == nil {
-				w.later(func() { adviseKeys(w.QWidget) })
-			}
-		}
-	})
-
-	// Escape reaches the window when what has the keyboard has no use for
-	// it, so it still cancels the editing of a name or a cell.
-	w.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
-		if event.Key() == int(qt.Key_Escape) {
-			w.escape()
-			return
-		}
-		super(event)
-	})
-
-	qt.NewQShortcut3(qt.QKeySequence__Find, w.QObject).OnActivated(w.find)
-	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+P"), w.QObject).OnActivated(w.quickOpen)
+	qtgui.NewQShortcutStandard(qtgui.QKeySequenceFind, w.AsQObject()).OnActivated(w.find)
+	qtgui.NewQShortcutWithKeySequence(qtgui.NewQKeySequenceWithKey("Ctrl+P"), w.AsQObject()).OnActivated(w.quickOpen)
 	// Ctrl+W, Ctrl+E, Ctrl+R and Ctrl+H go to the tabs of the sidebar.
 	for tab, key := range sidebarKeys {
-		qt.NewQShortcut2(qt.NewQKeySequence2(key), w.QObject).OnActivated(func() { w.focusSidebar(tab) })
+		qtgui.NewQShortcutWithKeySequence(qtgui.NewQKeySequenceWithKey(key), w.AsQObject()).OnActivated(func() { w.focusSidebar(tab) })
 	}
 	// Ctrl+S goes to the sets, in the Requests tab.
-	qt.NewQShortcut2(qt.NewQKeySequence2("Ctrl+S"), w.QObject).OnActivated(w.showSets)
+	qtgui.NewQShortcutWithKeySequence(qtgui.NewQKeySequenceWithKey("Ctrl+S"), w.AsQObject()).OnActivated(w.showSets)
 
 	// Selecting a workspace or an environment above the tabs selects it in
 	// the sidebar, which is what makes it the one in use. The button beside
 	// the environment does what the edit button of the sidebar does.
 	w.environment.onWorkspace = w.workspaces.list.SetCurrentRow
 	w.environment.onEnvironment = w.environments.list.SetCurrentRow
-	w.environment.workspaceTitle.OnClicked(func() { w.focusSidebar(tabWorkspaces) })
-	w.environment.environmentTitle.OnClicked(w.editEnvironment)
-	w.environment.setTitle.OnClicked(w.showSets)
+	w.environment.workspaceTitle.OnClicked(func(_ bool) { w.focusSidebar(tabWorkspaces) })
+	w.environment.environmentTitle.OnClicked(func(_ bool) { w.editEnvironment() })
+	w.environment.setTitle.OnClicked(func(_ bool) { w.showSets() })
 	w.environment.onSet = w.requests.sets.chooseAt
 	w.requests.sets.onChanged = w.updateSets
 	w.updateSets()
@@ -560,30 +520,30 @@ func NewWindow(files Files) *Window {
 }
 
 func (w *Window) newMenuBar() {
-	file := w.MenuBar().AddMenuWithTitle("&File")
-	w.preferences = file.AddActionWithText("&Settings…")
-	w.preferences.SetShortcut(qt.NewQKeySequence2("Ctrl+,"))
-	w.preferences.SetMenuRole(qt.QAction__PreferencesRole)
-	w.preferences.OnTriggered(w.openSettings)
+	file := w.MenuBar().AddMenuTitle("&File")
+	w.preferences = file.AddActionText("&Settings…")
+	w.preferences.SetShortcut(qtgui.NewQKeySequenceWithKey("Ctrl+,"))
+	w.preferences.SetMenuRole(qtgui.QActionPreferencesRole)
+	w.preferences.OnTriggered(func(_ bool) { w.openSettings() })
 
 	file.AddSeparator()
-	w.quit = file.AddActionWithText("&Quit")
-	w.quit.SetShortcut(qt.NewQKeySequence2("Ctrl+Q"))
-	w.quit.SetMenuRole(qt.QAction__QuitRole)
+	w.quit = file.AddActionText("&Quit")
+	w.quit.SetShortcut(qtgui.NewQKeySequenceWithKey("Ctrl+Q"))
+	w.quit.SetMenuRole(qtgui.QActionQuitRole)
 	// Closing the window saves the settings and ends the program.
-	w.quit.OnTriggered(func() { w.Close() })
+	w.quit.OnTriggered(func(_ bool) { w.Close() })
 
-	help := w.MenuBar().AddMenuWithTitle("&Help")
-	w.about = help.AddActionWithText("&About")
-	w.about.SetShortcut(qt.NewQKeySequence2("Ctrl+I"))
-	w.about.SetMenuRole(qt.QAction__AboutRole)
-	w.about.OnTriggered(func() { showAbout(w.QWidget) })
+	help := w.MenuBar().AddMenuTitle("&Help")
+	w.about = help.AddActionText("&About")
+	w.about.SetShortcut(qtgui.NewQKeySequenceWithKey("Ctrl+I"))
+	w.about.SetMenuRole(qtgui.QActionAboutRole)
+	w.about.OnTriggered(func(_ bool) { showAbout(w.AsQWidget()) })
 }
 
 // later runs f once the events already waiting have been handled, by which
 // time a widget that has just been shown has been given its size.
 func (w *Window) later(f func()) {
-	mainthread.Start(f)
+	qute.Post(f)
 }
 
 // Activate brings the window to the front, as it is when the program is
@@ -594,7 +554,7 @@ func (w *Window) Activate(token string) {
 	if token != "" {
 		os.Setenv("XDG_ACTIVATION_TOKEN", token)
 	}
-	w.SetWindowState(w.WindowState() &^ qt.WindowMinimized)
+	w.SetWindowState(w.WindowState() &^ qtcore.WindowMinimized)
 	w.Show()
 	w.Raise()
 	w.ActivateWindow()
@@ -612,7 +572,7 @@ func (w *Window) restoreLayout() {
 
 // restoreResponseHeight gives the response of a page the height it was last
 // dragged to, taking the space from or giving it to the request.
-func (w *Window) restoreResponseHeight(split *qt.QSplitter) {
+func (w *Window) restoreResponseHeight(split *qtwidgets.QSplitter) {
 	sizes := split.Sizes()
 	if total := sizes[0] + sizes[1]; w.responseHeight > 0 && total > w.responseHeight {
 		split.SetSizes([]int{total - w.responseHeight, w.responseHeight})
@@ -815,4 +775,50 @@ func (w *Window) updateHeaders() {
 		names[i] = e.Name
 	}
 	w.environment.setEnvironments(names, store.Active)
+}
+
+// CloseEvent saves the settings and everything waiting to be written as the
+// window closes.
+func (w *Window) CloseEvent(event *qtgui.QCloseEvent) {
+	if err := w.settings().Save(w.files.Settings); err != nil {
+		// The window is going away, so there is nowhere to show this.
+		fmt.Fprintln(os.Stderr, "triggerapi: settings could not be saved:", err)
+	}
+	// An open connection is closed with the window, as is the client of
+	// an MCP server. The connection goes in the history, which is then
+	// written with everything else that is waiting to be.
+	w.disconnectWS()
+	w.closeMCP()
+	if err := w.writeFiles(); err != nil {
+		// The status bar is going away with the window.
+		fmt.Fprintln(os.Stderr, "triggerapi: changes could not be saved:", err)
+	}
+	w.removeDiffFiles()
+	w.Super().CloseEvent(event)
+}
+
+// ShowEvent restores the saved layout the first time the window is shown,
+// as the sizes to divide up are not known before then.
+func (w *Window) ShowEvent(event *qtgui.QShowEvent) {
+	w.Super().ShowEvent(event)
+	if !w.laidOut {
+		w.laidOut = true
+		w.later(w.restoreLayout)
+		// A run without keys, as the first is, cannot do anything
+		// until it is given them.
+		if w.keys == nil {
+			w.later(func() { adviseKeys(w.AsQWidget()) })
+		}
+	}
+}
+
+// KeyPressEvent takes Escape, which reaches the window when what has the
+// keyboard has no use for it, so it still cancels the editing of a name or
+// a cell.
+func (w *Window) KeyPressEvent(event *qtgui.QKeyEvent) {
+	if event.Key() == int(qtcore.Key_Escape) {
+		w.escape()
+		return
+	}
+	w.Super().KeyPressEvent(event)
 }

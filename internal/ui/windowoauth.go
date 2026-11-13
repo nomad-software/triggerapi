@@ -1,15 +1,16 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+
 	"context"
 	"errors"
 	"fmt"
 	"html"
 	"net/http"
 	"time"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"golang.org/x/oauth2"
 
@@ -28,9 +29,9 @@ import (
 // variable so that tests can go to the page themselves.
 var openBrowser = func(page string) bool {
 	var opened bool
-	mainthread.Wait(func() {
-		u := qt.NewQUrl3(page)
-		opened = qt.QDesktopServices_OpenUrl(u)
+	qute.PostSync(func() {
+		u := qtcore.NewQUrlWithUrl(page)
+		opened = qtgui.QDesktopServicesOpenUrl(u)
 		u.Delete()
 	})
 	return opened
@@ -58,7 +59,7 @@ func (w *Window) authorizer(ui *requestUI, auth *rest.Auth) func(context.Context
 	client, signIn := w.tokenClient(), w.signIn(ui)
 	return func(ctx context.Context) error {
 		err := w.tokens.Authorize(ctx, client, auth, signIn)
-		mainthread.Start(func() { w.showToken(ui) })
+		qute.Post(func() { w.showToken(ui) })
 		return err
 	}
 }
@@ -81,7 +82,7 @@ func (w *Window) signIn(ui *requestUI) oauth.SignIn {
 	editor := ui.editor.authorization()
 	return func(page, code string) error {
 		opened := openBrowser(page)
-		mainthread.Start(func() { editor.showToken(signInText(page, code, opened), false) })
+		qute.Post(func() { editor.showToken(signInText(page, code, opened), false) })
 		return nil
 	}
 }
@@ -184,7 +185,7 @@ func (w *Window) getToken(ui *requestUI) {
 	go func() {
 		_, err := w.tokens.Fetch(ctx, client, o, signIn)
 		err = network.Explain(err)
-		mainthread.Start(func() {
+		qute.Post(func() {
 			cancel()
 			editor.fetching(nil)
 			w.showToken(ui)

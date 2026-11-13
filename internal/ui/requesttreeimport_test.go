@@ -1,14 +1,14 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
@@ -48,7 +48,7 @@ paths:
 	bad := filepath.Join(dir, "bad.yaml")
 	os.WriteFile(bad, []byte("just: text"), 0o644)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
@@ -154,7 +154,7 @@ func TestImportPostman(t *testing.T) {
 	spec := filepath.Join(dir, "spec.json")
 	os.WriteFile(spec, []byte(`{"openapi": "3.0.0", "paths": {"/a": {"get": {}}}}`), 0o644)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
@@ -207,11 +207,11 @@ func TestImportPostman(t *testing.T) {
 }
 
 func TestImportDialog(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 
 		for source, label := range map[importSource]string{importOpenAPI: "OpenAPI", importPostman: "Postman"} {
-			dialog := newImportDialog(w.QWidget)
+			dialog := newImportDialog(w.AsQWidget())
 			dialog.Show()
 
 			button := dialog.buttons[source]
@@ -220,7 +220,7 @@ func TestImportDialog(t *testing.T) {
 			}
 
 			button.Click()
-			if dialog.chosen != source || dialog.Result() != int(qt.QDialog__Accepted) || dialog.IsVisible() {
+			if dialog.chosen != source || dialog.Result() != int(qtwidgets.QDialogAccepted) || dialog.IsVisible() {
 				t.Errorf("clicking %s chose %q with result %d", label, dialog.chosen, dialog.Result())
 			}
 		}

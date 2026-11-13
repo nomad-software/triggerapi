@@ -1,14 +1,23 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtwidgets"
+
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
+	"errors"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
+	"time"
 
 	"github.com/nomad-software/triggerapi/internal/network"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -20,7 +29,7 @@ import (
 func replaceNetworkSecret(t *testing.T, answer func(network.Secret) string) map[network.Secret]int {
 	asked := map[network.Secret]int{}
 	previous := askNetworkSecret
-	askNetworkSecret = func(_ *qt.QWidget, s network.Secret) (string, error) {
+	askNetworkSecret = func(_ *qtwidgets.QWidget, s network.Secret) (string, error) {
 		asked[s]++
 		return answer(s), nil
 	}
@@ -41,7 +50,7 @@ func TestNetworkSettings(t *testing.T) {
 	asked := replaceNetworkSecret(t, func(network.Secret) string { return "pw" })
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
@@ -52,7 +61,7 @@ func TestNetworkSettings(t *testing.T) {
 	})
 	waitFor(t, "the failure", func() bool { return fieldValue(w.response, fieldError) != "" })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if got := fieldValue(w.response, fieldError); !strings.Contains(got, "signed by an authority that is not trusted") {
 			t.Errorf("error = %q", got)
 		}
@@ -78,7 +87,7 @@ func TestNetworkSettings(t *testing.T) {
 	})
 	waitFor(t, "the response", func() bool { return fieldValue(w.response, fieldCode) == "200 OK" })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// The command is made while it is on show, and stays on show.
 		w.request.curl.Click()
 		if !strings.Contains(w.response.timing.details.Text(), "Not checked") || !strings.Contains(w.request.command.ToPlainText(), "--insecure") {
@@ -90,7 +99,7 @@ func TestNetworkSettings(t *testing.T) {
 	})
 	waitFor(t, "the proxied response", func() bool { return strings.Contains(w.response.body.ToPlainText(), "proxied") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if got := w.response.body.ToPlainText(); !strings.Contains(got, "example.invalid Basic") {
 			t.Errorf("body = %q", got)
 		}
@@ -126,6 +135,61 @@ func TestNetworkSettings(t *testing.T) {
 	})
 }
 
+// TestNetworkPassphraseAskedAgain checks that a passphrase which did not open
+// its key is asked for again, where one that did is asked for once.
+func TestNetworkPassphraseAskedAgain(t *testing.T) {
+	// A certificate of its own authority, and its key encrypted the old way
+	// of PEM.
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := &x509.Certificate{SerialNumber: big.NewInt(1), NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
+	cert, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, _ := x509.MarshalECPrivateKey(key)
+	//lint:ignore SA1019 the old encryption is what is being read.
+	encrypted, err := x509.EncryptPEMBlock(rand.Reader, "EC PRIVATE KEY", der, []byte("right"), x509.PEMCipherAES256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	certFile, keyFile := filepath.Join(dir, "client.pem"), filepath.Join(dir, "client.key")
+	if err := errors.Join(
+		os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert}), 0o600),
+		os.WriteFile(keyFile, pem.EncodeToMemory(encrypted), 0o600),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	answer := "wrong"
+	asked := replaceNetworkSecret(t, func(network.Secret) string { return answer })
+	secret := network.Secret{Path: keyFile}
+
+	qute.PostSync(func() {
+		w := NewWindow(testFiles(t).Files)
+		s := w.config
+		s.Network = network.Config{Hosts: []network.Host{{Pattern: "example.invalid", Cert: certFile, Key: keyFile}}}
+		if err := w.applySettings(s); err == nil || asked[secret] != 1 {
+			t.Errorf("a wrong passphrase: error %v, asked %v", err, asked)
+		}
+
+		// It is asked for again, not tried again.
+		answer = "right"
+		if err := w.applySettings(s); err != nil || asked[secret] != 2 {
+			t.Errorf("the right passphrase: error %v, asked %v", err, asked)
+		}
+
+		// The one that opened the key is kept for the session.
+		s.Network.MinTLS = network.TLS13
+		if err := w.applySettings(s); err != nil || asked[secret] != 2 {
+			t.Errorf("settings changed: error %v, asked %v", err, asked)
+		}
+	})
+}
+
 func TestNetworkSettingsAtStartup(t *testing.T) {
 	files := testFiles(t)
 	s := settings.Load(files.Settings)
@@ -134,7 +198,7 @@ func TestNetworkSettingsAtStartup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// Settings that cannot all be used are reported, and a request to
 		// a host they are for fails with the reason.
 		w := NewWindow(files.Files)

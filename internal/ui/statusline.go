@@ -1,7 +1,8 @@
 package ui
 
 import (
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtwidgets"
 )
 
 // statusLine is a line of a request panel which says what went wrong with
@@ -9,14 +10,14 @@ import (
 // or the schema of a GraphQL one, in the colour of errors. It is hidden
 // while there is nothing to say.
 type statusLine struct {
-	*qt.QLabel
+	*qtwidgets.QLabel
 }
 
 func newStatusLine() statusLine {
-	s := statusLine{qt.NewQLabel2()}
-	s.SetTextFormat(qt.PlainText)
+	s := statusLine{qtwidgets.NewQLabel(nil)}
+	s.SetTextFormat(qtcore.PlainText)
 	s.SetWordWrap(true)
-	s.SetTextInteractionFlags(qt.TextSelectableByMouse)
+	s.SetTextInteractionFlags(qtcore.TextSelectableByMouse)
 	s.SetVisible(false)
 	s.recolour()
 	return s

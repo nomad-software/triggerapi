@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"math"
 	"strings"
-
-	qt "github.com/mappu/miqt/qt6"
 )
 
 // wrapEdit is a field for one line of text which, unlike a line edit, wraps
@@ -12,7 +14,7 @@ import (
 // for URLs, which can be very long. A line edit cannot wrap, so it is a text
 // edit that is kept to one paragraph and to the height of its text.
 type wrapEdit struct {
-	*qt.QTextEdit
+	qtwidgets.QTextEditBase
 
 	// text is what the field last held, to tell an edit from the text
 	// being recoloured, which a text edit also reports as a change.
@@ -35,49 +37,21 @@ type wrapEdit struct {
 }
 
 func newWrapEdit() *wrapEdit {
-	e := &wrapEdit{QTextEdit: qt.NewQTextEdit2()}
+	e := &wrapEdit{}
+	qtwidgets.NewQTextEditWith(e, nil)
 
 	e.SetAcceptRichText(false)
 	e.SetTabChangesFocus(true)
 	// A URL has nowhere a line would be broken, so it is broken anywhere.
-	e.SetWordWrapMode(qt.QTextOption__WrapAnywhere)
-	e.SetVerticalScrollBarPolicy(qt.ScrollBarAlwaysOff)
-	e.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
-	e.SetSizePolicy2(qt.QSizePolicy__Expanding, qt.QSizePolicy__Fixed)
+	e.SetWordWrapMode(qtgui.QTextOptionWrapAnywhere)
+	e.SetVerticalScrollBarPolicy(qtcore.ScrollBarAlwaysOff)
+	e.SetHorizontalScrollBarPolicy(qtcore.ScrollBarAlwaysOff)
+	e.SetSizePolicy(qtwidgets.NewQSizePolicyWithPolicy(qtwidgets.QSizePolicyExpanding, qtwidgets.QSizePolicyFixed))
 
 	// The height follows the text, which is laid out again when it changes
-	// and when the width of the field does.
-	e.Document().DocumentLayout().OnDocumentSizeChanged(func(*qt.QSizeF) { e.fit() })
-	e.OnResizeEvent(func(super func(*qt.QResizeEvent), event *qt.QResizeEvent) {
-		super(event)
-		e.fit()
-	})
+	// and when the width of the field does (ResizeEvent).
+	e.Document().DocumentLayout().OnDocumentSizeChanged(func(qtcore.QSizeF) { e.fit() })
 	e.fit()
-
-	e.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
-		switch event.Key() {
-		case int(qt.Key_Return), int(qt.Key_Enter):
-			// There is only the one line.
-			e.commit()
-			if e.onReturn != nil && !e.IsReadOnly() {
-				e.onReturn()
-			}
-		default:
-			e.typing = true
-			super(event)
-			e.typing = false
-		}
-	})
-	e.OnInsertFromMimeData(func(super func(*qt.QMimeData), source *qt.QMimeData) {
-		if e.onPaste != nil && !e.IsReadOnly() && source.HasText() && e.onPaste(source.Text()) {
-			return
-		}
-		super(source)
-	})
-	e.OnFocusOutEvent(func(super func(*qt.QFocusEvent), event *qt.QFocusEvent) {
-		e.commit()
-		super(event)
-	})
 
 	e.OnTextChanged(func() {
 		text := e.ToPlainText()
@@ -85,7 +59,7 @@ func newWrapEdit() *wrapEdit {
 			// Something pasted can have more than one line. Setting the
 			// text reports this change again, without them.
 			e.SetText(text)
-			e.MoveCursor(qt.QTextCursor__End)
+			e.MoveCursor(qtgui.QTextCursorEnd)
 			return
 		}
 		if text == e.text {
@@ -105,6 +79,44 @@ func newWrapEdit() *wrapEdit {
 	return e
 }
 
+// ResizeEvent fits the height of the field to its text at its new width.
+func (e *wrapEdit) ResizeEvent(event *qtgui.QResizeEvent) {
+	e.Super().ResizeEvent(event)
+	e.fit()
+}
+
+// KeyPressEvent commits what was typed on Return, which does not break the
+// one line, and has what other keys change wait for commit.
+func (e *wrapEdit) KeyPressEvent(event *qtgui.QKeyEvent) {
+	switch event.Key() {
+	case int(qtcore.Key_Return), int(qtcore.Key_Enter):
+		// There is only the one line.
+		e.commit()
+		if e.onReturn != nil && !e.IsReadOnly() {
+			e.onReturn()
+		}
+	default:
+		e.typing = true
+		e.Super().KeyPressEvent(event)
+		e.typing = false
+	}
+}
+
+// InsertFromMimeData gives what is pasted or dropped to onPaste, and puts
+// it in the field unless onPaste takes it.
+func (e *wrapEdit) InsertFromMimeData(source *qtcore.QMimeData) {
+	if e.onPaste != nil && !e.IsReadOnly() && source.HasText() && e.onPaste(source.Text()) {
+		return
+	}
+	e.Super().InsertFromMimeData(source)
+}
+
+// FocusOutEvent commits what was typed when the field loses the keyboard.
+func (e *wrapEdit) FocusOutEvent(event *qtgui.QFocusEvent) {
+	e.commit()
+	e.Super().FocusOutEvent(event)
+}
+
 // commit reports what has been typed since it was last reported, if anything.
 func (e *wrapEdit) commit() {
 	if e.pending {
@@ -117,7 +129,7 @@ func (e *wrapEdit) commit() {
 
 // fit makes the field as tall as its text.
 func (e *wrapEdit) fit() {
-	height := int(math.Ceil(e.Document().Size().Height())) + 2*e.FrameWidth()
+	height := int(math.Ceil(e.Document().Size().Height)) + 2*e.FrameWidth()
 	if height != e.Height() || e.MinimumHeight() != height {
 		e.SetFixedHeight(height)
 	}
@@ -127,24 +139,24 @@ func (e *wrapEdit) fit() {
 // usual one if it is nil.
 type textPiece struct {
 	text   string
-	format *qt.QTextCharFormat
+	format *qtgui.QTextCharFormat
 }
 
 // setPieces replaces the text of the field with pieces of text, each in a
 // format of its own.
 func (e *wrapEdit) setPieces(pieces []textPiece) {
-	plain := qt.NewQTextCharFormat()
+	plain := qtgui.NewQTextCharFormat()
 	defer plain.Delete()
 
 	e.Clear()
 	cursor := e.TextCursor()
-	defer release(cursor)
+	defer cursor.Delete()
 	for _, piece := range pieces {
 		format := piece.format
 		if format == nil {
 			format = plain
 		}
-		cursor.InsertText2(strings.NewReplacer("\r", "", "\n", "").Replace(piece.text), format)
+		cursor.InsertTextWithTextCharFormat(strings.NewReplacer("\r", "", "\n", "").Replace(piece.text), format)
 	}
 }
 

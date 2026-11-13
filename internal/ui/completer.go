@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"strings"
 	"unicode/utf16"
 	"unicode/utf8"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/completion"
 )
@@ -16,11 +18,11 @@ import (
 // Up and Down choose in the list, Return or Tab types what is chosen, and
 // Escape or typing something else closes it.
 type completer struct {
-	edit  *qt.QPlainTextEdit
-	popup *qt.QCompleter
+	edit  *qtwidgets.QPlainTextEdit
+	popup *qtwidgets.QCompleter
 	// list is the popup of the completer, which shows the model.
-	list  *qt.QTreeView
-	model *qt.QStandardItemModel
+	list  *qtwidgets.QTreeView
+	model *qtgui.QStandardItemModel
 	// complete returns what can be typed at an offset of the text, in bytes.
 	complete func(text string, offset int) completion.Completion
 
@@ -36,42 +38,41 @@ type completer struct {
 const completionTriggers = `"@`
 
 // newCompleter has what complete says can be typed offered in an editor.
-func newCompleter(edit *qt.QPlainTextEdit, complete func(text string, offset int) completion.Completion) *completer {
+func newCompleter(edit *qtwidgets.QPlainTextEdit, complete func(text string, offset int) completion.Completion) *completer {
 	c := &completer{
 		edit:     edit,
-		model:    qt.NewQStandardItemModel3(edit.QObject),
+		model:    qtgui.NewQStandardItemModel(edit.AsQObject()),
 		complete: complete,
 	}
-	c.popup = qt.NewQCompleter5(c.model.QAbstractItemModel, edit.QObject)
-	c.popup.SetWidget(edit.QWidget)
+	c.popup = qtwidgets.NewQCompleterWithModel(c.model.AsQAbstractItemModel(), edit.AsQObject())
+	c.popup.SetWidget(edit.AsQWidget())
 	// The items are those for what has been typed already, so the list
 	// shows them as they are.
-	c.popup.SetCompletionMode(qt.QCompleter__UnfilteredPopupCompletion)
+	c.popup.SetCompletionMode(qtwidgets.QCompleterUnfilteredPopupCompletion)
 	c.popup.SetMaxVisibleItems(10)
 
 	// The name of each item, with what it is beside it, faded.
-	c.list = qt.NewQTreeView2()
+	c.list = qtwidgets.NewQTreeView(nil)
 	c.list.SetRootIsDecorated(false)
 	c.list.SetUniformRowHeights(true)
 	c.list.Header().Hide()
-	c.list.SetSelectionBehavior(qt.QAbstractItemView__SelectRows)
-	c.popup.SetPopup(c.list.QAbstractItemView)
+	c.list.SetSelectionBehavior(qtwidgets.QAbstractItemViewSelectRows)
+	c.popup.SetPopup(c.list.AsQAbstractItemView())
 
-	c.popup.OnActivatedWithIndex(func(index *qt.QModelIndex) { c.insert(index.Row()) })
+	c.popup.OnActivatedIndex(func(index *qtcore.QModelIndex) { c.insert(index.Row()) })
 
-	edit.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
+	edit.OverrideKeyPressEvent(func(super func(*qtgui.QKeyEvent), event *qtgui.QKeyEvent) {
 		open := c.list.IsVisible()
 		// The list has these keys while it is open.
 		if open {
-			switch qt.Key(event.Key()) {
-			case qt.Key_Return, qt.Key_Enter, qt.Key_Tab, qt.Key_Backtab, qt.Key_Escape:
+			switch qtcore.Key(event.Key()) {
+			case qtcore.Key_Return, qtcore.Key_Enter, qtcore.Key_Tab, qtcore.Key_Backtab, qtcore.Key_Escape:
 				event.Ignore()
 				return
 			}
 		}
-		// Ctrl+Space, which on macOS, where Qt has Command for Control, is
-		// the Control key all the same, as Command+Space is the system's.
-		if qt.Key(event.Key()) == qt.Key_Space && event.Modifiers()&(qt.ControlModifier|qt.MetaModifier) != 0 {
+		// Ctrl+Space offers what there is, whatever has been typed.
+		if qtcore.Key(event.Key()) == qtcore.Key_Space && event.Modifiers()&qtcore.ControlModifier != 0 {
 			c.offer(true)
 			return
 		}
@@ -98,7 +99,7 @@ func (c *completer) offer(always bool) {
 	text := c.edit.ToPlainText()
 	cursor := c.edit.TextCursor()
 	position := cursor.Position()
-	release(cursor)
+	cursor.Delete()
 
 	offered := c.complete(text, byteOffset(text, position))
 	if len(offered.Items) == 0 || !always && offered.Start == offered.End {
@@ -108,17 +109,16 @@ func (c *completer) offer(always bool) {
 	c.offered, c.text = offered, text
 
 	c.model.Clear()
-	faded := qt.NewQColor6(fadedTextColour())
-	defer faded.Delete()
-	fadedBrush := qt.NewQBrush3(faded)
+	faded := qcolour(fadedTextColour())
+	fadedBrush := qtgui.NewQBrushWithColor(faded)
 	defer fadedBrush.Delete()
 	for _, item := range offered.Items {
 		// The model owns the items.
-		label, detail := qt.NewQStandardItem2(item.Label), qt.NewQStandardItem2(item.Detail)
+		label, detail := qtgui.NewQStandardItemWithText(item.Label), qtgui.NewQStandardItemWithText(item.Detail)
 		label.SetEditable(false)
 		detail.SetEditable(false)
 		detail.SetForeground(fadedBrush)
-		c.model.AppendRow([]*qt.QStandardItem{label, detail})
+		c.model.AppendRowItems([]*qtgui.QStandardItem{label, detail})
 	}
 
 	// The names are kept apart from what they are by a gap of a few
@@ -129,9 +129,9 @@ func (c *completer) offer(always bool) {
 	c.list.SetColumnWidth(0, names)
 	c.list.SetColumnWidth(1, details)
 
-	rect := c.edit.CursorRect2()
-	rect.SetWidth(names + details + c.list.VerticalScrollBar().SizeHint().Width() + 4*c.list.FrameWidth())
-	c.popup.CompleteWithRect(rect)
+	rect := c.edit.CursorRect()
+	rect.Width = names + details + c.list.VerticalScrollBar().SizeHint().Width + 4*c.list.FrameWidth()
+	c.popup.CompleteFull(rect)
 	c.popup.SetCurrentRow(0)
 	c.list.SetCurrentIndex(c.popup.CurrentIndex())
 }
@@ -143,9 +143,9 @@ func (c *completer) insert(row int) {
 		return
 	}
 	cursor := c.edit.TextCursor()
-	defer release(cursor)
+	defer cursor.Delete()
 	cursor.SetPosition(utf16Offset(c.text, c.offered.Start))
-	cursor.SetPosition2(utf16Offset(c.text, c.offered.End), qt.QTextCursor__KeepAnchor)
+	cursor.SetPositionFull(utf16Offset(c.text, c.offered.End), qtgui.QTextCursorKeepAnchor)
 	cursor.InsertText(c.offered.Items[row].Insert)
 	c.edit.SetTextCursor(cursor)
 }

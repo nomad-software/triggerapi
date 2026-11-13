@@ -1,11 +1,12 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"fmt"
 	"strconv"
 	"strings"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/mcp"
 )
@@ -16,7 +17,7 @@ import (
 // decline. It returns what closes the dialog, as declined, if it is still
 // open, as it is when the call is given up. Tests replace it rather than let
 // the dialog open.
-var askSampling = func(parent *qt.QWidget, server string, s *mcp.Sampling, done func(*mcp.SampleAnswer)) (close func()) {
+var askSampling = func(parent *qtwidgets.QWidget, server string, s *mcp.Sampling, done func(*mcp.SampleAnswer)) (close func()) {
 	return newSamplingDialog(parent, server, s).open(done)
 }
 
@@ -27,63 +28,63 @@ const samplingModel = "triggerapi"
 // samplingDialog shows the messages an MCP server would have a language
 // model answer, and takes the answer from the user.
 type samplingDialog struct {
-	*qt.QDialog
-	reply   *qt.QPlainTextEdit
-	model   *qt.QLineEdit
+	*qtwidgets.QDialog
+	reply   *qtwidgets.QPlainTextEdit
+	model   *qtwidgets.QLineEdit
 	problem statusLine
 	// answer is the reply, which is nil until it is given: closing the
 	// dialog any other way declines.
 	answer *mcp.SampleAnswer
 }
 
-func newSamplingDialog(parent *qt.QWidget, server string, s *mcp.Sampling) *samplingDialog {
+func newSamplingDialog(parent *qtwidgets.QWidget, server string, s *mcp.Sampling) *samplingDialog {
 	d := &samplingDialog{
-		QDialog: qt.NewQDialog(parent),
-		reply:   qt.NewQPlainTextEdit2(),
-		model:   qt.NewQLineEdit2(),
+		QDialog: qtwidgets.NewQDialog(parent),
+		reply:   qtwidgets.NewQPlainTextEdit(nil),
+		model:   qtwidgets.NewQLineEdit(nil),
 		problem: newStatusLine(),
 	}
 	d.SetWindowTitle("The Server Asks for a Message")
 	d.Resize(560, 520)
 
-	layout := qt.NewQVBoxLayout(d.QWidget)
-	layout.SetContentsMargins(18, 18, 18, 18)
+	layout := qtwidgets.NewQVBoxLayout(d.AsQWidget())
+	layout.SetContentsMargins(qtcore.QMargins{Left: 18, Top: 18, Right: 18, Bottom: 18})
 	layout.SetSpacing(8)
 
-	intro := qt.NewQLabel3(server + " asks for the message a language model would answer with. Write the reply to give it.")
+	intro := qtwidgets.NewQLabelWithText(server+" asks for the message a language model would answer with. Write the reply to give it.", nil)
 	intro.SetWordWrap(true)
-	layout.AddWidget(intro.QWidget)
+	layout.AddWidget(intro.AsQWidget())
 
-	asked := qt.NewQPlainTextEdit2()
+	asked := qtwidgets.NewQPlainTextEdit(nil)
 	asked.SetReadOnly(true)
 	asked.SetPlainText(samplingText(s))
-	layout.AddWidget2(asked.QWidget, 2)
+	layout.AddWidgetFull(asked.AsQWidget(), 2, 0)
 
-	layout.AddWidget(qt.NewQLabel3("Reply").QWidget)
-	layout.AddWidget2(d.reply.QWidget, 1)
+	layout.AddWidget(qtwidgets.NewQLabelWithText("Reply", nil).AsQWidget())
+	layout.AddWidgetFull(d.reply.AsQWidget(), 1, 0)
 
 	model := samplingModel
 	if len(s.Models) > 0 {
 		model = s.Models[0]
 	}
 	d.model.SetText(model)
-	form := qt.NewQFormLayout2()
-	form.AddRow3("Model", d.model.QWidget)
-	layout.AddLayout(form.QLayout)
-	layout.AddWidget(d.problem.QWidget)
+	form := qtwidgets.NewQFormLayout(nil)
+	form.AddRowText("Model", d.model.AsQWidget())
+	layout.AddLayout(form.AsQLayout())
+	layout.AddWidget(d.problem.AsQWidget())
 
-	send := qt.NewQPushButton3("Send Reply")
+	send := qtwidgets.NewQPushButtonWithText("Send Reply", nil)
 	send.SetAutoDefault(false)
-	send.OnClicked(d.send)
-	decline := qt.NewQPushButton3("Decline")
+	send.OnClicked(func(_ bool) { d.send() })
+	decline := qtwidgets.NewQPushButtonWithText("Decline", nil)
 	decline.SetAutoDefault(false)
-	decline.OnClicked(d.Reject)
+	decline.OnClicked(func(_ bool) { d.Reject() })
 
-	buttons := qt.NewQHBoxLayout2()
+	buttons := qtwidgets.NewQHBoxLayout(nil)
 	buttons.AddStretch()
-	buttons.AddWidget(send.QWidget)
-	buttons.AddWidget(decline.QWidget)
-	layout.AddLayout(buttons.QLayout)
+	buttons.AddWidget(send.AsQWidget())
+	buttons.AddWidget(decline.AsQWidget())
+	layout.AddLayout(buttons.AsQLayout())
 
 	d.reply.SetFocus()
 	return d
@@ -143,5 +144,5 @@ func (d *samplingDialog) send() {
 // answered, and calls done with the reply, or nil if it is declined, once it
 // is. It returns what closes it, as declined, if it is still open.
 func (d *samplingDialog) open(done func(*mcp.SampleAnswer)) func() {
-	return openDialog(d.QDialog, func() { done(d.answer) })
+	return openDialog(d.AsQDialog(), func() { done(d.answer) })
 }

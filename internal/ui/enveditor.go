@@ -1,9 +1,9 @@
 package ui
 
 import (
-	"strings"
+	"github.com/nomad-software/qute/qtwidgets"
 
-	qt "github.com/mappu/miqt/qt6"
+	"strings"
 
 	"github.com/nomad-software/triggerapi/internal/env"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -12,15 +12,15 @@ import (
 // envEditor edits the name and variables of one environment. It takes the
 // place of the request UI while it is open.
 type envEditor struct {
-	root *qt.QWidget
+	root *qtwidgets.QWidget
 
-	name *qt.QLineEdit
+	name *qtwidgets.QLineEdit
 	// named is the name the environment has. It is not the one in the
 	// field while that is empty, as an environment cannot be without a
 	// name.
 	named     string
 	variables *keyValueTable
-	close     *qt.QPushButton
+	close     *qtwidgets.QPushButton
 
 	updating bool
 
@@ -65,10 +65,10 @@ func tableSort(sort []env.SortKey) []sortKey {
 
 func newEnvEditor() *envEditor {
 	e := &envEditor{
-		root:      qt.NewQWidget2(),
-		name:      qt.NewQLineEdit2(),
+		root:      qtwidgets.NewQWidget(nil),
+		name:      qtwidgets.NewQLineEdit(nil),
 		variables: newExclusiveTable("Variable", "Value"),
-		close:     qt.NewQPushButton3("Close"),
+		close:     qtwidgets.NewQPushButtonWithText("Close", nil),
 	}
 
 	e.name.SetPlaceholderText("Environment name")
@@ -83,14 +83,14 @@ func newEnvEditor() *envEditor {
 		}
 	}
 
-	bar := qt.NewQHBoxLayout2()
-	bar.AddWidget(qt.NewQLabel3("Environment").QWidget)
-	bar.AddWidget2(e.name.QWidget, 1)
-	bar.AddWidget(e.close.QWidget)
+	bar := qtwidgets.NewQHBoxLayout(nil)
+	bar.AddWidget(qtwidgets.NewQLabelWithText("Environment", nil).AsQWidget())
+	bar.AddWidgetFull(e.name.AsQWidget(), 1, 0)
+	bar.AddWidget(e.close.AsQWidget())
 
-	layout := qt.NewQVBoxLayout(e.root)
-	layout.AddLayout(bar.QLayout)
-	layout.AddWidget2(e.variables.widget(), 1)
+	layout := qtwidgets.NewQVBoxLayout(e.root)
+	layout.AddLayout(bar.AsQLayout())
+	layout.AddWidgetFull(e.variables.widget(), 1, 0)
 
 	e.name.OnTextChanged(func(string) { e.changed() })
 	// A field left empty is given back the name the environment has.

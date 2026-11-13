@@ -1,12 +1,13 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"reflect"
 	"strings"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
+	"time"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -15,7 +16,7 @@ import (
 func TestHeader(t *testing.T) {
 	files := testFiles(t)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 
@@ -31,7 +32,7 @@ func TestHeader(t *testing.T) {
 			t.Errorf("tab = %q, environment %q", tabTitle(w), selector.CurrentText())
 		}
 		// The selector is above the tabs, and in neither request UI.
-		if w.request.root.IsAncestorOf(selector.QWidget) || w.grpc.root.IsAncestorOf(selector.QWidget) || w.stack.IsAncestorOf(selector.QWidget) || selector.IsHidden() {
+		if w.request.root.IsAncestorOf(selector.AsQWidget()) || w.grpc.root.IsAncestorOf(selector.AsQWidget()) || w.stack.IsAncestorOf(selector.AsQWidget()) || selector.IsHidden() {
 			t.Error("the environment selector is inside the request UI")
 		}
 
@@ -98,13 +99,13 @@ func TestWorkspaceSelector(t *testing.T) {
 	files := testFiles(t)
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.workspaces.warn = func(message string) { t.Error(message) }
 		selector := w.environment
 
-		names := func(combo *qt.QComboBox) []string {
+		names := func(combo *qtwidgets.QComboBox) []string {
 			var names []string
 			for i := range combo.Count() {
 				names = append(names, combo.ItemText(i))
@@ -117,7 +118,7 @@ func TestWorkspaceSelector(t *testing.T) {
 		if !reflect.DeepEqual(names(selector.workspace), []string{"Default"}) || selector.workspace.CurrentText() != "Default" {
 			t.Errorf("workspaces = %q, selected %q", names(selector.workspace), selector.workspace.CurrentText())
 		}
-		if selector.root.IsAncestorOf(w.tabs.bar.QWidget) || w.stack.IsAncestorOf(selector.workspace.QWidget) {
+		if selector.root.IsAncestorOf(w.tabs.bar.AsQWidget()) || w.stack.IsAncestorOf(selector.workspace.AsQWidget()) {
 			t.Error("the selector is not apart from the tabs and the request UI")
 		}
 
@@ -219,7 +220,7 @@ func TestWorkspaceSelector(t *testing.T) {
 
 	waitFor(t, "the workspace to be renamed", func() bool {
 		var ok bool
-		mainthread.Wait(func() {
+		qute.PostSync(func() {
 			s := w.environment.workspace
 			ok = s.Count() == 2 && s.ItemText(0) == "New Workspace" && s.CurrentText() == "Zeta"
 		})
@@ -230,11 +231,11 @@ func TestWorkspaceSelector(t *testing.T) {
 func TestSelectorWidth(t *testing.T) {
 	var w *Window
 	var before int
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Resize(1000, 700)
 		w.Show()
-		before = w.MinimumSizeHint().Width()
+		before = w.MinimumSizeHint().Width
 
 		w.environments.add()
 		w.editor.name.SetText(strings.Repeat("A very long name ", 40))
@@ -242,23 +243,38 @@ func TestSelectorWidth(t *testing.T) {
 	})
 
 	// The layout is done once the drop-down has been widened and then
-	// squeezed into the window, which can take more than one pass.
+	// squeezed into the window, which can take more than one pass, as the
+	// names are listed again a turn of the event loop later, which widens
+	// it once more for a moment. So what follows is waited for as a whole,
+	// and until it has held for a while, past that moment.
+	var since time.Time
 	waitFor(t, "the layout", func() bool {
-		return mainthread.Wait2(func() bool {
-			width := w.environment.environment.Width()
-			return width > selectorMinWidth && width < w.Width()
+		done := onGUI(func() bool {
+			combo := w.environment.environment
+			set := w.environment.set
+			return combo.SizeHint().Width > w.Width() &&
+				combo.Width() > selectorMinWidth && combo.Width() < w.Width() &&
+				w.environment.root.Width() <= w.Width() &&
+				set.X()+set.Width() <= w.environment.root.Width()
 		})
+		switch {
+		case !done:
+			since = time.Time{}
+		case since.IsZero():
+			since = time.Now()
+		}
+		return done && time.Since(since) >= 200*time.Millisecond
 	})
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		combo := w.environment.environment
 
 		// The drop-down would be as wide as the name, and is as wide as
 		// the window has room for. The window is not made any wider.
-		if combo.SizeHint().Width() <= w.Width() {
-			t.Errorf("the name is only %d wide", combo.SizeHint().Width())
+		if combo.SizeHint().Width <= w.Width() {
+			t.Errorf("the name is only %d wide", combo.SizeHint().Width)
 		}
-		if got := w.MinimumSizeHint().Width(); got != before {
+		if got := w.MinimumSizeHint().Width; got != before {
 			t.Errorf("least width of the window = %d, was %d", got, before)
 		}
 		if w.Width() != 1000 || combo.Width() >= w.Width() || w.environment.root.Width() > w.Width() {
@@ -283,7 +299,7 @@ func TestSetSelector(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		combo := w.environment.set

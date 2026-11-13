@@ -1,9 +1,9 @@
 package ui
 
 import (
-	"strings"
+	"github.com/nomad-software/qute/qtwidgets"
 
-	qt "github.com/mappu/miqt/qt6"
+	"strings"
 )
 
 // Searching the request tree by the names of requests, and going from the
@@ -35,8 +35,8 @@ func (t *requestTree) applySearch() {
 	t.updating = true
 
 	// show reports if an item is a request that matches, or holds one.
-	var show func(item *qt.QTreeWidgetItem) bool
-	show = func(item *qt.QTreeWidgetItem) bool {
+	var show func(item *qtwidgets.QTreeWidgetItem) bool
+	show = func(item *qtwidgets.QTreeWidgetItem) bool {
 		found := false
 		if _, request := t.locate(item); request != nil {
 			name := strings.ToLower(request.Name)
@@ -90,8 +90,8 @@ func (t *requestTree) browse() {
 
 	// first returns the first folder or request on show beneath those
 	// given, which is a request if only is set.
-	var first func(count int, child func(int) *qt.QTreeWidgetItem, only bool) *qt.QTreeWidgetItem
-	first = func(count int, child func(int) *qt.QTreeWidgetItem, only bool) *qt.QTreeWidgetItem {
+	var first func(count int, child func(int) *qtwidgets.QTreeWidgetItem, only bool) *qtwidgets.QTreeWidgetItem
+	first = func(count int, child func(int) *qtwidgets.QTreeWidgetItem, only bool) *qtwidgets.QTreeWidgetItem {
 		for i := range count {
 			item := child(i)
 			if item.IsHidden() {

@@ -1,9 +1,10 @@
 package ui
 
 import (
-	"math"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
 
-	qt "github.com/mappu/miqt/qt6"
+	"math"
 
 	"github.com/nomad-software/triggerapi/internal/appicon"
 )
@@ -20,36 +21,34 @@ const glyphSize = 128
 // pixels wide. The glyph draws the symbol in white on a square of glyphSize.
 // Icons are drawn like this rather than loaded from files so that the program
 // needs nothing beside its binary.
-func drawIcon(size int, colour string, glyph func(*qt.QPainter)) *qt.QIcon {
+func drawIcon(size int, colour string, glyph func(*qtgui.QPainter)) *qtgui.QIcon {
 	pixmap := drawPixmap(size, colour, glyph)
 	// The icon keeps a copy of the picture.
 	defer pixmap.Delete()
-	icon := qt.NewQIcon2(pixmap)
+	icon := qtgui.NewQIconWithPixmap(pixmap)
 	// The icon of a selected item is otherwise tinted with the colour of
 	// the selection.
-	icon.AddPixmap2(pixmap, qt.QIcon__Selected)
+	icon.AddPixmapFull(pixmap, qtgui.QIconSelected, qtgui.QIconOff)
 	return icon
 }
 
 // drawPixmap draws the picture of an icon. See drawIcon.
-func drawPixmap(size int, colour string, glyph func(*qt.QPainter)) *qt.QPixmap {
-	pixmap := qt.NewQPixmap2(size, size)
-	transparent := qt.NewQColor2(qt.Transparent)
-	defer transparent.Delete()
-	pixmap.FillWithFillColor(transparent)
+func drawPixmap(size int, colour string, glyph func(*qtgui.QPainter)) *qtgui.QPixmap {
+	pixmap := qtgui.NewQPixmapWithW(size, size)
+	transparent := qtgui.QColor{}
+	pixmap.FillFull(transparent)
 
 	// The painter keeps a copy of the brush.
-	background := qt.NewQColor6(colour)
-	defer background.Delete()
-	brush := qt.NewQBrush3(background)
+	background := qcolour(colour)
+	brush := qtgui.NewQBrushWithColor(background)
 	defer brush.Delete()
 
-	painter := qt.NewQPainter2(pixmap.QPaintDevice)
-	painter.SetRenderHint(qt.QPainter__Antialiasing)
+	painter := qtgui.NewQPainterOn(pixmap.AsQPaintDevice())
+	painter.SetRenderHint(qtgui.QPainterAntialiasing)
 	painter.Scale(float64(size)/glyphSize, float64(size)/glyphSize)
-	painter.SetPenWithStyle(qt.NoPen)
+	painter.SetPenStyle(qtcore.NoPen)
 	painter.SetBrush(brush)
-	painter.DrawRoundedRect2(4, 4, glyphSize-8, glyphSize-8, 24, 24)
+	painter.DrawRoundedRect(qtcore.QRect{X: 4, Y: 4, Width: glyphSize - 8, Height: glyphSize - 8}, 24, 24)
 	glyph(painter)
 	// Painting must be finished before the pixmap is used.
 	painter.End()
@@ -61,249 +60,249 @@ func drawPixmap(size int, colour string, glyph func(*qt.QPainter)) *qt.QPixmap {
 // drawTabIcon returns an icon for a tab at the left of a tab widget. Tabs
 // there are drawn turned a quarter turn anticlockwise, icon and all, so the
 // picture is turned the other way beforehand to end up upright.
-func drawTabIcon(colour string, glyph func(*qt.QPainter)) *qt.QIcon {
+func drawTabIcon(colour string, glyph func(*qtgui.QPainter)) *qtgui.QIcon {
 	pixmap := drawPixmap(iconSize*2, colour, glyph)
 	defer pixmap.Delete()
-	turn := qt.NewQTransform2()
+	turn := qtgui.NewQTransform()
 	defer turn.Delete()
 	turn.Rotate(90)
 	// The turned picture is freed by the garbage collector, and the icon
 	// keeps a copy of it.
-	return qt.NewQIcon2(pixmap.Transformed2(turn, qt.SmoothTransformation))
+	return qtgui.NewQIconWithPixmap(pixmap.TransformedFull(turn, qtcore.SmoothTransformation))
 }
 
 // drawGlobe draws a globe, for the environments requests are sent to.
-func drawGlobe(painter *qt.QPainter) {
-	painter.SetPenWithPen(whitePen())
-	painter.SetBrushWithStyle(qt.NoBrush)
+func drawGlobe(painter *qtgui.QPainter) {
+	painter.SetPen(whitePen())
+	painter.SetBrushStyle(qtcore.NoBrush)
 
 	// The outline, a meridian and the equator.
-	painter.DrawEllipse2(28, 28, 72, 72)
-	painter.DrawEllipse2(49, 28, 30, 72)
-	painter.DrawLine2(28, 64, 100, 64)
+	painter.DrawEllipse(qtcore.QRect{X: 28, Y: 28, Width: 72, Height: 72})
+	painter.DrawEllipse(qtcore.QRect{X: 49, Y: 28, Width: 30, Height: 72})
+	painter.DrawLine(28, 64, 100, 64)
 }
 
 // drawRequests draws two arrows going opposite ways, a request going out and
 // its response coming back, for requests and the folders they are kept in.
-func drawRequests(painter *qt.QPainter) {
+func drawRequests(painter *qtgui.QPainter) {
 	outline(painter)
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	exchange(path, 28, 100, 46, 82, 14)
 	painter.DrawPath(path)
 }
 
 // exchange adds to a path an arrow from left to right at the height top and
 // one from right to left beneath it at bottom, with heads of the size given.
-func exchange(path *qt.QPainterPath, left, right, top, bottom, head float64) {
-	path.MoveTo2(left, top)
-	path.LineTo2(right, top)
-	path.MoveTo2(right-head, top-head)
-	path.LineTo2(right, top)
-	path.LineTo2(right-head, top+head)
+func exchange(path *qtgui.QPainterPath, left, right, top, bottom, head float64) {
+	path.MoveTo(qtcore.QPointF{X: left, Y: top})
+	path.LineTo(qtcore.QPointF{X: right, Y: top})
+	path.MoveTo(qtcore.QPointF{X: right - head, Y: top - head})
+	path.LineTo(qtcore.QPointF{X: right, Y: top})
+	path.LineTo(qtcore.QPointF{X: right - head, Y: top + head})
 
-	path.MoveTo2(right, bottom)
-	path.LineTo2(left, bottom)
-	path.MoveTo2(left+head, bottom-head)
-	path.LineTo2(left, bottom)
-	path.LineTo2(left+head, bottom+head)
+	path.MoveTo(qtcore.QPointF{X: right, Y: bottom})
+	path.LineTo(qtcore.QPointF{X: left, Y: bottom})
+	path.MoveTo(qtcore.QPointF{X: left + head, Y: bottom - head})
+	path.LineTo(qtcore.QPointF{X: left, Y: bottom})
+	path.LineTo(qtcore.QPointF{X: left + head, Y: bottom + head})
 }
 
 // drawDocument draws a page with a folded corner and lines of text, for a
 // document that describes an API.
-func drawDocument(painter *qt.QPainter) {
-	painter.SetPenWithPen(whitePen())
-	painter.SetBrushWithStyle(qt.NoBrush)
+func drawDocument(painter *qtgui.QPainter) {
+	painter.SetPen(whitePen())
+	painter.SetBrushStyle(qtcore.NoBrush)
 
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	// The page, and the fold at its top right corner.
-	path.MoveTo2(38, 28)
-	path.LineTo2(72, 28)
-	path.LineTo2(90, 46)
-	path.LineTo2(90, 100)
-	path.LineTo2(38, 100)
+	path.MoveTo(qtcore.QPointF{X: 38, Y: 28})
+	path.LineTo(qtcore.QPointF{X: 72, Y: 28})
+	path.LineTo(qtcore.QPointF{X: 90, Y: 46})
+	path.LineTo(qtcore.QPointF{X: 90, Y: 100})
+	path.LineTo(qtcore.QPointF{X: 38, Y: 100})
 	path.CloseSubpath()
-	path.MoveTo2(72, 28)
-	path.LineTo2(72, 46)
-	path.LineTo2(90, 46)
+	path.MoveTo(qtcore.QPointF{X: 72, Y: 28})
+	path.LineTo(qtcore.QPointF{X: 72, Y: 46})
+	path.LineTo(qtcore.QPointF{X: 90, Y: 46})
 	// The lines of text.
-	path.MoveTo2(51, 64)
-	path.LineTo2(77, 64)
-	path.MoveTo2(51, 82)
-	path.LineTo2(77, 82)
+	path.MoveTo(qtcore.QPointF{X: 51, Y: 64})
+	path.LineTo(qtcore.QPointF{X: 77, Y: 64})
+	path.MoveTo(qtcore.QPointF{X: 51, Y: 82})
+	path.LineTo(qtcore.QPointF{X: 77, Y: 82})
 	painter.DrawPath(path)
 }
 
 // drawPlane draws a paper plane, for something that sends requests.
-func drawPlane(painter *qt.QPainter) {
-	painter.SetPenWithPen(whitePen())
-	painter.SetBrushWithStyle(qt.NoBrush)
+func drawPlane(painter *qtgui.QPainter) {
+	painter.SetPen(whitePen())
+	painter.SetBrushStyle(qtcore.NoBrush)
 
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	// The outline of the plane, and the crease along its middle.
-	path.MoveTo2(26, 62)
-	path.LineTo2(102, 30)
-	path.LineTo2(78, 100)
-	path.LineTo2(60, 74)
+	path.MoveTo(qtcore.QPointF{X: 26, Y: 62})
+	path.LineTo(qtcore.QPointF{X: 102, Y: 30})
+	path.LineTo(qtcore.QPointF{X: 78, Y: 100})
+	path.LineTo(qtcore.QPointF{X: 60, Y: 74})
 	path.CloseSubpath()
-	path.MoveTo2(60, 74)
-	path.LineTo2(102, 30)
+	path.MoveTo(qtcore.QPointF{X: 60, Y: 74})
+	path.LineTo(qtcore.QPointF{X: 102, Y: 30})
 	painter.DrawPath(path)
 }
 
 // drawPrompt draws the prompt of a terminal, for a command to run in one.
-func drawPrompt(painter *qt.QPainter) {
-	painter.SetPenWithPen(whitePen())
-	painter.SetBrushWithStyle(qt.NoBrush)
+func drawPrompt(painter *qtgui.QPainter) {
+	painter.SetPen(whitePen())
+	painter.SetBrushStyle(qtcore.NoBrush)
 
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	// The chevron, and the cursor after it.
-	path.MoveTo2(30, 42)
-	path.LineTo2(56, 64)
-	path.LineTo2(30, 86)
-	path.MoveTo2(66, 88)
-	path.LineTo2(98, 88)
+	path.MoveTo(qtcore.QPointF{X: 30, Y: 42})
+	path.LineTo(qtcore.QPointF{X: 56, Y: 64})
+	path.LineTo(qtcore.QPointF{X: 30, Y: 86})
+	path.MoveTo(qtcore.QPointF{X: 66, Y: 88})
+	path.LineTo(qtcore.QPointF{X: 98, Y: 88})
 	painter.DrawPath(path)
 }
 
 // drawEye draws an eye, for looking at how something will turn out.
-func drawEye(painter *qt.QPainter) {
-	painter.SetPenWithPen(whitePen())
-	painter.SetBrushWithStyle(qt.NoBrush)
+func drawEye(painter *qtgui.QPainter) {
+	painter.SetPen(whitePen())
+	painter.SetBrushStyle(qtcore.NoBrush)
 
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	// The lids, from corner to corner.
-	path.MoveTo2(24, 64)
-	path.QuadTo2(64, 20, 104, 64)
-	path.QuadTo2(64, 108, 24, 64)
+	path.MoveTo(qtcore.QPointF{X: 24, Y: 64})
+	path.QuadTo(qtcore.QPointF{X: 64, Y: 20}, qtcore.QPointF{X: 104, Y: 64})
+	path.QuadTo(qtcore.QPointF{X: 64, Y: 108}, qtcore.QPointF{X: 24, Y: 64})
 	painter.DrawPath(path)
 
 	// The pupil.
-	painter.SetBrush(qt.NewQBrush3(qt.NewQColor6("#ffffff")))
-	painter.DrawEllipse2(54, 54, 20, 20)
+	painter.SetBrush(qtgui.NewQBrushWithColor(qcolour("#ffffff")))
+	painter.DrawEllipse(qtcore.QRect{X: 54, Y: 54, Width: 20, Height: 20})
 }
 
 // drawMagnifier draws a magnifying glass, for finding something.
-func drawMagnifier(painter *qt.QPainter) {
-	painter.SetPenWithPen(whitePen())
-	painter.SetBrushWithStyle(qt.NoBrush)
+func drawMagnifier(painter *qtgui.QPainter) {
+	painter.SetPen(whitePen())
+	painter.SetBrushStyle(qtcore.NoBrush)
 
-	painter.DrawEllipse2(28, 28, 50, 50)
+	painter.DrawEllipse(qtcore.QRect{X: 28, Y: 28, Width: 50, Height: 50})
 
 	// The handle.
-	path := qt.NewQPainterPath()
-	path.MoveTo2(72, 72)
-	path.LineTo2(100, 100)
+	path := qtgui.NewQPainterPath()
+	path.MoveTo(qtcore.QPointF{X: 72, Y: 72})
+	path.LineTo(qtcore.QPointF{X: 100, Y: 100})
 	painter.DrawPath(path)
 }
 
 // drawTick draws a tick, for something that went well.
-func drawTick(painter *qt.QPainter) {
+func drawTick(painter *qtgui.QPainter) {
 	pen := whitePen()
 	pen.SetWidth(14)
-	painter.SetPenWithPen(pen)
-	painter.SetBrushWithStyle(qt.NoBrush)
+	painter.SetPen(pen)
+	painter.SetBrushStyle(qtcore.NoBrush)
 
-	path := qt.NewQPainterPath()
-	path.MoveTo2(32, 68)
-	path.LineTo2(54, 90)
-	path.LineTo2(98, 40)
+	path := qtgui.NewQPainterPath()
+	path.MoveTo(qtcore.QPointF{X: 32, Y: 68})
+	path.LineTo(qtcore.QPointF{X: 54, Y: 90})
+	path.LineTo(qtcore.QPointF{X: 98, Y: 40})
 	painter.DrawPath(path)
 }
 
 // drawCross draws a cross, for something that did not.
-func drawCross(painter *qt.QPainter) {
+func drawCross(painter *qtgui.QPainter) {
 	pen := whitePen()
 	pen.SetWidth(14)
-	painter.SetPenWithPen(pen)
-	painter.SetBrushWithStyle(qt.NoBrush)
+	painter.SetPen(pen)
+	painter.SetBrushStyle(qtcore.NoBrush)
 
-	path := qt.NewQPainterPath()
-	path.MoveTo2(38, 38)
-	path.LineTo2(90, 90)
-	path.MoveTo2(90, 38)
-	path.LineTo2(38, 90)
+	path := qtgui.NewQPainterPath()
+	path.MoveTo(qtcore.QPointF{X: 38, Y: 38})
+	path.LineTo(qtcore.QPointF{X: 90, Y: 90})
+	path.MoveTo(qtcore.QPointF{X: 90, Y: 38})
+	path.LineTo(qtcore.QPointF{X: 38, Y: 90})
 	painter.DrawPath(path)
 }
 
 // drawDisk draws a floppy disk, for saving something to a file.
-func drawDisk(painter *qt.QPainter) {
-	painter.SetPenWithPen(whitePen())
-	painter.SetBrushWithStyle(qt.NoBrush)
+func drawDisk(painter *qtgui.QPainter) {
+	painter.SetPen(whitePen())
+	painter.SetBrushStyle(qtcore.NoBrush)
 
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	// The disk, with its top right corner cut off.
-	path.MoveTo2(30, 30)
-	path.LineTo2(84, 30)
-	path.LineTo2(98, 44)
-	path.LineTo2(98, 98)
-	path.LineTo2(30, 98)
+	path.MoveTo(qtcore.QPointF{X: 30, Y: 30})
+	path.LineTo(qtcore.QPointF{X: 84, Y: 30})
+	path.LineTo(qtcore.QPointF{X: 98, Y: 44})
+	path.LineTo(qtcore.QPointF{X: 98, Y: 98})
+	path.LineTo(qtcore.QPointF{X: 30, Y: 98})
 	path.CloseSubpath()
 	// The shutter at the top, and the label at the bottom.
-	path.MoveTo2(46, 30)
-	path.LineTo2(46, 50)
-	path.LineTo2(74, 50)
-	path.LineTo2(74, 30)
-	path.MoveTo2(46, 98)
-	path.LineTo2(46, 72)
-	path.LineTo2(82, 72)
-	path.LineTo2(82, 98)
+	path.MoveTo(qtcore.QPointF{X: 46, Y: 30})
+	path.LineTo(qtcore.QPointF{X: 46, Y: 50})
+	path.LineTo(qtcore.QPointF{X: 74, Y: 50})
+	path.LineTo(qtcore.QPointF{X: 74, Y: 30})
+	path.MoveTo(qtcore.QPointF{X: 46, Y: 98})
+	path.LineTo(qtcore.QPointF{X: 46, Y: 72})
+	path.LineTo(qtcore.QPointF{X: 82, Y: 72})
+	path.LineTo(qtcore.QPointF{X: 82, Y: 98})
 	painter.DrawPath(path)
 }
 
 // outline sets a painter up to draw the lines of a symbol.
-func outline(painter *qt.QPainter) {
-	painter.SetPenWithPen(whitePen())
-	painter.SetBrushWithStyle(qt.NoBrush)
+func outline(painter *qtgui.QPainter) {
+	painter.SetPen(whitePen())
+	painter.SetBrushStyle(qtcore.NoBrush)
 }
 
 // plus adds a plus sign to a path, centred on a point.
-func plus(path *qt.QPainterPath, x, y, arm float64) {
-	path.MoveTo2(x-arm, y)
-	path.LineTo2(x+arm, y)
-	path.MoveTo2(x, y-arm)
-	path.LineTo2(x, y+arm)
+func plus(path *qtgui.QPainterPath, x, y, arm float64) {
+	path.MoveTo(qtcore.QPointF{X: x - arm, Y: y})
+	path.LineTo(qtcore.QPointF{X: x + arm, Y: y})
+	path.MoveTo(qtcore.QPointF{X: x, Y: y - arm})
+	path.LineTo(qtcore.QPointF{X: x, Y: y + arm})
 }
 
 // drawPlus draws a plus sign, for adding something.
-func drawPlus(painter *qt.QPainter) {
+func drawPlus(painter *qtgui.QPainter) {
 	outline(painter)
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	plus(path, 64, 64, 30)
 	painter.DrawPath(path)
 }
 
 // checklist adds rows of a checklist to a path, each a tick followed by a
 // line, with the first at top and the others gap below one another.
-func checklist(path *qt.QPainterPath, top, gap float64, rows int) {
+func checklist(path *qtgui.QPainterPath, top, gap float64, rows int) {
 	for i := range rows {
 		y := top + gap*float64(i)
-		path.MoveTo2(30, y)
-		path.LineTo2(37, y+7)
-		path.LineTo2(49, y-7)
-		path.MoveTo2(60, y)
-		path.LineTo2(98, y)
+		path.MoveTo(qtcore.QPointF{X: 30, Y: y})
+		path.LineTo(qtcore.QPointF{X: 37, Y: y + 7})
+		path.LineTo(qtcore.QPointF{X: 49, Y: y - 7})
+		path.MoveTo(qtcore.QPointF{X: 60, Y: y})
+		path.LineTo(qtcore.QPointF{X: 98, Y: y})
 	}
 }
 
 // drawSets draws a checklist, for a set: a set of requests worked on
 // together.
-func drawSets(painter *qt.QPainter) {
+func drawSets(painter *qtgui.QPainter) {
 	outline(painter)
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	checklist(path, 40, 24, 3)
 	painter.DrawPath(path)
 }
 
 // setIcon returns the icon of a set, in the colour of the sets.
-func setIcon() *qt.QIcon {
-	return cachedIcon("set", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourSets), drawSets) })
+func setIcon() *qtgui.QIcon {
+	return cachedIcon("set", func() *qtgui.QIcon { return drawIcon(iconSize*2, themeColour(colourSets), drawSets) })
 }
 
 // drawRequestsPlus draws the arrows of drawRequests with a plus sign beside
 // them, for adding a folder.
-func drawRequestsPlus(painter *qt.QPainter) {
+func drawRequestsPlus(painter *qtgui.QPainter) {
 	outline(painter)
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	exchange(path, 24, 76, 44, 84, 12)
 	plus(path, 96, 64, 10)
 	painter.DrawPath(path)
@@ -311,243 +310,243 @@ func drawRequestsPlus(painter *qt.QPainter) {
 
 // drawCopy draws one page in front of another, for making a copy of
 // something.
-func drawCopy(painter *qt.QPainter) {
+func drawCopy(painter *qtgui.QPainter) {
 	outline(painter)
 	// The page in front.
-	painter.DrawRoundedRect2(46, 44, 54, 58, 6, 6)
+	painter.DrawRoundedRect(qtcore.QRect{X: 46, Y: 44, Width: 54, Height: 58}, 6, 6)
 
 	// What can be seen of the page behind it.
-	path := qt.NewQPainterPath()
-	path.MoveTo2(30, 82)
-	path.LineTo2(30, 32)
-	path.QuadTo2(30, 26, 36, 26)
-	path.LineTo2(82, 26)
+	path := qtgui.NewQPainterPath()
+	path.MoveTo(qtcore.QPointF{X: 30, Y: 82})
+	path.LineTo(qtcore.QPointF{X: 30, Y: 32})
+	path.QuadTo(qtcore.QPointF{X: 30, Y: 26}, qtcore.QPointF{X: 36, Y: 26})
+	path.LineTo(qtcore.QPointF{X: 82, Y: 26})
 	painter.DrawPath(path)
 }
 
 // drawImport draws an arrow going into a page from outside it, pointing
 // left, for bringing something in from a file.
-func drawImport(painter *qt.QPainter) {
+func drawImport(painter *qtgui.QPainter) {
 	outline(painter)
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	// The page, open at the right where the arrow goes in, with the fold at
 	// its top left corner.
-	path.MoveTo2(76, 44)
-	path.LineTo2(76, 28)
-	path.LineTo2(46, 28)
-	path.LineTo2(28, 46)
-	path.LineTo2(28, 100)
-	path.LineTo2(76, 100)
-	path.LineTo2(76, 84)
-	path.MoveTo2(46, 28)
-	path.LineTo2(46, 46)
-	path.LineTo2(28, 46)
+	path.MoveTo(qtcore.QPointF{X: 76, Y: 44})
+	path.LineTo(qtcore.QPointF{X: 76, Y: 28})
+	path.LineTo(qtcore.QPointF{X: 46, Y: 28})
+	path.LineTo(qtcore.QPointF{X: 28, Y: 46})
+	path.LineTo(qtcore.QPointF{X: 28, Y: 100})
+	path.LineTo(qtcore.QPointF{X: 76, Y: 100})
+	path.LineTo(qtcore.QPointF{X: 76, Y: 84})
+	path.MoveTo(qtcore.QPointF{X: 46, Y: 28})
+	path.LineTo(qtcore.QPointF{X: 46, Y: 46})
+	path.LineTo(qtcore.QPointF{X: 28, Y: 46})
 	// The arrow.
-	path.MoveTo2(104, 64)
-	path.LineTo2(52, 64)
-	path.MoveTo2(68, 48)
-	path.LineTo2(52, 64)
-	path.LineTo2(68, 80)
+	path.MoveTo(qtcore.QPointF{X: 104, Y: 64})
+	path.LineTo(qtcore.QPointF{X: 52, Y: 64})
+	path.MoveTo(qtcore.QPointF{X: 68, Y: 48})
+	path.LineTo(qtcore.QPointF{X: 52, Y: 64})
+	path.LineTo(qtcore.QPointF{X: 68, Y: 80})
 	painter.DrawPath(path)
 }
 
 // drawPencil draws a pencil, for editing something.
-func drawPencil(painter *qt.QPainter) {
+func drawPencil(painter *qtgui.QPainter) {
 	outline(painter)
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	// The pencil, from its point at the bottom left.
-	path.MoveTo2(30, 98)
-	path.LineTo2(36, 74)
-	path.LineTo2(80, 30)
-	path.LineTo2(98, 48)
-	path.LineTo2(54, 92)
+	path.MoveTo(qtcore.QPointF{X: 30, Y: 98})
+	path.LineTo(qtcore.QPointF{X: 36, Y: 74})
+	path.LineTo(qtcore.QPointF{X: 80, Y: 30})
+	path.LineTo(qtcore.QPointF{X: 98, Y: 48})
+	path.LineTo(qtcore.QPointF{X: 54, Y: 92})
 	path.CloseSubpath()
 	// The band beneath the rubber.
-	path.MoveTo2(68, 42)
-	path.LineTo2(86, 60)
+	path.MoveTo(qtcore.QPointF{X: 68, Y: 42})
+	path.LineTo(qtcore.QPointF{X: 86, Y: 60})
 	painter.DrawPath(path)
 }
 
 // drawLetters draws a capital and a small letter with the cursor that text
 // is typed at, for renaming something.
-func drawLetters(painter *qt.QPainter) {
-	font := qt.NewQFont()
+func drawLetters(painter *qtgui.QPainter) {
+	font := qtgui.NewQFont()
 	font.SetPixelSize(56)
 	font.SetBold(true)
 
 	painter.SetFont(font)
-	painter.SetPenWithPen(whitePen())
-	painter.DrawText7(14, 0, 80, glyphSize-6, int(qt.AlignCenter), "Aa")
+	painter.SetPen(whitePen())
+	painter.DrawTextIn(qtcore.QRect{X: 14, Y: 0, Width: 80, Height: glyphSize - 6}, int(qtcore.AlignCenter), "Aa")
 
-	path := qt.NewQPainterPath()
-	path.MoveTo2(104, 34)
-	path.LineTo2(104, 94)
+	path := qtgui.NewQPainterPath()
+	path.MoveTo(qtcore.QPointF{X: 104, Y: 34})
+	path.LineTo(qtcore.QPointF{X: 104, Y: 94})
 	painter.DrawPath(path)
 }
 
 // drawBin draws a rubbish bin, for removing something.
-func drawBin(painter *qt.QPainter) {
+func drawBin(painter *qtgui.QPainter) {
 	outline(painter)
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	// The lid and its handle.
-	path.MoveTo2(30, 42)
-	path.LineTo2(98, 42)
-	path.MoveTo2(52, 42)
-	path.LineTo2(52, 28)
-	path.LineTo2(76, 28)
-	path.LineTo2(76, 42)
+	path.MoveTo(qtcore.QPointF{X: 30, Y: 42})
+	path.LineTo(qtcore.QPointF{X: 98, Y: 42})
+	path.MoveTo(qtcore.QPointF{X: 52, Y: 42})
+	path.LineTo(qtcore.QPointF{X: 52, Y: 28})
+	path.LineTo(qtcore.QPointF{X: 76, Y: 28})
+	path.LineTo(qtcore.QPointF{X: 76, Y: 42})
 	// The bin.
-	path.MoveTo2(40, 42)
-	path.LineTo2(46, 102)
-	path.LineTo2(82, 102)
-	path.LineTo2(88, 42)
+	path.MoveTo(qtcore.QPointF{X: 40, Y: 42})
+	path.LineTo(qtcore.QPointF{X: 46, Y: 102})
+	path.LineTo(qtcore.QPointF{X: 82, Y: 102})
+	path.LineTo(qtcore.QPointF{X: 88, Y: 42})
 	// The ribs down its side.
-	path.MoveTo2(56, 58)
-	path.LineTo2(57, 86)
-	path.MoveTo2(72, 58)
-	path.LineTo2(71, 86)
+	path.MoveTo(qtcore.QPointF{X: 56, Y: 58})
+	path.LineTo(qtcore.QPointF{X: 57, Y: 86})
+	path.MoveTo(qtcore.QPointF{X: 72, Y: 58})
+	path.LineTo(qtcore.QPointF{X: 71, Y: 86})
 	painter.DrawPath(path)
 }
 
 // drawPin draws a drawing pin, for keeping something where it is.
-func drawPin(painter *qt.QPainter) {
+func drawPin(painter *qtgui.QPainter) {
 	pen := whitePen()
 	pen.SetWidth(12)
-	painter.SetPenWithPen(pen)
-	painter.SetBrushWithStyle(qt.NoBrush)
+	painter.SetPen(pen)
+	painter.SetBrushStyle(qtcore.NoBrush)
 
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	// The head, the body, the collar and the point.
-	path.MoveTo2(44, 26)
-	path.LineTo2(84, 26)
-	path.MoveTo2(52, 26)
-	path.LineTo2(50, 62)
-	path.MoveTo2(76, 26)
-	path.LineTo2(78, 62)
-	path.MoveTo2(34, 64)
-	path.LineTo2(94, 64)
-	path.MoveTo2(64, 64)
-	path.LineTo2(64, 104)
+	path.MoveTo(qtcore.QPointF{X: 44, Y: 26})
+	path.LineTo(qtcore.QPointF{X: 84, Y: 26})
+	path.MoveTo(qtcore.QPointF{X: 52, Y: 26})
+	path.LineTo(qtcore.QPointF{X: 50, Y: 62})
+	path.MoveTo(qtcore.QPointF{X: 76, Y: 26})
+	path.LineTo(qtcore.QPointF{X: 78, Y: 62})
+	path.MoveTo(qtcore.QPointF{X: 34, Y: 64})
+	path.LineTo(qtcore.QPointF{X: 94, Y: 64})
+	path.MoveTo(qtcore.QPointF{X: 64, Y: 64})
+	path.LineTo(qtcore.QPointF{X: 64, Y: 104})
 	painter.DrawPath(path)
 }
 
 // drawMonitor draws the monitor of a desk, on its stand, for a workspace.
-func drawMonitor(painter *qt.QPainter) {
+func drawMonitor(painter *qtgui.QPainter) {
 	outline(painter)
-	painter.DrawRoundedRect2(22, 28, 84, 54, 6, 6)
+	painter.DrawRoundedRect(qtcore.QRect{X: 22, Y: 28, Width: 84, Height: 54}, 6, 6)
 
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	// The stand and its foot.
-	path.MoveTo2(64, 82)
-	path.LineTo2(64, 100)
-	path.MoveTo2(44, 100)
-	path.LineTo2(84, 100)
+	path.MoveTo(qtcore.QPointF{X: 64, Y: 82})
+	path.LineTo(qtcore.QPointF{X: 64, Y: 100})
+	path.MoveTo(qtcore.QPointF{X: 44, Y: 100})
+	path.LineTo(qtcore.QPointF{X: 84, Y: 100})
 	painter.DrawPath(path)
 }
 
 // drawClock draws a clock, for the history of the requests sent.
-func drawClock(painter *qt.QPainter) {
+func drawClock(painter *qtgui.QPainter) {
 	outline(painter)
-	painter.DrawEllipse2(26, 26, 76, 76)
+	painter.DrawEllipse(qtcore.QRect{X: 26, Y: 26, Width: 76, Height: 76})
 
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	defer path.Delete()
 	// The hands, one up to twelve and one down to four.
-	path.MoveTo2(64, 40)
-	path.LineTo2(64, 64)
-	path.LineTo2(82, 74)
+	path.MoveTo(qtcore.QPointF{X: 64, Y: 40})
+	path.LineTo(qtcore.QPointF{X: 64, Y: 64})
+	path.LineTo(qtcore.QPointF{X: 82, Y: 74})
 	painter.DrawPath(path)
 }
 
 // drawDiff draws two pages side by side, whose lines differ, for comparing
 // two things.
-func drawDiff(painter *qt.QPainter) {
+func drawDiff(painter *qtgui.QPainter) {
 	outline(painter)
-	painter.DrawRoundedRect2(22, 28, 36, 72, 5, 5)
-	painter.DrawRoundedRect2(70, 28, 36, 72, 5, 5)
+	painter.DrawRoundedRect(qtcore.QRect{X: 22, Y: 28, Width: 36, Height: 72}, 5, 5)
+	painter.DrawRoundedRect(qtcore.QRect{X: 70, Y: 28, Width: 36, Height: 72}, 5, 5)
 
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	defer path.Delete()
 	// The lines of each page, the same but for the middle one.
 	for _, y := range []float64{46, 64, 82} {
-		path.MoveTo2(32, y)
-		path.LineTo2(48, y)
-		path.MoveTo2(80, y)
+		path.MoveTo(qtcore.QPointF{X: 32, Y: y})
+		path.LineTo(qtcore.QPointF{X: 48, Y: y})
+		path.MoveTo(qtcore.QPointF{X: 80, Y: y})
 		if y == 64 {
-			path.LineTo2(88, y)
+			path.LineTo(qtcore.QPointF{X: 88, Y: y})
 		} else {
-			path.LineTo2(96, y)
+			path.LineTo(qtcore.QPointF{X: 96, Y: y})
 		}
 	}
 	painter.DrawPath(path)
 }
 
 // whitePen returns a pen for drawing the lines of a symbol.
-func whitePen() *qt.QPen {
-	pen := qt.NewQPen3(qt.NewQColor6("#ffffff"))
+func whitePen() *qtgui.QPen {
+	pen := qtgui.NewQPenWithColor(qcolour("#ffffff"))
 	pen.SetWidth(9)
-	pen.SetCapStyle(qt.RoundCap)
-	pen.SetJoinStyle(qt.RoundJoin)
+	pen.SetCapStyle(qtcore.RoundCap)
+	pen.SetJoinStyle(qtcore.RoundJoin)
 	return pen
 }
 
 // drawBraces draws a pair of braces, as around a JSON document.
-func drawBraces(painter *qt.QPainter) {
-	font := qt.NewQFont()
+func drawBraces(painter *qtgui.QPainter) {
+	font := qtgui.NewQFont()
 	font.SetPixelSize(64)
 	font.SetBold(true)
 
 	painter.SetFont(font)
-	painter.SetPenWithPen(whitePen())
-	painter.DrawText7(0, 0, glyphSize, glyphSize-8, int(qt.AlignCenter), "{ }")
+	painter.SetPen(whitePen())
+	painter.DrawTextIn(qtcore.QRect{X: 0, Y: 0, Width: glyphSize, Height: glyphSize - 8}, int(qtcore.AlignCenter), "{ }")
 }
 
 // drawArrows draws two arrows pointing in opposite directions, for a call
 // and its reply.
-func drawArrows(painter *qt.QPainter) {
-	painter.SetPenWithPen(whitePen())
-	painter.SetBrushWithStyle(qt.NoBrush)
+func drawArrows(painter *qtgui.QPainter) {
+	painter.SetPen(whitePen())
+	painter.SetBrushStyle(qtcore.NoBrush)
 
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	// The upper arrow points right.
-	path.MoveTo2(34, 48)
-	path.LineTo2(94, 48)
-	path.MoveTo2(78, 32)
-	path.LineTo2(94, 48)
-	path.LineTo2(78, 64)
+	path.MoveTo(qtcore.QPointF{X: 34, Y: 48})
+	path.LineTo(qtcore.QPointF{X: 94, Y: 48})
+	path.MoveTo(qtcore.QPointF{X: 78, Y: 32})
+	path.LineTo(qtcore.QPointF{X: 94, Y: 48})
+	path.LineTo(qtcore.QPointF{X: 78, Y: 64})
 	// The lower arrow points left.
-	path.MoveTo2(94, 82)
-	path.LineTo2(34, 82)
-	path.MoveTo2(50, 66)
-	path.LineTo2(34, 82)
-	path.LineTo2(50, 98)
+	path.MoveTo(qtcore.QPointF{X: 94, Y: 82})
+	path.LineTo(qtcore.QPointF{X: 34, Y: 82})
+	path.MoveTo(qtcore.QPointF{X: 50, Y: 66})
+	path.LineTo(qtcore.QPointF{X: 34, Y: 82})
+	path.LineTo(qtcore.QPointF{X: 50, Y: 98})
 
 	painter.DrawPath(path)
 }
 
 // drawPulse draws the line of a pulse, for a WebSocket: a connection that
 // stays open, with messages going both ways along it.
-func drawPulse(painter *qt.QPainter) {
-	painter.SetPenWithPen(whitePen())
-	painter.SetBrushWithStyle(qt.NoBrush)
+func drawPulse(painter *qtgui.QPainter) {
+	painter.SetPen(whitePen())
+	painter.SetBrushStyle(qtcore.NoBrush)
 
-	path := qt.NewQPainterPath()
-	path.MoveTo2(26, 66)
-	path.LineTo2(46, 66)
-	path.LineTo2(56, 38)
-	path.LineTo2(72, 92)
-	path.LineTo2(82, 66)
-	path.LineTo2(102, 66)
+	path := qtgui.NewQPainterPath()
+	path.MoveTo(qtcore.QPointF{X: 26, Y: 66})
+	path.LineTo(qtcore.QPointF{X: 46, Y: 66})
+	path.LineTo(qtcore.QPointF{X: 56, Y: 38})
+	path.LineTo(qtcore.QPointF{X: 72, Y: 92})
+	path.LineTo(qtcore.QPointF{X: 82, Y: 66})
+	path.LineTo(qtcore.QPointF{X: 102, Y: 66})
 	painter.DrawPath(path)
 }
 
 // drawGraph draws a graph: six nodes around a hexagon, each joined to its
 // neighbours, with a triangle across it, for GraphQL, which queries a graph.
-func drawGraph(painter *qt.QPainter) {
+func drawGraph(painter *qtgui.QPainter) {
 	pen := whitePen()
 	pen.SetWidth(6)
-	painter.SetPenWithPen(pen)
-	painter.SetBrushWithStyle(qt.NoBrush)
+	painter.SetPen(pen)
+	painter.SetBrushStyle(qtcore.NoBrush)
 
 	// The nodes, from the top round to the right.
 	var nodes [6][2]float64
@@ -556,154 +555,142 @@ func drawGraph(painter *qt.QPainter) {
 		nodes[i] = [2]float64{64 + 36*math.Cos(angle), 66 + 36*math.Sin(angle)}
 	}
 
-	path := qt.NewQPainterPath()
-	path.MoveTo2(nodes[5][0], nodes[5][1])
+	path := qtgui.NewQPainterPath()
+	path.MoveTo(qtcore.QPointF{X: nodes[5][0], Y: nodes[5][1]})
 	for _, n := range nodes {
-		path.LineTo2(n[0], n[1])
+		path.LineTo(qtcore.QPointF{X: n[0], Y: n[1]})
 	}
-	path.MoveTo2(nodes[0][0], nodes[0][1])
-	path.LineTo2(nodes[2][0], nodes[2][1])
-	path.LineTo2(nodes[4][0], nodes[4][1])
+	path.MoveTo(qtcore.QPointF{X: nodes[0][0], Y: nodes[0][1]})
+	path.LineTo(qtcore.QPointF{X: nodes[2][0], Y: nodes[2][1]})
+	path.LineTo(qtcore.QPointF{X: nodes[4][0], Y: nodes[4][1]})
 	path.CloseSubpath()
 	painter.DrawPath(path)
 
-	white := qt.NewQColor6("#ffffff")
-	defer white.Delete()
-	brush := qt.NewQBrush3(white)
+	white := qcolour("#ffffff")
+	brush := qtgui.NewQBrushWithColor(white)
 	defer brush.Delete()
-	painter.SetPenWithStyle(qt.NoPen)
+	painter.SetPenStyle(qtcore.NoPen)
 	painter.SetBrush(brush)
 	for _, n := range nodes {
-		center := qt.NewQPointF3(n[0], n[1])
-		painter.DrawEllipse3(center, 8, 8)
-		center.Delete()
+		center := qtcore.QPointF{X: n[0], Y: n[1]}
+		painter.DrawEllipseAtF(center, 8, 8)
 	}
 }
 
 // drawPlug draws a plug with its lead, for MCP, which plugs tools and data
 // into a model.
-func drawPlug(painter *qt.QPainter) {
-	painter.SetPenWithPen(whitePen())
-	painter.SetBrushWithStyle(qt.NoBrush)
+func drawPlug(painter *qtgui.QPainter) {
+	painter.SetPen(whitePen())
+	painter.SetBrushStyle(qtcore.NoBrush)
 
-	path := qt.NewQPainterPath()
+	path := qtgui.NewQPainterPath()
 	// The pins.
-	path.MoveTo2(52, 26)
-	path.LineTo2(52, 44)
-	path.MoveTo2(76, 26)
-	path.LineTo2(76, 44)
+	path.MoveTo(qtcore.QPointF{X: 52, Y: 26})
+	path.LineTo(qtcore.QPointF{X: 52, Y: 44})
+	path.MoveTo(qtcore.QPointF{X: 76, Y: 26})
+	path.LineTo(qtcore.QPointF{X: 76, Y: 44})
 	// The body, narrowing to the lead.
-	path.MoveTo2(38, 44)
-	path.LineTo2(90, 44)
-	path.LineTo2(90, 62)
-	path.CubicTo2(90, 76, 78, 84, 64, 84)
-	path.CubicTo2(50, 84, 38, 76, 38, 62)
+	path.MoveTo(qtcore.QPointF{X: 38, Y: 44})
+	path.LineTo(qtcore.QPointF{X: 90, Y: 44})
+	path.LineTo(qtcore.QPointF{X: 90, Y: 62})
+	path.CubicTo(qtcore.QPointF{X: 90, Y: 76}, qtcore.QPointF{X: 78, Y: 84}, qtcore.QPointF{X: 64, Y: 84})
+	path.CubicTo(qtcore.QPointF{X: 50, Y: 84}, qtcore.QPointF{X: 38, Y: 76}, qtcore.QPointF{X: 38, Y: 62})
 	path.CloseSubpath()
 	// The lead.
-	path.MoveTo2(64, 84)
-	path.LineTo2(64, 104)
+	path.MoveTo(qtcore.QPointF{X: 64, Y: 84})
+	path.LineTo(qtcore.QPointF{X: 64, Y: 104})
 	painter.DrawPath(path)
 }
 
 // drawRevolver draws a revolver seen from the side, pointing right: the
 // program is named after its trigger.
-func drawRevolver(painter *qt.QPainter) {
-	white := qt.NewQColor6("#ffffff")
-	painter.SetPenWithStyle(qt.NoPen)
-	painter.SetBrush(qt.NewQBrush3(white))
+func drawRevolver(painter *qtgui.QPainter) {
+	white := qcolour("#ffffff")
+	painter.SetPenStyle(qtcore.NoPen)
+	painter.SetBrush(qtgui.NewQBrushWithColor(white))
 
 	// The barrel, with the front sight on top and the rod beneath it.
-	painter.DrawRoundedRect2(72, 30, 44, 14, 3, 3)
-	painter.DrawRect2(107, 23, 5, 9)
-	painter.DrawRoundedRect2(78, 47, 24, 5, 2, 2)
+	painter.DrawRoundedRect(qtcore.QRect{X: 72, Y: 30, Width: 44, Height: 14}, 3, 3)
+	painter.DrawRect(qtcore.QRect{X: 107, Y: 23, Width: 5, Height: 9})
+	painter.DrawRoundedRect(qtcore.QRect{X: 78, Y: 47, Width: 24, Height: 5}, 2, 2)
 
 	// The frame: a strap above the cylinder and one below it, joined
 	// behind it and in front of it.
-	painter.DrawRect2(32, 30, 44, 5)
-	painter.DrawRect2(34, 67, 44, 5)
-	painter.DrawRect2(30, 30, 9, 42)
-	painter.DrawRect2(71, 30, 7, 42)
+	painter.DrawRect(qtcore.QRect{X: 32, Y: 30, Width: 44, Height: 5})
+	painter.DrawRect(qtcore.QRect{X: 34, Y: 67, Width: 44, Height: 5})
+	painter.DrawRect(qtcore.QRect{X: 30, Y: 30, Width: 9, Height: 42})
+	painter.DrawRect(qtcore.QRect{X: 71, Y: 30, Width: 7, Height: 42})
 
 	// The cylinder, clear of the frame all round.
-	painter.DrawRoundedRect2(42, 38, 26, 26, 5, 5)
+	painter.DrawRoundedRect(qtcore.QRect{X: 42, Y: 38, Width: 26, Height: 26}, 5, 5)
 
 	// The hammer, cocked back above the grip.
-	hammer := qt.NewQPainterPath()
-	hammer.MoveTo2(36, 31)
-	hammer.LineTo2(27, 19)
-	hammer.LineTo2(21, 24)
-	hammer.LineTo2(28, 33)
+	hammer := qtgui.NewQPainterPath()
+	hammer.MoveTo(qtcore.QPointF{X: 36, Y: 31})
+	hammer.LineTo(qtcore.QPointF{X: 27, Y: 19})
+	hammer.LineTo(qtcore.QPointF{X: 21, Y: 24})
+	hammer.LineTo(qtcore.QPointF{X: 28, Y: 33})
 	hammer.CloseSubpath()
 	painter.DrawPath(hammer)
 
 	// The grip, curving down and back from the frame.
-	grip := qt.NewQPainterPath()
-	grip.MoveTo2(30, 42)
-	grip.LineTo2(47, 70)
-	grip.QuadTo2(40, 86, 42, 100)
-	grip.QuadTo2(42, 108, 34, 108)
-	grip.LineTo2(22, 108)
-	grip.QuadTo2(14, 108, 15, 100)
-	grip.QuadTo2(18, 70, 30, 42)
+	grip := qtgui.NewQPainterPath()
+	grip.MoveTo(qtcore.QPointF{X: 30, Y: 42})
+	grip.LineTo(qtcore.QPointF{X: 47, Y: 70})
+	grip.QuadTo(qtcore.QPointF{X: 40, Y: 86}, qtcore.QPointF{X: 42, Y: 100})
+	grip.QuadTo(qtcore.QPointF{X: 42, Y: 108}, qtcore.QPointF{X: 34, Y: 108})
+	grip.LineTo(qtcore.QPointF{X: 22, Y: 108})
+	grip.QuadTo(qtcore.QPointF{X: 14, Y: 108}, qtcore.QPointF{X: 15, Y: 100})
+	grip.QuadTo(qtcore.QPointF{X: 18, Y: 70}, qtcore.QPointF{X: 30, Y: 42})
 	grip.CloseSubpath()
 	painter.DrawPath(grip)
 
 	// The trigger guard, and the trigger inside it.
-	pen := qt.NewQPen3(white)
+	pen := qtgui.NewQPenWithColor(white)
 	pen.SetWidth(6)
-	pen.SetCapStyle(qt.RoundCap)
-	pen.SetJoinStyle(qt.RoundJoin)
-	painter.SetPenWithPen(pen)
-	painter.SetBrushWithStyle(qt.NoBrush)
+	pen.SetCapStyle(qtcore.RoundCap)
+	pen.SetJoinStyle(qtcore.RoundJoin)
+	painter.SetPen(pen)
+	painter.SetBrushStyle(qtcore.NoBrush)
 
-	guard := qt.NewQPainterPath()
-	guard.MoveTo2(45, 90)
-	guard.LineTo2(62, 90)
-	guard.QuadTo2(75, 90, 75, 73)
-	guard.MoveTo2(60, 73)
-	guard.QuadTo2(63, 79, 59, 83)
+	guard := qtgui.NewQPainterPath()
+	guard.MoveTo(qtcore.QPointF{X: 45, Y: 90})
+	guard.LineTo(qtcore.QPointF{X: 62, Y: 90})
+	guard.QuadTo(qtcore.QPointF{X: 75, Y: 90}, qtcore.QPointF{X: 75, Y: 73})
+	guard.MoveTo(qtcore.QPointF{X: 60, Y: 73})
+	guard.QuadTo(qtcore.QPointF{X: 63, Y: 79}, qtcore.QPointF{X: 59, Y: 83})
 	painter.DrawPath(guard)
 }
 
 // appIconColour is the colour of the program's icon.
 const appIconColour = "#e8590c"
 
-var appIconCache *qt.QIcon
+var appIconCache *qtgui.QIcon
 
 // appIcon returns the icon of the program, from the PNG built into it.
-func appIcon() *qt.QIcon {
+func appIcon() *qtgui.QIcon {
 	if appIconCache == nil {
-		pixmap := qt.NewQPixmap()
+		pixmap := qtgui.NewQPixmap()
 		// The icon keeps a copy of the picture.
 		defer pixmap.Delete()
-		pixmap.LoadFromDataWithData(appicon.PNG)
-		appIconCache = qt.NewQIcon2(pixmap)
+		pixmap.LoadFromData(appicon.PNG)
+		appIconCache = qtgui.NewQIconWithPixmap(pixmap)
 	}
 	return appIconCache
 }
 
-// appIconPNG draws the program's icon as a PNG of a size, with a margin of
-// that many pixels on every side, or returns nil if it could not be made. It
-// is what make icons writes the files of the icon with.
-func appIconPNG(size, margin int) []byte {
-	icon := drawPixmap(size-2*margin, appIconColour, drawRevolver)
+// appIconPNG draws the program's icon as a PNG of a size, which make icons
+// writes into internal/appicon/appicon.png, or nil if it could not be made.
+func appIconPNG(size int) []byte {
+	icon := drawPixmap(size, appIconColour, drawRevolver)
 	defer icon.Delete()
-	pixmap := qt.NewQPixmap2(size, size)
-	defer pixmap.Delete()
-	transparent := qt.NewQColor2(qt.Transparent)
-	defer transparent.Delete()
-	pixmap.FillWithFillColor(transparent)
-	painter := qt.NewQPainter2(pixmap.QPaintDevice)
-	painter.DrawPixmap9(margin, margin, icon)
-	painter.End()
-	painter.Delete()
 
-	buffer := qt.NewQBuffer()
+	buffer := qtcore.NewQBuffer(nil)
 	defer buffer.Delete()
-	if !buffer.Open(qt.QIODeviceBase__WriteOnly) {
+	if !buffer.Open(qtcore.QIODeviceBaseWriteOnly) {
 		return nil
 	}
-	if !pixmap.Save4(buffer.QIODevice, "PNG") {
+	if icon.SaveToFull(buffer, "PNG", -1) != nil {
 		return nil
 	}
 	return buffer.Data()

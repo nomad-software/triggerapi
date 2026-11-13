@@ -448,7 +448,8 @@ func describe(err error) error {
 	case retrieve.Response != nil:
 		body := strings.TrimSpace(string(retrieve.Body))
 		if len(body) > 200 {
-			body = body[:200] + "…"
+			// Cut between characters, not inside one.
+			body = strings.ToValidUTF8(body[:200], "") + "…"
 		}
 		if body != "" {
 			return fmt.Errorf("the OAuth 2.0 server answered %s: %s", retrieve.Response.Status, body)

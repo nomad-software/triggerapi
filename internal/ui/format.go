@@ -1,7 +1,8 @@
 package ui
 
 import (
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
@@ -10,8 +11,8 @@ import (
 // member and element on a line of its own. It is an action button, shown as
 // an icon.
 type formatButton struct {
-	button *qt.QToolButton
-	edit   *qt.QPlainTextEdit
+	button *qtwidgets.QToolButton
+	edit   *qtwidgets.QPlainTextEdit
 	// several records that the editor can hold several values one after
 	// another, as the messages of a stream of gRPC.
 	several bool
@@ -25,12 +26,12 @@ type formatButton struct {
 
 // newFormatButton returns the button which sets out the JSON in an editor,
 // calling done once it has.
-func newFormatButton(edit *qt.QPlainTextEdit, done func()) *formatButton {
+func newFormatButton(edit *qtwidgets.QPlainTextEdit, done func()) *formatButton {
 	f := &formatButton{edit: edit, done: done}
 	f.button = newIconButton(colourAction, drawBraces, "Format the JSON, with each value on a line of its own")
-	f.button.OnClicked(f.format)
+	f.button.OnClicked(func(_ bool) { f.format() })
 
-	f.warn = warnBeneath(f.button.QWidget)
+	f.warn = warnBeneath(f.button.AsQWidget())
 	return f
 }
 
@@ -53,8 +54,8 @@ func (f *formatButton) format() {
 
 	// Setting the text of the editor would forget what could be undone.
 	cursor := f.edit.TextCursor()
-	defer release(cursor)
-	cursor.Select(qt.QTextCursor__Document)
+	defer cursor.Delete()
+	cursor.Select(qtgui.QTextCursorDocument)
 	cursor.InsertText(formatted)
 	f.done()
 }

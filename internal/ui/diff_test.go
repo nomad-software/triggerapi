@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"net/http"
 	"os"
 	"path/filepath"
@@ -8,8 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/history"
@@ -65,7 +65,7 @@ func TestWriteDiffFiles(t *testing.T) {
 // is refused, with the reason, and that the tool is not run.
 func TestDiffTooMany(t *testing.T) {
 	now := time.Now()
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		w.Show()
 		var warned []string
@@ -98,7 +98,7 @@ func TestDiffHistory(t *testing.T) {
 	now := time.Now()
 	var w *Window
 	var warned []string
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		w.history.warn = func(message string) { warned = append(warned, message) }
@@ -157,7 +157,7 @@ func TestDiffHistory(t *testing.T) {
 
 	// The files are deleted when the window closes.
 	var folder string
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		folder = w.diffDirs[0]
 		w.Close()
 	})

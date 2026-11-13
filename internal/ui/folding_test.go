@@ -1,19 +1,22 @@
 package ui
 
 import (
+	"runtime/debug"
+
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"net/http"
 	"reflect"
 	"strings"
 	"testing"
 
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
-
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
 // visibleLines returns the lines of an editor that are not hidden by a fold.
-func visibleLines(edit *qt.QPlainTextEdit) []string {
+func visibleLines(edit *qtwidgets.QPlainTextEdit) []string {
 	var lines []string
 	for block := edit.Document().FirstBlock(); block.IsValid(); block = block.Next() {
 		if block.IsVisible() {
@@ -27,7 +30,7 @@ func TestFolding(t *testing.T) {
 	body := `{"user":{"name":"a","tags":["x","y"]},"ok":true}`
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		w.response.show(&rest.Response{
@@ -102,7 +105,7 @@ func TestFolding(t *testing.T) {
 
 func TestFoldingWhileEditing(t *testing.T) {
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
@@ -111,7 +114,7 @@ func TestFoldingWhileEditing(t *testing.T) {
 	})
 	waitFor(t, "the text to be looked at", func() bool { return w.request.bodyFold.text != "" })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		f := w.request.bodyFold
 		if len(f.regions) != 0 {
 			t.Errorf("regions with no body type = %v", f.regions)
@@ -134,12 +137,12 @@ func TestFoldingWhileEditing(t *testing.T) {
 
 		// Typing after the fold leaves it folded.
 		cursor := w.request.bodyRaw.TextCursor()
-		cursor.MovePosition(qt.QTextCursor__End)
+		cursor.MovePosition(qtgui.QTextCursorEnd)
 		cursor.InsertText(" ")
 	})
 	waitFor(t, "the edit to be looked at", func() bool { return strings.HasSuffix(w.request.bodyFold.text, "} ") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		f := w.request.bodyFold
 		if got := visibleLines(w.request.bodyRaw); len(got) != 5 || len(f.folded) != 1 {
 			t.Errorf("after typing below the fold: %q", got)
@@ -153,7 +156,7 @@ func TestFoldingWhileEditing(t *testing.T) {
 	})
 	waitFor(t, "the edit to be looked at", func() bool { return strings.HasPrefix(w.request.bodyFold.text, "[\n") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		f := w.request.bodyFold
 		if got := visibleLines(w.request.bodyRaw); len(got) != 8 || len(f.folded) != 0 {
 			t.Errorf("after moving the fold: %d lines visible, folded %v", len(got), f.folded)
@@ -166,4 +169,39 @@ func TestFoldingWhileEditing(t *testing.T) {
 			t.Errorf("as text: %d lines visible, regions %v", len(got), f.regions)
 		}
 	})
+}
+
+// The text cursors of the folds, the format button and the search are freed
+// while documents are being changed, with the garbage collector coming all
+// the time, which frees what it collects on the GUI thread.
+func TestTextCursorsWhileCollecting(t *testing.T) {
+	defer debug.SetGCPercent(debug.SetGCPercent(1))
+
+	const body = "{\n  \"name\": \"a\",\n       \"data\": {\n    \"year\": 2019,\n          \"tags\": [1, 2]\n      }\n   }"
+
+	var w *Window
+	qute.PostSync(func() {
+		w = NewWindow(testFiles(t).Files)
+		w.Show()
+		w.request.bodyType.SetCurrentIndex(1)
+		w.response.find.open()
+		w.response.find.field.SetText("a")
+	})
+
+	var garbage []byte
+	for range 1500 {
+		qute.PostSync(func() {
+			p := w.request
+			p.bodyRaw.SetPlainText(body)
+			p.bodyFold.reset()
+			p.bodyFold.toggle(2)
+			p.bodyFold.lineAt(4)
+			garbage = make([]byte, 1<<16)
+			p.format.button.Click()
+
+			w.response.setBody(body, true)
+			w.response.find.step(1)
+		})
+	}
+	_ = garbage
 }

@@ -239,9 +239,13 @@ func TestClientCertificate(t *testing.T) {
 	if got := c.CurlConfig("localhost"); got != "pass = \"secret\"\n" {
 		t.Errorf("curl configuration = %q", got)
 	}
-	// A wrong passphrase, or none, is an error.
-	if _, err := Load(Config{Hosts: []Host{withEncrypted}}, func(Secret) (string, error) { return "wrong", nil }); err == nil {
-		t.Error("no error for a wrong passphrase")
+	if !c.Accepted(asked[0]) {
+		t.Error("the passphrase that opened the key was not accepted")
+	}
+	// A wrong passphrase, or none, is an error, and is not taken for one
+	// that opened the key.
+	if c, err := Load(Config{Hosts: []Host{withEncrypted}}, func(Secret) (string, error) { return "wrong", nil }); err == nil || c.Accepted(asked[0]) {
+		t.Errorf("a wrong passphrase: error %v, accepted %v", err, c.Accepted(asked[0]))
 	}
 	if _, err := Load(Config{Hosts: []Host{withEncrypted}}, func(Secret) (string, error) { return "", errors.New("cancelled") }); err == nil || !strings.Contains(err.Error(), "cancelled") {
 		t.Errorf("error = %v", err)
@@ -417,6 +421,10 @@ func TestCurlOptions(t *testing.T) {
 	c = load(t, Config{Proxy: ProxyNone, NoProxy: []string{"x"}, MinTLS: TLS12}, noSecrets(t))
 	if got := join(c.CurlOptions("a")); got != "--noproxy * --tlsv1.2" {
 		t.Errorf("none: %s", got)
+	}
+	// Names of nothing leave the NO_PROXY of the environment to curl.
+	if got := join(load(t, Config{NoProxy: []string{" ", "."}}, noSecrets(t)).CurlOptions("a")); got != "" {
+		t.Errorf("empty names: %q", got)
 	}
 	if got := join(load(t, Config{}, noSecrets(t)).CurlOptions("a")); got != "" || c.CurlConfig("a") != "" {
 		t.Errorf("zero: %q", got)

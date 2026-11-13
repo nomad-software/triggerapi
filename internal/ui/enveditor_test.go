@@ -1,30 +1,31 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"reflect"
 	"slices"
 	"strconv"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/env"
 )
 
 // clickHeading clicks the heading of a column of a table as the pointer
 // does, with the keyboard modifiers given.
-func clickHeading(table *qt.QTableWidget, column int, modifiers qt.KeyboardModifier) {
+func clickHeading(table *qtwidgets.QTableWidget, column int, modifiers qtcore.KeyboardModifier) {
 	header := table.HorizontalHeader()
-	at := qt.NewQPointF3(float64(header.SectionViewportPosition(column)+header.SectionSize(column)/2), float64(header.Height()/2))
-	defer at.Delete()
-	for _, kind := range []qt.QEvent__Type{qt.QEvent__MouseButtonPress, qt.QEvent__MouseButtonRelease} {
-		buttons := qt.LeftButton
-		if kind == qt.QEvent__MouseButtonRelease {
-			buttons = qt.NoButton
+	at := qtcore.QPointF{X: float64(header.SectionViewportPosition(column) + header.SectionSize(column)/2), Y: float64(header.Height() / 2)}
+	for _, kind := range []qtcore.QEventType{qtcore.QEventMouseButtonPress, qtcore.QEventMouseButtonRelease} {
+		buttons := qtcore.LeftButton
+		if kind == qtcore.QEventMouseButtonRelease {
+			buttons = qtcore.NoButton
 		}
-		event := qt.NewQMouseEvent(kind, at, qt.LeftButton, buttons, modifiers)
-		qt.QCoreApplication_SendEvent(header.Viewport().QObject, event.QEvent)
+		event := qtgui.NewQMouseEvent(kind, at, at, qtcore.LeftButton, buttons, modifiers)
+		qtcore.QCoreApplicationSendEvent(header.Viewport().AsQObject(), event.AsQEvent())
 		event.Delete()
 	}
 }
@@ -80,7 +81,7 @@ func TestSortByHeadings(t *testing.T) {
 	unsorted := []string{"host=2/b", "a=9/c", "Host=1/a"}
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.environments.list.SetCurrentRow(1) // Local
@@ -128,9 +129,9 @@ func TestSortByHeadings(t *testing.T) {
 			{colDescription, true, []string{"a=9/c", "Host=1/a", "host=2/b"},
 				[]string{"Variable ^1", "Value", "Description ^2"}, []env.SortKey{{Column: env.SortVariable}, {Column: env.SortDescription}}},
 		} {
-			modifiers := qt.NoModifier
+			modifiers := qtcore.NoModifier
 			if step.shift {
-				modifiers = qt.ShiftModifier
+				modifiers = qtcore.ShiftModifier
 			}
 			clickHeading(table.table, step.column, modifiers)
 			if got := shownRows(table); !slices.Equal(got, step.shown) {
@@ -153,7 +154,7 @@ func TestSortByHeadings(t *testing.T) {
 		if got := shownRows(table); !slices.Equal(got, unsorted) {
 			t.Errorf("Live shown %q", got)
 		}
-		clickHeading(table.table, colValue, qt.NoModifier)
+		clickHeading(table.table, colValue, qtcore.NoModifier)
 		w.environments.list.SetCurrentRow(1)
 		if got := shownRows(table); !slices.Equal(got, []string{"a=9/c", "Host=1/a", "host=2/b"}) {
 			t.Errorf("Local shown %q", got)
@@ -186,7 +187,7 @@ func TestSortByHeadings(t *testing.T) {
 	}
 
 	// The sort is shown again when the environment is next opened.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.Close()
 		w = NewWindow(files.Files)
 		w.Show()
@@ -205,15 +206,15 @@ func TestSortByHeadings(t *testing.T) {
 // The other tables are still kept in order of their keys, and cannot be
 // sorted by their headings.
 func TestTablesKeptInOrder(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		table := newKeyValueTable("Key", "Value")
 		table.add("b", "2")
 		table.add("a", "1")
 		if got := shownRows(table); !slices.Equal(got, []string{"a=1/", "b=2/"}) {
 			t.Errorf("shown %q", got)
 		}
-		clickHeading(table.table, colKey, qt.NoModifier)
-		clickHeading(table.table, colKey, qt.NoModifier)
+		clickHeading(table.table, colKey, qtcore.NoModifier)
+		clickHeading(table.table, colKey, qtcore.NoModifier)
 		if got := shownRows(table); !slices.Equal(got, []string{"a=1/", "b=2/"}) || table.sortKeys != nil {
 			t.Errorf("shown %q after clicking the heading", got)
 		}

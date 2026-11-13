@@ -1,14 +1,15 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"slices"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -39,7 +40,7 @@ func TestPinnedRequests(t *testing.T) {
 		}
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree
@@ -123,7 +124,7 @@ func TestPinnedRequests(t *testing.T) {
 
 	waitFor(t, "the response", func() bool { return fieldValue(w.response, "Status") == "200 OK" })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		tree := w.requests.tree
 
 		w.tabs.bar.SetCurrentIndex(1)
@@ -163,7 +164,7 @@ func TestPinnedRequests(t *testing.T) {
 	})
 
 	// Tabs that are not in a set are not opened again by the next run.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree
@@ -233,19 +234,19 @@ func TestPinnedRequests(t *testing.T) {
 func TestNewTabAndSave(t *testing.T) {
 	files := testFiles(t)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		click := func(index int) {
 			centre := w.tabs.bar.TabRect(index).Center()
-			at := qt.NewQPointF3(float64(centre.X()), float64(centre.Y()))
-			for _, kind := range []qt.QEvent__Type{qt.QEvent__MouseButtonPress, qt.QEvent__MouseButtonRelease} {
-				buttons := qt.LeftButton
-				if kind == qt.QEvent__MouseButtonRelease {
-					buttons = qt.NoButton
+			at := qtcore.QPointF{X: float64(centre.X), Y: float64(centre.Y)}
+			for _, kind := range []qtcore.QEventType{qtcore.QEventMouseButtonPress, qtcore.QEventMouseButtonRelease} {
+				buttons := qtcore.LeftButton
+				if kind == qtcore.QEventMouseButtonRelease {
+					buttons = qtcore.NoButton
 				}
-				event := qt.NewQMouseEvent(kind, at, qt.LeftButton, buttons, qt.NoModifier)
-				qt.QCoreApplication_SendEvent(w.tabs.bar.QObject, event.QEvent)
+				event := qtgui.NewQMouseEvent(kind, at, at, qtcore.LeftButton, buttons, qtcore.NoModifier)
+				qtcore.QCoreApplicationSendEvent(w.tabs.bar.AsQObject(), event.AsQEvent())
 				event.Delete()
 			}
 		}

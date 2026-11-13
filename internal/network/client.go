@@ -144,13 +144,18 @@ func (c *Client) loadCert(h Host, ask Ask) (*tls.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	key, err = c.decryptKey(h.Key, key, ask)
+	key, passphrase, err := c.decryptKey(h.Key, key, ask)
 	if err != nil {
 		return nil, err
 	}
 	cert, err := tls.X509KeyPair(data, key)
 	if err != nil {
 		return nil, err
+	}
+	// Only now is the passphrase known to be right: a wrong one can pass
+	// for one that decrypts the key, which is then not a key.
+	if passphrase != nil {
+		c.secrets[Secret{Path: h.Key}] = *passphrase
 	}
 	return &cert, nil
 }
@@ -181,31 +186,38 @@ func (c *Client) loadPKCS12(path string, data []byte, ask Ask) (*tls.Certificate
 }
 
 // decryptKey returns a private key in PEM decrypted, asking for its
-// passphrase, if it is encrypted.
-func (c *Client) decryptKey(path string, data []byte, ask Ask) ([]byte, error) {
+// passphrase, if it is encrypted, with the passphrase it was given, which is
+// nil for a key that is not encrypted.
+func (c *Client) decryptKey(path string, data []byte, ask Ask) ([]byte, *string, error) {
 	block, _ := pem.Decode(data)
 	if block == nil {
-		return nil, fmt.Errorf("%s is not a key in PEM", path)
+		return nil, nil, fmt.Errorf("%s is not a key in PEM", path)
 	}
 	if block.Type == "ENCRYPTED PRIVATE KEY" {
-		return nil, fmt.Errorf("%s is an encrypted PKCS #8 key, which cannot be read: put it with its certificate in a PKCS #12 file (openssl pkcs12 -export -in cert.pem -inkey key.pem -out client.p12) and give that as the certificate", path)
+		return nil, nil, fmt.Errorf("%s is an encrypted PKCS #8 key, which cannot be read: put it with its certificate in a PKCS #12 file (openssl pkcs12 -export -in cert.pem -inkey key.pem -out client.p12) and give that as the certificate", path)
 	}
 	//lint:ignore SA1019 the legacy encryption of PEM is weak, but is what an encrypted key made by older tools has.
 	if !x509.IsEncryptedPEMBlock(block) {
-		return data, nil
+		return data, nil, nil
 	}
-	secret := Secret{Path: path}
-	passphrase, err := ask(secret)
+	passphrase, err := ask(Secret{Path: path})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	//lint:ignore SA1019 as above.
 	der, err := x509.DecryptPEMBlock(block, []byte(passphrase))
 	if err != nil {
-		return nil, fmt.Errorf("%s could not be decrypted with this passphrase: %w", path, err)
+		return nil, nil, fmt.Errorf("%s could not be decrypted with this passphrase: %w", path, err)
 	}
-	c.secrets[secret] = passphrase
-	return pem.EncodeToMemory(&pem.Block{Type: block.Type, Bytes: der}), nil
+	return pem.EncodeToMemory(&pem.Block{Type: block.Type, Bytes: der}), &passphrase, nil
+}
+
+// Accepted reports whether a secret the client was loaded with was used: the
+// passphrase opened its key, or it is the password of the proxy, which is
+// only known to be wrong once the proxy refuses it.
+func (c *Client) Accepted(secret Secret) bool {
+	_, ok := c.secrets[secret]
+	return ok
 }
 
 // Config returns the configuration the client was loaded from.

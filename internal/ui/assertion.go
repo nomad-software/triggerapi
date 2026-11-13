@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"net/http"
 	"strconv"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/mcp"
@@ -62,11 +64,11 @@ func comparisonIndex(c assert.Comparison) int {
 
 // assertIcon returns a tick for an assertion that passed, and a cross for
 // one that failed.
-func assertIcon(passed bool) *qt.QIcon {
+func assertIcon(passed bool) *qtgui.QIcon {
 	if passed {
-		return cachedIcon("passed", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourPassed), drawTick) })
+		return cachedIcon("passed", func() *qtgui.QIcon { return drawIcon(iconSize*2, themeColour(colourPassed), drawTick) })
 	}
-	return cachedIcon("failed", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourFailed), drawCross) })
+	return cachedIcon("failed", func() *qtgui.QIcon { return drawIcon(iconSize*2, themeColour(colourFailed), drawCross) })
 }
 
 // minAssertColumn is the least width of the columns of an assertion that
@@ -80,31 +82,45 @@ const comboPadding = 6
 // paddedStyle is the style of the lists of the table of assertions, once
 // made: that of the theme in effect, with room before the text, which
 // applyTheme changes the style it is over to.
-var paddedStyle *qt.QProxyStyle
+var paddedStyle *paddedComboStyleOver
+
+// paddedComboStyleOver is a style over another which puts room before the
+// text of a list.
+type paddedComboStyleOver struct {
+	qtwidgets.QProxyStyleBase
+}
 
 // paddedComboStyle returns the style of the lists of the table of
 // assertions.
-func paddedComboStyle() *qt.QStyle {
+func paddedComboStyle() *qtwidgets.QStyle {
 	if paddedStyle == nil {
 		// A proxy style made without one is over the desktop's style,
 		// not the application's.
-		paddedStyle = qt.NewQProxyStyle2(themeStyleName())
-		paddedStyle.OnSubControlRect(func(super func(qt.QStyle__ComplexControl, *qt.QStyleOptionComplex, qt.QStyle__SubControl, *qt.QWidget) *qt.QRect, control qt.QStyle__ComplexControl, option *qt.QStyleOptionComplex, sub qt.QStyle__SubControl, widget *qt.QWidget) *qt.QRect {
-			rect := super(control, option, sub, widget)
-			if control == qt.QStyle__CC_ComboBox && sub == qt.QStyle__SC_ComboBoxEditField {
-				rect.SetLeft(rect.Left() + comboPadding)
-			}
-			return rect
-		})
-		paddedStyle.OnSizeFromContents(func(super func(qt.QStyle__ContentsType, *qt.QStyleOption, *qt.QSize, *qt.QWidget) *qt.QSize, kind qt.QStyle__ContentsType, option *qt.QStyleOption, size *qt.QSize, widget *qt.QWidget) *qt.QSize {
-			hint := super(kind, option, size, widget)
-			if kind == qt.QStyle__CT_ComboBox {
-				hint.SetWidth(hint.Width() + comboPadding)
-			}
-			return hint
-		})
+		paddedStyle = &paddedComboStyleOver{}
+		qtwidgets.NewQProxyStyleWithKeyWith(paddedStyle, themeStyleName())
+		// It is kept for as long as the application runs.
+		paddedStyle.SetParent(qtcore.QCoreApplicationInstance())
 	}
-	return paddedStyle.QStyle
+	return paddedStyle.AsQStyle()
+}
+
+// SubControlRect moves the start of the text of a list along.
+func (s *paddedComboStyleOver) SubControlRect(control qtwidgets.QStyleComplexControl, option *qtwidgets.QStyleOptionComplex, sub qtwidgets.QStyleSubControls, widget *qtwidgets.QWidget) qtcore.QRect {
+	rect := s.Super().SubControlRect(control, option, sub, widget)
+	if control == qtwidgets.QStyleCC_ComboBox && sub == qtwidgets.QStyleSC_ComboBoxEditField {
+		rect.X += comboPadding
+		rect.Width -= comboPadding
+	}
+	return rect
+}
+
+// SizeFromContents makes a list wider by the room before its text.
+func (s *paddedComboStyleOver) SizeFromContents(kind qtwidgets.QStyleContentsType, option *qtwidgets.QStyleOption, size qtcore.QSize, widget *qtwidgets.QWidget) qtcore.QSize {
+	hint := s.Super().SizeFromContents(kind, option, size, widget)
+	if kind == qtwidgets.QStyleCT_ComboBox {
+		hint.Width += comboPadding
+	}
+	return hint
 }
 
 // The columns of the table of assertions.
@@ -128,7 +144,7 @@ const (
 // After a response each row is marked with how its check went, and why it
 // failed if it did.
 type assertTable struct {
-	table    *qt.QTableWidget
+	table    *qtwidgets.QTableWidget
 	updating bool
 
 	// onChange is called after the user edits or removes a row.
@@ -142,26 +158,26 @@ type assertTable struct {
 }
 
 func newAssertTable(highlight *placeholderHighlighter) *assertTable {
-	t := &assertTable{table: qt.NewQTableWidget3(0, 7)}
+	t := &assertTable{table: qtwidgets.NewQTableWidgetWithRows(0, 7, nil)}
 
 	t.table.SetHorizontalHeaderLabels([]string{"", "Check", "Name", "Comparison", "Value", "Result", ""})
-	t.table.SetIconSize(qt.NewQSize2(removeIconSize, removeIconSize))
+	t.table.SetIconSize(qtcore.QSize{Width: removeIconSize, Height: removeIconSize})
 	t.table.VerticalHeader().SetVisible(false)
-	t.table.SetSelectionBehavior(qt.QAbstractItemView__SelectRows)
-	t.table.SetSelectionMode(qt.QAbstractItemView__SingleSelection)
+	t.table.SetSelectionBehavior(qtwidgets.QAbstractItemViewSelectRows)
+	t.table.SetSelectionMode(qtwidgets.QAbstractItemViewSingleSelection)
 	// Placeholders in the values are replaced when they are checked.
 	highlight.table(t.table)
 	delegateCheckColumn(t.table, colAssertEnabled)
 	delegateRemoveColumn(t.table, colAssertRemove)
 
 	// The columns are fitted to what is in them (fitColumns).
-	t.table.SetHorizontalScrollMode(qt.QAbstractItemView__ScrollPerPixel)
-	t.table.OnResizeEvent(func(super func(*qt.QResizeEvent), event *qt.QResizeEvent) {
+	t.table.SetHorizontalScrollMode(qtwidgets.QAbstractItemViewScrollPerPixel)
+	t.table.OverrideResizeEvent(func(super func(*qtgui.QResizeEvent), event *qtgui.QResizeEvent) {
 		super(event)
 		t.fitColumns()
 	})
 
-	t.table.OnItemChanged(func(item *qt.QTableWidgetItem) {
+	t.table.OnItemChanged(func(item *qtwidgets.QTableWidgetItem) {
 		if !t.updating {
 			t.edited(item.Row())
 		}
@@ -172,8 +188,8 @@ func newAssertTable(highlight *placeholderHighlighter) *assertTable {
 	return t
 }
 
-func (t *assertTable) widget() *qt.QWidget {
-	return t.table.QWidget
+func (t *assertTable) widget() *qtwidgets.QWidget {
+	return t.table.AsQWidget()
 }
 
 // edited is called after a row has been changed by the user. A change to
@@ -205,43 +221,43 @@ func (t *assertTable) addRow(c assert.Check) {
 	row := t.table.RowCount()
 	t.table.InsertRow(row)
 
-	check := qt.NewQTableWidgetItem()
-	check.SetFlags(qt.ItemIsEnabled | qt.ItemIsSelectable | qt.ItemIsUserCheckable)
+	check := qtwidgets.NewQTableWidgetItem()
+	check.SetFlags(qtcore.ItemIsEnabled | qtcore.ItemIsSelectable | qtcore.ItemIsUserCheckable)
 	check.SetCheckState(checkState(c.Enabled))
 	t.table.SetItem(row, colAssertEnabled, check)
 
-	t.table.SetItem(row, colAssertPath, qt.NewQTableWidgetItem2(c.Path))
-	t.table.SetItem(row, colAssertValue, qt.NewQTableWidgetItem2(c.Value))
+	t.table.SetItem(row, colAssertPath, qtwidgets.NewQTableWidgetItemWithText(c.Path))
+	t.table.SetItem(row, colAssertValue, qtwidgets.NewQTableWidgetItemWithText(c.Value))
 
 	// The cells of the lists hold nothing of their own, and are drawn
 	// selected with the rest of the row.
 	for _, column := range []int{colAssertSubject, colAssertComparison} {
-		blank := qt.NewQTableWidgetItem()
-		blank.SetFlags(qt.ItemIsEnabled | qt.ItemIsSelectable)
+		blank := qtwidgets.NewQTableWidgetItem()
+		blank.SetFlags(qtcore.ItemIsEnabled | qtcore.ItemIsSelectable)
 		t.table.SetItem(row, column, blank)
 	}
-	subjects := qt.NewQComboBox2()
+	subjects := qtwidgets.NewQComboBox(nil)
 	subjects.SetStyle(paddedComboStyle())
 	for _, s := range assertSubjects {
 		subjects.AddItem(s.label)
 	}
 	subjects.SetCurrentIndex(subjectIndex(c.Subject))
-	comparisons := qt.NewQComboBox2()
+	comparisons := qtwidgets.NewQComboBox(nil)
 	comparisons.SetStyle(paddedComboStyle())
 	for _, e := range assertComparisons {
 		comparisons.AddItem(e.label)
 	}
 	comparisons.SetCurrentIndex(comparisonIndex(c.Comparison))
-	t.table.SetCellWidget(row, colAssertSubject, subjects.QWidget)
-	t.table.SetCellWidget(row, colAssertComparison, comparisons.QWidget)
+	t.table.SetCellWidget(row, colAssertSubject, subjects.AsQWidget())
+	t.table.SetCellWidget(row, colAssertComparison, comparisons.AsQWidget())
 	// The rows move as others are removed, so the row of a list is found
 	// when it is changed.
-	for _, combo := range []*qt.QComboBox{subjects, comparisons} {
+	for _, combo := range []*qtwidgets.QComboBox{subjects, comparisons} {
 		combo.OnCurrentIndexChanged(func(int) {
 			if t.updating {
 				return
 			}
-			if row := t.rowOf(combo.QWidget); row >= 0 {
+			if row := t.rowOf(combo.AsQWidget()); row >= 0 {
 				t.fitCells(row)
 				t.edited(row)
 				t.fitColumns()
@@ -251,11 +267,11 @@ func (t *assertTable) addRow(c assert.Check) {
 
 	// Nothing is typed in the cell of the result, which is left enabled so
 	// that its icon is not greyed, or in that of the button.
-	status := qt.NewQTableWidgetItem()
-	status.SetFlags(qt.ItemIsEnabled | qt.ItemIsSelectable)
+	status := qtwidgets.NewQTableWidgetItem()
+	status.SetFlags(qtcore.ItemIsEnabled | qtcore.ItemIsSelectable)
 	t.table.SetItem(row, colAssertStatus, status)
-	blank := qt.NewQTableWidgetItem()
-	blank.SetFlags(qt.NoItemFlags)
+	blank := qtwidgets.NewQTableWidgetItem()
+	blank.SetFlags(qtcore.NoItemFlags)
 	t.table.SetItem(row, colAssertRemove, blank)
 
 	t.fitCells(row)
@@ -275,7 +291,7 @@ func (t *assertTable) fitColumns() {
 	header := t.table.HorizontalHeader()
 	total := 0
 	for column := range t.table.ColumnCount() {
-		header.SetSectionResizeMode2(column, qt.QHeaderView__Interactive)
+		header.SetSectionResizeMode(column, qtwidgets.QHeaderViewInteractive)
 		width := max(t.table.SizeHintForColumn(column), header.SectionSizeHint(column))
 		if t.flows(column) {
 			width = max(width, minAssertColumn)
@@ -305,10 +321,10 @@ func (t *assertTable) flows(column int) bool {
 }
 
 // rowOf returns the row a widget of a cell is in, or -1 if it is in none.
-func (t *assertTable) rowOf(widget *qt.QWidget) int {
+func (t *assertTable) rowOf(widget *qtwidgets.QWidget) int {
 	for row := range t.table.RowCount() {
 		for _, column := range []int{colAssertSubject, colAssertComparison} {
-			if cell := t.table.CellWidget(row, column); cell != nil && cell.UnsafePointer() == widget.UnsafePointer() {
+			if cell := t.table.CellWidget(row, column); cell != nil && cell.Ptr() == widget.Ptr() {
 				return row
 			}
 		}
@@ -325,17 +341,17 @@ func (t *assertTable) fitCells(row int) {
 
 	c := t.check(row)
 	for column, used := range map[int]bool{colAssertPath: c.Subject.HasPath(), colAssertValue: c.Comparison.HasValue()} {
-		flags := qt.ItemIsSelectable
+		flags := qtcore.ItemIsSelectable
 		if used {
-			flags |= qt.ItemIsEnabled | qt.ItemIsEditable
+			flags |= qtcore.ItemIsEnabled | qtcore.ItemIsEditable
 		}
 		t.table.Item(row, column).SetFlags(flags)
 	}
 }
 
 // combo returns the list in a cell.
-func (t *assertTable) combo(row, column int) *qt.QComboBox {
-	return qt.UnsafeNewQComboBox(t.table.CellWidget(row, column).UnsafePointer())
+func (t *assertTable) combo(row, column int) *qtwidgets.QComboBox {
+	return qtwidgets.QComboBoxCast(t.table.CellWidget(row, column))
 }
 
 // check returns the check of a row.
@@ -345,7 +361,7 @@ func (t *assertTable) check(row int) assert.Check {
 		Path:       t.table.Item(row, colAssertPath).Text(),
 		Comparison: assertComparisons[max(t.combo(row, colAssertComparison).CurrentIndex(), 0)].comparison,
 		Value:      t.table.Item(row, colAssertValue).Text(),
-		Enabled:    t.table.Item(row, colAssertEnabled).CheckState() == qt.Checked,
+		Enabled:    t.table.Item(row, colAssertEnabled).CheckState() == qtcore.Checked,
 	}
 }
 
@@ -414,7 +430,7 @@ func (t *assertTable) showResults(results []assert.Result) {
 	t.updating = true
 
 	t.statuses = len(results) > 0
-	none := qt.NewQIcon()
+	none := qtgui.NewQIcon()
 	defer none.Delete()
 
 	used := make([]bool, len(results))

@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"fmt"
 	"runtime"
 	"slices"
@@ -8,8 +12,6 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf16"
-
-	qt "github.com/mappu/miqt/qt6"
 )
 
 // span is a run of text: where it starts and how long it is, in the UTF-16
@@ -61,23 +63,23 @@ func findAll(text, query string, matchCase bool) []span {
 // it is typed. Every match is marked in the body by its highlighter, and the
 // one that has been gone to is the selection.
 type findBar struct {
-	root *qt.QWidget
+	root *qtwidgets.QWidget
 
 	// button shows and hides the bar. It is beside the tabs of the
 	// response panel, and is down while the bar is on show.
-	button *qt.QToolButton
+	button *qtwidgets.QToolButton
 
-	field *qt.QLineEdit
+	field *qtwidgets.QLineEdit
 	// count says which of the matches is selected, and how many there are.
-	count    *qt.QLabel
-	previous *qt.QToolButton
-	next     *qt.QToolButton
+	count    *qtwidgets.QLabel
+	previous *qtwidgets.QToolButton
+	next     *qtwidgets.QToolButton
 	// matchCase has capitals and small letters told apart.
-	matchCase *qt.QToolButton
-	hide      *qt.QToolButton
+	matchCase *qtwidgets.QToolButton
+	hide      *qtwidgets.QToolButton
 
-	edit        *qt.QPlainTextEdit
-	highlighter *qt.QSyntaxHighlighter
+	edit        *qtwidgets.QPlainTextEdit
+	highlighter *highlighter
 	fold        *folder
 
 	// query is what is being looked for, which is nothing while the bar is
@@ -86,7 +88,7 @@ type findBar struct {
 	query string
 	exact bool
 	// format is how a match is marked.
-	format *qt.QTextCharFormat
+	format *qtgui.QTextCharFormat
 	// matches are the places the query is in the body, and current the one
 	// that is selected, or -1.
 	matches []span
@@ -98,19 +100,19 @@ type findBar struct {
 
 // newFindBar returns the bar which finds text in an editor. The highlighter
 // of the editor must call highlight for each line.
-func newFindBar(edit *qt.QPlainTextEdit, highlighter *qt.QSyntaxHighlighter, fold *folder) *findBar {
+func newFindBar(edit *qtwidgets.QPlainTextEdit, highlighter *highlighter, fold *folder) *findBar {
 	f := &findBar{
-		root:        qt.NewQWidget2(),
-		field:       qt.NewQLineEdit2(),
-		count:       qt.NewQLabel2(),
-		previous:    qt.NewQToolButton2(),
-		next:        qt.NewQToolButton2(),
-		matchCase:   qt.NewQToolButton2(),
-		hide:        qt.NewQToolButton2(),
+		root:        qtwidgets.NewQWidget(nil),
+		field:       qtwidgets.NewQLineEdit(nil),
+		count:       qtwidgets.NewQLabel(nil),
+		previous:    qtwidgets.NewQToolButton(nil),
+		next:        qtwidgets.NewQToolButton(nil),
+		matchCase:   qtwidgets.NewQToolButton(nil),
+		hide:        qtwidgets.NewQToolButton(nil),
 		edit:        edit,
 		highlighter: highlighter,
 		fold:        fold,
-		format:      qt.NewQTextCharFormat(),
+		format:      qtgui.NewQTextCharFormat(),
 		current:     -1,
 	}
 
@@ -121,27 +123,27 @@ func newFindBar(edit *qt.QPlainTextEdit, highlighter *qt.QSyntaxHighlighter, fol
 	f.field.SetPlaceholderText("Find in the response")
 	f.field.SetClearButtonEnabled(true)
 	f.field.OnTextChanged(func(string) { f.search() })
-	f.field.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
+	f.field.OverrideKeyPressEvent(func(super func(*qtgui.QKeyEvent), event *qtgui.QKeyEvent) {
 		switch event.Key() {
-		case int(qt.Key_Return), int(qt.Key_Enter):
-			if event.Modifiers()&qt.ShiftModifier != 0 {
+		case int(qtcore.Key_Return), int(qtcore.Key_Enter):
+			if event.Modifiers()&qtcore.ShiftModifier != 0 {
 				f.step(-1)
 			} else {
 				f.step(1)
 			}
-		case int(qt.Key_Escape):
+		case int(qtcore.Key_Escape):
 			f.close()
 		default:
 			super(event)
 		}
 	})
 
-	f.previous.SetArrowType(qt.UpArrow)
+	f.previous.SetArrowType(qtcore.UpArrow)
 	f.previous.SetToolTip("Previous match (Shift+Enter)")
-	f.previous.OnClicked(func() { f.step(-1) })
-	f.next.SetArrowType(qt.DownArrow)
+	f.previous.OnClicked(func(_ bool) { f.step(-1) })
+	f.next.SetArrowType(qtcore.DownArrow)
 	f.next.SetToolTip("Next match (Enter)")
-	f.next.OnClicked(func() { f.step(1) })
+	f.next.OnClicked(func(_ bool) { f.step(1) })
 
 	f.matchCase.SetText("Aa")
 	f.matchCase.SetToolTip("Match case")
@@ -150,23 +152,23 @@ func newFindBar(edit *qt.QPlainTextEdit, highlighter *qt.QSyntaxHighlighter, fol
 
 	f.hide.SetText("✕")
 	f.hide.SetToolTip("Close (Escape)")
-	f.hide.OnClicked(func() { f.close() })
+	f.hide.OnClicked(func(_ bool) { f.close() })
 
-	for _, button := range []*qt.QToolButton{f.previous, f.next, f.matchCase, f.hide} {
+	for _, button := range []*qtwidgets.QToolButton{f.previous, f.next, f.matchCase, f.hide} {
 		button.SetAutoRaise(true)
 	}
 
-	layout := qt.NewQHBoxLayout(f.root)
-	layout.SetContentsMargins(0, 0, 0, 0)
+	layout := qtwidgets.NewQHBoxLayout(f.root)
+	layout.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 0, Right: 0, Bottom: 0})
 	layout.SetSpacing(2)
-	layout.AddWidget2(f.field.QWidget, 1)
+	layout.AddWidgetFull(f.field.AsQWidget(), 1, 0)
 	layout.AddSpacing(6)
-	layout.AddWidget(f.count.QWidget)
+	layout.AddWidget(f.count.AsQWidget())
 	layout.AddSpacing(6)
-	layout.AddWidget(f.previous.QWidget)
-	layout.AddWidget(f.next.QWidget)
-	layout.AddWidget(f.matchCase.QWidget)
-	layout.AddWidget(f.hide.QWidget)
+	layout.AddWidget(f.previous.AsQWidget())
+	layout.AddWidget(f.next.AsQWidget())
+	layout.AddWidget(f.matchCase.AsQWidget())
+	layout.AddWidget(f.hide.AsQWidget())
 	f.root.SetVisible(false)
 
 	f.recolour()
@@ -212,7 +214,7 @@ func (f *findBar) toggled(open bool) {
 	// Text selected in the response is what to look for.
 	cursor := f.edit.TextCursor()
 	selected := cursor.SelectedText()
-	release(cursor)
+	cursor.Delete()
 	// A selection of more than one line has U+2029 between its lines.
 	if selected != "" && !strings.ContainsAny(selected, "\n\u2029") {
 		f.field.SetText(selected)
@@ -245,7 +247,7 @@ func (f *findBar) search() {
 	}
 
 	cursor := f.edit.TextCursor()
-	defer release(cursor)
+	defer cursor.Delete()
 	if len(f.matches) > 0 {
 		from := cursor.SelectionStart()
 		first := sort.Search(len(f.matches), func(i int) bool { return f.matches[i].start >= from })
@@ -275,9 +277,9 @@ func (f *findBar) goTo(index int) {
 	f.fold.reveal(f.edit.Document().FindBlock(match.start).BlockNumber())
 
 	cursor := f.edit.TextCursor()
-	defer release(cursor)
+	defer cursor.Delete()
 	cursor.SetPosition(match.start)
-	cursor.SetPosition2(match.start+match.length, qt.QTextCursor__KeepAnchor)
+	cursor.SetPositionFull(match.start+match.length, qtgui.QTextCursorKeepAnchor)
 	f.edit.SetTextCursor(cursor)
 }
 
@@ -317,22 +319,20 @@ func (f *findBar) recolour() {
 	// of the application, which a change of theme changes at once, and
 	// those of widgets only a turn of the event loop later; the palette
 	// sets only these, so the editor has the others of the theme.
-	theme := qt.QGuiApplication_Palette()
-	palette := qt.NewQPalette()
+	theme := qtgui.QGuiApplicationPalette()
+	palette := qtgui.NewQPalette()
 	defer palette.Delete()
-	for _, role := range []qt.QPalette__ColorRole{qt.QPalette__Highlight, qt.QPalette__HighlightedText} {
-		palette.SetColor(qt.QPalette__Inactive, role, theme.Color(qt.QPalette__Active, role))
+	for _, role := range []qtgui.QPaletteColorRole{qtgui.QPaletteHighlight, qtgui.QPaletteHighlightedText} {
+		palette.SetGroupColor(qtgui.QPaletteInactive, role, theme.GroupColor(qtgui.QPaletteActive, role))
 	}
 	runtime.KeepAlive(theme)
 	f.edit.SetPalette(palette)
 
-	colour := qt.NewQColor6(themeColour(colourMatch))
-	defer colour.Delete()
-	text := qt.NewQColor6(readableOn(colour))
-	defer text.Delete()
+	colour := qcolour(themeColour(colourMatch))
+	text := qcolour(readableOn(colour))
 
 	// The format keeps copies of the brushes.
-	background, foreground := qt.NewQBrush3(colour), qt.NewQBrush3(text)
+	background, foreground := qtgui.NewQBrushWithColor(colour), qtgui.NewQBrushWithColor(text)
 	defer background.Delete()
 	defer foreground.Delete()
 	f.format.SetBackground(background)

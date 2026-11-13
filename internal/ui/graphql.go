@@ -1,7 +1,8 @@
 package ui
 
 import (
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/completion"
@@ -23,21 +24,21 @@ const (
 // server, which it describes through introspection, and which what can be
 // typed in the query is offered from.
 type graphqlPanel struct {
-	root *qt.QWidget
+	root *qtwidgets.QWidget
 
-	url  *qt.QLineEdit
-	send *qt.QPushButton
+	url  *qtwidgets.QLineEdit
+	send *qtwidgets.QPushButton
 	// save saves a request that is not saved yet.
-	save *qt.QPushButton
+	save *qtwidgets.QPushButton
 
-	tabs  *qt.QTabWidget
-	query *qt.QPlainTextEdit
+	tabs  *qtwidgets.QTabWidget
+	query *qtwidgets.QPlainTextEdit
 	// queryFold folds the selections and arguments of the query, and
 	// completer offers what can be typed in it.
 	queryFold *folder
 	completer *completer
 	// variables are the values of the variables of the query, as JSON.
-	variables *qt.QPlainTextEdit
+	variables *qtwidgets.QPlainTextEdit
 	// variablesFold folds the objects and arrays of the variables.
 	variablesFold *folder
 	// format sets out the variables.
@@ -55,10 +56,10 @@ type graphqlPanel struct {
 	// loaded, and schema shows it in the schema definition language, and
 	// reload asks the server for it again.
 	described *graphql.Schema
-	schema    *qt.QPlainTextEdit
+	schema    *qtwidgets.QPlainTextEdit
 	// schemaFold folds the definitions of the schema.
 	schemaFold *folder
-	reload     *qt.QPushButton
+	reload     *qtwidgets.QPushButton
 	// status reports a failure to load the schema.
 	status statusLine
 	// loaded is the endpoint the schema was last asked for, or "" if it
@@ -75,28 +76,28 @@ type graphqlPanel struct {
 }
 
 func newGraphQLPanel() *graphqlPanel {
-	p := &graphqlPanel{root: qt.NewQWidget2(), panelState: newPanelState()}
+	p := &graphqlPanel{root: qtwidgets.NewQWidget(nil), panelState: newPanelState()}
 
-	p.url = qt.NewQLineEdit2()
+	p.url = qtwidgets.NewQLineEdit(nil)
 	p.url.SetPlaceholderText("Endpoint, e.g. https://api.example.com/graphql or {{host}}/graphql")
 	p.typedLine(p.url)
 	p.url.OnEditingFinished(func() { p.loadSchema(false) })
 	p.highlight.lineEdit(p.url)
 
-	p.send = qt.NewQPushButton3("Send")
+	p.send = qtwidgets.NewQPushButtonWithText("Send", nil)
 	makePrimary(p.send)
 	// Save is only for a request that is not saved, as one that is saved is
 	// saved with every change.
-	p.save = qt.NewQPushButton3("Save")
+	p.save = qtwidgets.NewQPushButtonWithText("Save", nil)
 
-	top := qt.NewQHBoxLayout2()
-	top.AddWidget2(p.url.QWidget, 1)
-	top.AddWidget(p.send.QWidget)
-	top.AddWidget(p.save.QWidget)
+	top := qtwidgets.NewQHBoxLayout(nil)
+	top.AddWidgetFull(p.url.AsQWidget(), 1, 0)
+	top.AddWidget(p.send.AsQWidget())
+	top.AddWidget(p.save.AsQWidget())
 
-	fixed := qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont)
+	fixed := qtgui.QFontDatabaseGetSystemFont(qtgui.QFontDatabaseFixedFont)
 
-	p.query = qt.NewQPlainTextEdit2()
+	p.query = qtwidgets.NewQPlainTextEdit(nil)
 	p.query.SetFont(fixed)
 	p.query.SetPlaceholderText("The query, e.g. { user(id: 1) { name } }")
 	p.typedText(p.query)
@@ -105,12 +106,12 @@ func newGraphQLPanel() *graphqlPanel {
 	p.highlight.graphql(p.query.Document())
 	p.queryFold = newFolder(p.query, always)
 	p.completer = newCompleter(p.query, p.completeQuery)
-	p.query.OnFocusInEvent(func(super func(*qt.QFocusEvent), event *qt.QFocusEvent) {
+	p.query.OverrideFocusInEvent(func(super func(*qtgui.QFocusEvent), event *qtgui.QFocusEvent) {
 		super(event)
 		p.askSchema(false)
 	})
 
-	p.variables = qt.NewQPlainTextEdit2()
+	p.variables = qtwidgets.NewQPlainTextEdit(nil)
 	p.variables.SetFont(fixed)
 	p.variables.SetPlaceholderText(`The variables of the query as a JSON object, e.g. {"id": 1}`)
 	p.typedText(p.variables)
@@ -118,14 +119,14 @@ func newGraphQLPanel() *graphqlPanel {
 	p.variablesFold = newFolder(p.variables, always)
 	p.format = newFormatButton(p.variables, p.commit)
 
-	formatBar := qt.NewQHBoxLayout2()
-	formatBar.AddWidget(p.format.button.QWidget)
+	formatBar := qtwidgets.NewQHBoxLayout(nil)
+	formatBar.AddWidget(p.format.button.AsQWidget())
 	formatBar.AddStretch()
 
-	variablesTab := qt.NewQWidget2()
-	variablesLayout := qt.NewQVBoxLayout(variablesTab)
-	variablesLayout.AddWidget2(p.variables.QWidget, 1)
-	variablesLayout.AddLayout(formatBar.QLayout)
+	variablesTab := qtwidgets.NewQWidget(nil)
+	variablesLayout := qtwidgets.NewQVBoxLayout(variablesTab)
+	variablesLayout.AddWidgetFull(p.variables.AsQWidget(), 1, 0)
+	variablesLayout.AddLayout(formatBar.AsQLayout())
 
 	p.headers = newExclusiveTable("Header", "Value")
 	p.headers.onChange = p.changed
@@ -139,7 +140,7 @@ func newGraphQLPanel() *graphqlPanel {
 	p.assertions = newAssertTable(p.highlight)
 	p.assertions.onChange = p.changed
 
-	p.tabs = qt.NewQTabWidget2()
+	p.tabs = qtwidgets.NewQTabWidget(nil)
 	// The order matches the tab constants.
 	p.tabs.AddTab(plainPage(p.newQueryTab()), "Query")
 	p.tabs.AddTab(plainPage(variablesTab), "Variables")
@@ -148,52 +149,52 @@ func newGraphQLPanel() *graphqlPanel {
 	p.tabs.AddTab(plainPage(p.newSchemaTab()), "Schema")
 	p.tabs.OnCurrentChanged(func(int) { p.loadSchema(false) })
 
-	layout := qt.NewQVBoxLayout(p.root)
-	layout.AddLayout(top.QLayout)
-	layout.AddWidget(p.tabs.QWidget)
+	layout := qtwidgets.NewQVBoxLayout(p.root)
+	layout.AddLayout(top.AsQLayout())
+	layout.AddWidget(p.tabs.AsQWidget())
 
 	return p
 }
 
 // newQueryTab returns the tab the query is typed in.
-func (p *graphqlPanel) newQueryTab() *qt.QWidget {
-	tab := qt.NewQWidget2()
-	layout := qt.NewQVBoxLayout(tab)
-	layout.AddWidget(p.query.QWidget)
+func (p *graphqlPanel) newQueryTab() *qtwidgets.QWidget {
+	tab := qtwidgets.NewQWidget(nil)
+	layout := qtwidgets.NewQVBoxLayout(tab)
+	layout.AddWidget(p.query.AsQWidget())
 	return tab
 }
 
 // newSchemaTab returns the tab which shows the schema of the server, with
 // what went wrong if it could not be loaded above it.
-func (p *graphqlPanel) newSchemaTab() *qt.QWidget {
+func (p *graphqlPanel) newSchemaTab() *qtwidgets.QWidget {
 	p.status = newStatusLine()
 
-	p.schema = qt.NewQPlainTextEdit2()
-	p.schema.SetFont(qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont))
+	p.schema = qtwidgets.NewQPlainTextEdit(nil)
+	p.schema.SetFont(qtgui.QFontDatabaseGetSystemFont(qtgui.QFontDatabaseFixedFont))
 	p.schema.SetReadOnly(true)
 	p.schema.SetPlaceholderText("The schema of the server, which it is asked for while this tab is shown.")
 	// The schema is GraphQL too.
 	p.highlight.graphql(p.schema.Document())
 	p.schemaFold = newFolder(p.schema, always)
 
-	p.reload = qt.NewQPushButton3("Reload")
-	p.reload.OnClicked(func() { p.loadSchema(true) })
+	p.reload = qtwidgets.NewQPushButtonWithText("Reload", nil)
+	p.reload.OnClicked(func(_ bool) { p.loadSchema(true) })
 
-	bar := qt.NewQHBoxLayout2()
-	bar.AddWidget(p.reload.QWidget)
+	bar := qtwidgets.NewQHBoxLayout(nil)
+	bar.AddWidget(p.reload.AsQWidget())
 	bar.AddStretch()
 
-	tab := qt.NewQWidget2()
-	layout := qt.NewQVBoxLayout(tab)
-	layout.AddWidget(p.status.QWidget)
-	layout.AddWidget2(p.schema.QWidget, 1)
-	layout.AddLayout(bar.QLayout)
+	tab := qtwidgets.NewQWidget(nil)
+	layout := qtwidgets.NewQVBoxLayout(tab)
+	layout.AddWidget(p.status.AsQWidget())
+	layout.AddWidgetFull(p.schema.AsQWidget(), 1, 0)
+	layout.AddLayout(bar.AsQLayout())
 	return tab
 }
 
-func (p *graphqlPanel) widget() *qt.QWidget { return p.root }
+func (p *graphqlPanel) widget() *qtwidgets.QWidget { return p.root }
 
-func (p *graphqlPanel) saveButton() *qt.QPushButton { return p.save }
+func (p *graphqlPanel) saveButton() *qtwidgets.QPushButton { return p.save }
 
 func (p *graphqlPanel) authorization() *authEditor { return p.auth }
 

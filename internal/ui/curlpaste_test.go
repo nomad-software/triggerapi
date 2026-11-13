@@ -1,11 +1,11 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtgui"
+
 	"reflect"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
@@ -13,7 +13,7 @@ import (
 // paste puts text on the clipboard and pastes it into the URL field of the
 // REST request UI. It must be called on the main thread.
 func paste(w *Window, text string) {
-	qt.QGuiApplication_Clipboard().SetText(text)
+	qtgui.QGuiApplicationClipboard().SetText(text)
 	w.request.url.SetFocus()
 	w.request.url.Paste()
 	w.request.url.commit()
@@ -22,7 +22,7 @@ func paste(w *Window, text string) {
 func TestPasteCurlIntoUnsavedRequest(t *testing.T) {
 	var warned string
 	var got rest.Request
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		w.Show()
 		w.request.warnPaste = func(message string) { warned = message }
@@ -56,7 +56,7 @@ func TestPasteCurlIntoUnsavedRequest(t *testing.T) {
 }
 
 func TestPasteCurlNotTaken(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		w.Show()
 		var warned string

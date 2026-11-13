@@ -1,12 +1,12 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"reflect"
 	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/mappu/miqt/qt6/mainthread"
 )
 
 func TestPlaceholderRanges(t *testing.T) {
@@ -37,7 +37,7 @@ func TestPlaceholderRanges(t *testing.T) {
 func TestPlaceholderColouringLeavesRequestAlone(t *testing.T) {
 	files := testFiles(t)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 
@@ -66,7 +66,7 @@ func TestPlaceholderColouringLeavesRequestAlone(t *testing.T) {
 // Colouring a line edit creates short-lived Qt objects. Freeing one that Go
 // also frees crashes when the garbage collector next runs.
 func TestPlaceholderColouringSurvivesGC(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		w.Show()
 
@@ -78,6 +78,6 @@ func TestPlaceholderColouringSurvivesGC(t *testing.T) {
 
 	for range 5 {
 		runtime.GC()
-		mainthread.Wait(func() {})
+		qute.PostSync(func() {})
 	}
 }

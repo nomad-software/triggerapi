@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -128,7 +129,8 @@ func (i Item) Example() (string, error) {
 				return "", fmt.Errorf("the schema of the arguments could not be read: %w", err)
 			}
 		}
-		example = exampleOf(&input, &input, 0)
+		left := maxValues
+		example = exampleOf(&input, &input, 0, &left)
 		if _, ok := example.(map[string]any); !ok {
 			example = map[string]any{}
 		}
@@ -143,19 +145,32 @@ func (i Item) Example() (string, error) {
 // maxDepth limits how deep an example goes, as a schema can refer to itself.
 const maxDepth = 8
 
+// maxValues limits how many values are made for one example, as schemas that
+// refer to one another many times over would otherwise make one of enormous
+// size well within maxDepth. The properties of an object there is nothing
+// left for are left out of it.
+const maxValues = 2000
+
 // exampleOf returns an example of a value a schema allows: the default or
 // example it gives, or else a value of its type, an object having a value
 // for each of its properties. root is the schema references are looked up
-// in.
-func exampleOf(s, root *jsonschema.Schema, depth int) any {
+// in, and left the number of values that can still be made, which each one
+// made is taken from.
+func exampleOf(s, root *jsonschema.Schema, depth int, left *int) any {
+	// A value there is nothing to go on for counts too, or an object at the
+	// greatest depth would have every one of its properties for nothing.
+	if *left <= 0 {
+		return nil
+	}
+	*left--
 	if s == nil || depth > maxDepth {
 		return nil
 	}
 	if ref, ok := strings.CutPrefix(s.Ref, "#/$defs/"); ok && root.Defs[ref] != nil {
-		return exampleOf(root.Defs[ref], root, depth+1)
+		return exampleOf(root.Defs[ref], root, depth+1, left)
 	}
 	if ref, ok := strings.CutPrefix(s.Ref, "#/definitions/"); ok && root.Definitions[ref] != nil {
-		return exampleOf(root.Definitions[ref], root, depth+1)
+		return exampleOf(root.Definitions[ref], root, depth+1, left)
 	}
 
 	var given any
@@ -171,7 +186,7 @@ func exampleOf(s, root *jsonschema.Schema, depth int) any {
 	}
 	for _, choices := range [][]*jsonschema.Schema{s.AnyOf, s.OneOf, s.AllOf} {
 		if len(choices) > 0 {
-			return exampleOf(choices[0], root, depth+1)
+			return exampleOf(choices[0], root, depth+1, left)
 		}
 	}
 
@@ -191,12 +206,17 @@ func exampleOf(s, root *jsonschema.Schema, depth int) any {
 	switch typ {
 	case "object":
 		object := map[string]any{}
-		for name, property := range s.Properties {
-			object[name] = exampleOf(property, root, depth+1)
+		// In the order of their names, so that which are left out when
+		// there are too many values is always the same.
+		for _, name := range slices.Sorted(maps.Keys(s.Properties)) {
+			if *left <= 0 {
+				break
+			}
+			object[name] = exampleOf(s.Properties[name], root, depth+1, left)
 		}
 		return object
 	case "array":
-		if item := exampleOf(s.Items, root, depth+1); item != nil {
+		if item := exampleOf(s.Items, root, depth+1, left); item != nil {
 			return []any{item}
 		}
 		return []any{}

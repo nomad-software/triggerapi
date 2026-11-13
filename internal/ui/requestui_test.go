@@ -1,25 +1,27 @@
 package ui
 
 import (
-	"testing"
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
+	"testing"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 )
 
 // pressReturn sends Return to a widget.
-func pressReturn(widget *qt.QWidget) {
-	event := qt.NewQKeyEvent3(qt.QEvent__KeyPress, int(qt.Key_Return), qt.NoModifier, "\r")
-	qt.QCoreApplication_SendEvent(widget.QObject, event.QEvent)
+func pressReturn(widget *qtwidgets.QWidget) {
+	event := qtgui.NewQKeyEventFull(qtcore.QEventKeyPress, int(qtcore.Key_Return), qtcore.NoModifier, "\r", false, 1)
+	qtcore.QCoreApplicationSendEvent(widget.AsQObject(), event.AsQEvent())
 	event.Delete()
 }
 
 // loseKeyboard tells a widget that it has lost the keyboard.
-func loseKeyboard(widget *qt.QWidget) {
-	event := qt.NewQFocusEvent(qt.QEvent__FocusOut)
-	qt.QCoreApplication_SendEvent(widget.QObject, event.QEvent)
+func loseKeyboard(widget *qtwidgets.QWidget) {
+	event := qtgui.NewQFocusEventWithType(qtcore.QEventFocusOut)
+	qtcore.QCoreApplicationSendEvent(widget.AsQObject(), event.AsQEvent())
 	event.Delete()
 }
 
@@ -31,53 +33,53 @@ type typedField struct {
 	// line is set for a line edit, which is committed by Return; a text
 	// editor is committed by losing the keyboard.
 	line   bool
-	widget func(w *Window) *qt.QWidget
+	widget func(w *Window) *qtwidgets.QWidget
 	saved  func(r *collection.Request) string
 }
 
 // typedFields are every field typed into of every type of request.
 var typedFields = []typedField{
 	{"REST body", collection.TypeREST, false,
-		func(w *Window) *qt.QWidget { return w.request.bodyRaw.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.request.bodyRaw.AsQWidget() },
 		func(r *collection.Request) string { return r.Request.Body }},
 	{"REST username", collection.TypeREST, true,
-		func(w *Window) *qt.QWidget { return w.request.auth.username.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.request.auth.username.AsQWidget() },
 		func(r *collection.Request) string { return r.Request.Auth.Username }},
 	{"gRPC address", collection.TypeGRPC, true,
-		func(w *Window) *qt.QWidget { return w.grpc.url.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.grpc.url.AsQWidget() },
 		func(r *collection.Request) string { return r.GRPC.URL }},
 	{"gRPC message", collection.TypeGRPC, false,
-		func(w *Window) *qt.QWidget { return w.grpc.message.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.grpc.message.AsQWidget() },
 		func(r *collection.Request) string { return r.GRPC.Message }},
 	{"gRPC token", collection.TypeGRPC, true,
-		func(w *Window) *qt.QWidget { return w.grpc.auth.token.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.grpc.auth.token.AsQWidget() },
 		func(r *collection.Request) string { return r.GRPC.Auth.Token }},
 	{"GraphQL endpoint", collection.TypeGraphQL, true,
-		func(w *Window) *qt.QWidget { return w.graphql.url.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.graphql.url.AsQWidget() },
 		func(r *collection.Request) string { return r.GraphQL.URL }},
 	{"GraphQL query", collection.TypeGraphQL, false,
-		func(w *Window) *qt.QWidget { return w.graphql.query.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.graphql.query.AsQWidget() },
 		func(r *collection.Request) string { return r.GraphQL.Query }},
 	{"GraphQL variables", collection.TypeGraphQL, false,
-		func(w *Window) *qt.QWidget { return w.graphql.variables.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.graphql.variables.AsQWidget() },
 		func(r *collection.Request) string { return r.GraphQL.Variables }},
 	{"GraphQL password", collection.TypeGraphQL, true,
-		func(w *Window) *qt.QWidget { return w.graphql.auth.password.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.graphql.auth.password.AsQWidget() },
 		func(r *collection.Request) string { return r.GraphQL.Auth.Password }},
 	{"MCP server", collection.TypeMCP, true,
-		func(w *Window) *qt.QWidget { return w.mcp.url.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.mcp.url.AsQWidget() },
 		func(r *collection.Request) string { return r.MCP.URL }},
 	{"MCP arguments", collection.TypeMCP, false,
-		func(w *Window) *qt.QWidget { return w.mcp.arguments.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.mcp.arguments.AsQWidget() },
 		func(r *collection.Request) string { return r.MCP.Arguments }},
 	{"MCP client ID", collection.TypeMCP, true,
-		func(w *Window) *qt.QWidget { return w.mcp.auth.clientID.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.mcp.auth.clientID.AsQWidget() },
 		func(r *collection.Request) string { return r.MCP.Auth.Settings().ClientID }},
 	{"WebSocket address", collection.TypeWebSocket, true,
-		func(w *Window) *qt.QWidget { return w.ws.url.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.ws.url.AsQWidget() },
 		func(r *collection.Request) string { return r.WebSocket.URL }},
 	{"WebSocket message", collection.TypeWebSocket, false,
-		func(w *Window) *qt.QWidget { return w.ws.message.QWidget },
+		func(w *Window) *qtwidgets.QWidget { return w.ws.message.AsQWidget() },
 		func(r *collection.Request) string { return r.WebSocket.Message }},
 }
 
@@ -90,27 +92,27 @@ func TestTypingSavedOnCommit(t *testing.T) {
 			files := testFiles(t)
 			var w *Window
 			var r *collection.Request
-			mainthread.Wait(func() {
+			qute.PostSync(func() {
 				w = NewWindow(files.Files)
 				w.Show()
 				r = addRequestOf(w, f.typ)
 				typeKeys(f.widget(w), "7")
 			})
-			if got := mainthread.Wait2(func() string { return f.saved(r) }); got != "" {
+			if got := onGUI(func() string { return f.saved(r) }); got != "" {
 				t.Errorf("kept while typing: %q", got)
 			}
 			if saved, err := loadRequests(files.Requests); err != nil || f.saved(saved.Folders[0].Requests[0]) != "" {
 				t.Errorf("saved while typing: %v", err)
 			}
 
-			mainthread.Wait(func() {
+			qute.PostSync(func() {
 				if f.line {
 					pressReturn(f.widget(w))
 				} else {
 					loseKeyboard(f.widget(w))
 				}
 			})
-			if got := mainthread.Wait2(func() string { return f.saved(r) }); got != "7" {
+			if got := onGUI(func() string { return f.saved(r) }); got != "7" {
 				t.Errorf("kept once committed: %q", got)
 			}
 			saved, err := loadRequests(files.Requests)
@@ -150,17 +152,17 @@ func TestTypingCommitted(t *testing.T) {
 			files := testFiles(t)
 			var w *Window
 			var r *collection.Request
-			mainthread.Wait(func() {
+			qute.PostSync(func() {
 				w = NewWindow(files.Files)
 				w.Show()
 				r = addGRPCRequest(w)
-				typeKeys(w.grpc.message.QWidget, "{}")
+				typeKeys(w.grpc.message.AsQWidget(), "{}")
 				s.do(w)
 			})
-			if got := mainthread.Wait2(func() string { return s.check(w, r) }); got != "{}" {
+			if got := onGUI(func() string { return s.check(w, r) }); got != "{}" {
 				t.Errorf("message = %q", got)
 			}
-			mainthread.Wait(func() {
+			qute.PostSync(func() {
 				if w.cancel != nil {
 					w.cancel()
 				}
@@ -170,11 +172,11 @@ func TestTypingCommitted(t *testing.T) {
 
 	// Closing the window writes it to the file, and everything waiting.
 	files := testFiles(t)
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		addGRPCRequest(w)
-		typeKeys(w.grpc.message.QWidget, "{}")
+		typeKeys(w.grpc.message.AsQWidget(), "{}")
 		w.Close()
 	})
 	saved, err := loadRequests(files.Requests)
@@ -190,7 +192,7 @@ func TestTypingCommitted(t *testing.T) {
 // used and JSON formatted.
 func TestOneChangeSavedAtOnce(t *testing.T) {
 	files := testFiles(t)
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		r := addRequestOf(w, collection.TypeWebSocket)

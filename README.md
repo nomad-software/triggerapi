@@ -2,8 +2,8 @@
 
 A desktop client for making REST API, GraphQL and gRPC calls, calling the
 tools of MCP servers and talking to WebSocket servers. It is written in Go
-with a Qt 6 interface using the [miqt](https://github.com/mappu/miqt)
-bindings.
+with a Qt 6 interface using the [qute](https://github.com/nomad-software/qute)
+bindings, for Linux.
 
 ![TriggerAPI in its dark theme, showing saved requests under GraphQL, gRPC, MCP, REST, WebSocket and Mixed headings, the pinned tabs of a request set, a REST request with a JSON body, its JSON response and a value captured from it](docs/screenshot.png)
 
@@ -546,7 +546,7 @@ environment.
 
 | Keys | Does |
 |---|---|
-| Ctrl+Space | Show what can be typed at the cursor. A name, or for a gRPC message a quote, shows it as it is typed. On macOS, it is Control+Space. |
+| Ctrl+Space | Show what can be typed at the cursor. A name, or for a gRPC message a quote, shows it as it is typed. |
 | Up, Down | Choose in the list. |
 | Return, Tab | Type what is chosen, in place of what has been typed of it. |
 | Escape | Close the list, as typing anything that does not match does. |
@@ -560,73 +560,60 @@ environment.
 | Escape | Close the search. |
 
 Editing text works as it does elsewhere on the system. Ctrl+Z, for one,
-undoes the formatting of a JSON body. On macOS the Command key takes the
-place of Ctrl.
+undoes the formatting of a JSON body.
 
 ## Requirements
 
-TriggerAPI is developed and tested on Linux. There is a release for macOS
-on Apple Silicon (see [macOS app](#macos-app)), but it has not been tested on
-macOS by hand yet.
+TriggerAPI is for Linux.
 
 Building needs:
 
 - Go 1.27 or later
-- A C++ compiler (GCC or Clang)
+- A C++ compiler (GCC or Clang) with C++17
 - `pkg-config`
-- The Qt 6 base development files (Qt 6 Widgets)
+- The Qt 6.12 (or later) base development files (Qt 6 Widgets)
 
-### Linux
-
-Install them with your distribution's package manager:
+The Qt bindings, [qute](https://github.com/nomad-software/qute), are made
+from the headers of Qt 6.12 and do not build with an older Qt. Install them
+with your distribution's package manager where it has Qt 6.12 or later:
 
 ```sh
 # Arch, CachyOS, Manjaro
 sudo pacman -S go gcc pkgconf qt6-base
 
-# Debian, Ubuntu
-sudo apt install golang-go build-essential pkg-config qt6-base-dev
-
 # Fedora
 sudo dnf install golang gcc-c++ pkgconf-pkg-config qt6-qtbase-devel
 
-# openSUSE
+# openSUSE Tumbleweed
 sudo zypper install go gcc-c++ pkgconf-pkg-config qt6-base-devel
+```
+
+Where it has an older Qt, as Debian and Ubuntu do, install Qt's own build of
+Qt 6.12 (with the [Qt online installer](https://www.qt.io/download-qt-installer)
+or [aqtinstall](https://github.com/miurahr/aqtinstall), as the AppImage
+workflow does) and point `pkg-config` at it:
+
+```sh
+sudo apt install golang-go build-essential pkg-config libgl1-mesa-dev
+pipx run aqtinstall install-qt linux desktop 6.12.0 linux_gcc_64 --outputdir ~/Qt
+export PKG_CONFIG_PATH=~/Qt/6.12.0/gcc_64/lib/pkgconfig
+export LD_LIBRARY_PATH=~/Qt/6.12.0/gcc_64/lib
 ```
 
 If your distribution's Go is older than 1.27, install Go from
 [go.dev/dl](https://go.dev/dl/) instead.
 
-Running a built binary on another machine only needs the Qt 6 runtime
-libraries (`qt6-base` on Arch, `libqt6widgets6` on Debian and Ubuntu,
-`qt6-qtbase` on Fedora, `libQt6Widgets6` on openSUSE).
+Running a built binary on another machine only needs the Qt 6.12 runtime
+libraries (`qt6-base` on Arch, `qt6-qtbase` on Fedora, `libQt6Widgets6` on
+openSUSE), or the AppImage, which has them inside it.
 
-### macOS
-
-Install the Xcode command line tools, which provide the Clang compiler, and
-then the rest with [Homebrew](https://brew.sh):
-
-```sh
-xcode-select --install
-brew install go pkgconf qt
-```
-
-The `qt` formula is Qt 6. If `pkg-config` cannot find it afterwards, tell it
-where Homebrew put Qt:
-
-```sh
-export PKG_CONFIG_PATH="$(brew --prefix qt)/lib/pkgconfig:$PKG_CONFIG_PATH"
-```
-
-### Checking
-
-On either system, check that Qt can be found with:
+Check that Qt can be found with:
 
 ```sh
 pkg-config --modversion Qt6Widgets
 ```
 
-This should print a version starting with 6.
+This should print 6.12 or later.
 
 ## Building
 
@@ -641,11 +628,16 @@ go build -ldflags "-s -w" -o triggerapi .
 ```
 
 The `-s -w` flags build without the symbol table and debug information, which
-roughly halves the size of the binary, to about 64 MB.
+roughly halves the size of the binary, to about 46 MB.
 
-The first build compiles the whole Qt binding and takes around five minutes,
-printing a lot of compiler warnings from the Qt headers which can be ignored.
-Later builds use the Go build cache and take a few seconds.
+The first build compiles the Qt bindings and takes a few minutes. Later builds
+use the Go build cache and take a few seconds.
+
+`make test` runs the tests, which need no display, and `make bench` the
+benchmarks of the user interface (making the window, drawing the request
+tree and the history, searching the tree, showing a large JSON response,
+switching requests and drawing icons), five runs of each, to compare with
+[benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat).
 
 ## AppImage
 
@@ -659,7 +651,7 @@ chmod +x TriggerAPI-*-x86_64.AppImage
 ```
 
 It is built by a GitHub workflow (`.github/workflows/appimage.yml`), which runs
-`packaging/appimage.sh` on Ubuntu 22.04 with Qt's own build of Qt 6.9:
+`packaging/appimage.sh` on Ubuntu 22.04 with Qt's own build of Qt 6.12:
 
 - Pushing a tag that starts with `v` builds it and attaches it to a release of
   that name: `git tag v1.0.0 && git push origin v1.0.0`.
@@ -682,46 +674,9 @@ old distribution instead, and runs on any with glibc 2.35 or later (Ubuntu
 Execute button of the curl command uses, is not in it either.
 
 `make appimage` runs the same script locally, but an AppImage built on a newer
-system only runs on systems at least as new.
-
-## macOS app
-
-Releases for macOS are a disk image, `TriggerAPI-*-arm64.dmg`, for Macs with
-Apple Silicon. Open it and drag TriggerAPI into Applications. Macs with Intel
-processors are not supported.
-
-The app is not signed with an Apple Developer ID or notarised by Apple, so
-the first time it is opened macOS says that it cannot check it for malicious
-software and will not open it. Either:
-
-- Open System Settings > Privacy & Security, where TriggerAPI is named
-  beneath Security, and choose Open Anyway, or
-- take away the mark macOS gives what is downloaded, in Terminal:
-
-  ```sh
-  xattr -dr com.apple.quarantine /Applications/TriggerAPI.app
-  ```
-
-Either is only needed once. It is signed ad hoc, which a Mac with Apple
-Silicon needs to run it at all.
-
-It is built by a GitHub workflow (`.github/workflows/macos.yml`), which runs
-`packaging/macos.sh` on a Mac with Apple Silicon and Homebrew's Qt, when a
-`v` tag is pushed, as the AppImage is, or by hand from the Actions tab (macOS
-> Run workflow). The script builds the program, makes `TriggerAPI.app` with
-its icon (from `packaging/macos/triggerapi.png`) and `Info.plist` (from
-`packaging/macos/Info.plist`), copies Qt into it with Qt's `macdeployqt`,
-checks that nothing in it still uses a library from outside it, signs it,
-checks that it starts, and makes the disk image. It needs the macOS the
-workflow builds on (macOS 15) or later, which the script works out from what
-is in the app and writes into its `Info.plist`.
-
-`make macos` runs the same script on a Mac with Apple Silicon and
-`brew install go pkgconf qtbase`: the base of Qt alone, which is all
-TriggerAPI uses, as with the whole of Homebrew's `qt` the plugins of its
-other modules go into the app too, with what they use. The icon is
-`internal/appicon/appicon.png`, built into the program; it and the icon of
-the macOS app are drawn by `make icons`.
+system only runs on systems at least as new. It is built in a folder of its
+own in `/tmp`, which is removed afterwards, and only the AppImage is left, in
+the folder of the project.
 
 ## gRPC
 
@@ -852,11 +807,7 @@ window would only ask for attention.
 TriggerAPI keeps its data as JSON files.
 
 The settings are kept where the system keeps the configuration of programs:
-
-| System | Settings file |
-| --- | --- |
-| Linux | `~/.config/triggerapi/settings.json` (or under `$XDG_CONFIG_HOME`) |
-| macOS | `~/Library/Application Support/triggerapi/settings.json` |
+`~/.config/triggerapi/settings.json` (or under `$XDG_CONFIG_HOME`).
 
 They hold the window size and layout, the code font, colours, the time limit
 of requests and whether redirects are followed, how much history is kept,
@@ -864,12 +815,7 @@ the workspaces folder, the paths of the encryption keys and the workspace in
 use.
 
 The workspaces are kept, by default, where the system keeps the data of
-programs:
-
-| System | Workspaces folder |
-| --- | --- |
-| Linux | `~/.local/share/triggerapi/workspaces` (or under `$XDG_DATA_HOME`) |
-| macOS | `~/Library/Application Support/triggerapi/workspaces` |
+programs: `~/.local/share/triggerapi/workspaces` (or under `$XDG_DATA_HOME`).
 
 | Path in it | Contents |
 | --- | --- |
@@ -957,7 +903,7 @@ or imported can change them.
   - a client certificate, for a server that asks for one: a certificate and
     its private key in PEM, or a PKCS #12 file (`.p12` or `.pfx`) holding
     both. The passphrase of an encrypted key or PKCS #12 file is asked for
-    once a session and never saved. An encrypted PKCS #8 key cannot be read;
+    once a session, or again if it was wrong, and never saved. An encrypted PKCS #8 key cannot be read;
     put it in a PKCS #12 file with
     `openssl pkcs12 -export -in cert.pem -inkey key.pem -out client.p12`;
   - not checking the server's certificate, for a self-signed one. The

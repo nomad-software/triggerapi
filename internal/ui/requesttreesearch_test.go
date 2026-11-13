@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"reflect"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -28,7 +30,7 @@ func TestSearchRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
@@ -37,8 +39,8 @@ func TestSearchRequests(t *testing.T) {
 		// shown lists the paths of the items that are not hidden.
 		shown := func() []string {
 			var paths []string
-			var walk func(item *qt.QTreeWidgetItem, path string)
-			walk = func(item *qt.QTreeWidgetItem, path string) {
+			var walk func(item *qtwidgets.QTreeWidgetItem, path string)
+			walk = func(item *qtwidgets.QTreeWidgetItem, path string) {
 				if item.IsHidden() {
 					return
 				}
@@ -131,15 +133,15 @@ func TestQuickOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree
 
-		press := func(key qt.Key) {
-			event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(key), qt.NoModifier)
+		press := func(key qtcore.Key) {
+			event := qtgui.NewQKeyEvent(qtcore.QEventKeyPress, int(key), qtcore.NoModifier)
 			defer event.Delete()
-			qt.QCoreApplication_SendEvent(tree.QObject, event.QEvent)
+			qtcore.QCoreApplicationSendEvent(tree.AsQObject(), event.AsQEvent())
 		}
 		current := func() string {
 			if item := tree.CurrentItem(); item != nil {
@@ -164,58 +166,58 @@ func TestQuickOpen(t *testing.T) {
 		// Return goes to the first request that was found, which is not
 		// opened by that.
 		w.requests.search.SetText("room")
-		w.requests.search.ReturnPressed()
+		w.requests.search.EmitReturnPressed()
 		if current() != "Book room" || opened() != "" {
 			t.Errorf("after the search: at %q, with %q open", current(), opened())
 		}
 
 		// Nor is anything opened by moving about.
-		press(qt.Key_Down)
+		press(qtcore.Key_Down)
 		if current() != "List rooms" || opened() != "" {
 			t.Errorf("after down: at %q, with %q open", current(), opened())
 		}
-		press(qt.Key_Up)
-		press(qt.Key_Up)
+		press(qtcore.Key_Up)
+		press(qtcore.Key_Up)
 		if current() != "Rooms" || opened() != "" {
 			t.Errorf("after up twice: at %q, with %q open", current(), opened())
 		}
 
 		// Left closes a folder and right opens it, as does Return.
 		folder := tree.CurrentItem()
-		press(qt.Key_Left)
+		press(qtcore.Key_Left)
 		if folder.IsExpanded() {
 			t.Error("left did not close the folder")
 		}
-		press(qt.Key_Right)
+		press(qtcore.Key_Right)
 		if !folder.IsExpanded() {
 			t.Error("right did not open the folder")
 		}
-		press(qt.Key_Return)
+		press(qtcore.Key_Return)
 		if folder.IsExpanded() || opened() != "" {
 			t.Errorf("return on a folder: open %v, with %q open", folder.IsExpanded(), opened())
 		}
-		press(qt.Key_Return)
+		press(qtcore.Key_Return)
 
 		// Return opens the request, in the tab that is not pinned.
-		press(qt.Key_Down)
-		press(qt.Key_Down)
-		press(qt.Key_Return)
+		press(qtcore.Key_Down)
+		press(qtcore.Key_Down)
+		press(qtcore.Key_Return)
 		if current() != "List rooms" || opened() != "List rooms" || w.tabs.bar.TabText(w.tabs.bar.CurrentIndex()) != "List rooms" {
 			t.Errorf("after return: at %q, with %q open", current(), opened())
 		}
 		w.tabs.toggle(w.tabs.current())
 
 		// One that is pinned is gone to in its own tab.
-		press(qt.Key_Up)
-		press(qt.Key_Return)
+		press(qtcore.Key_Up)
+		press(qtcore.Key_Return)
 		if opened() != "Book room" || len(w.tabs.tabs) != 2 {
 			t.Errorf("another: %q open in %d tabs", opened(), len(w.tabs.tabs))
 		}
-		press(qt.Key_Down)
+		press(qtcore.Key_Down)
 		if opened() != "Book room" {
 			t.Errorf("moving back opened %q", opened())
 		}
-		press(qt.Key_Return)
+		press(qtcore.Key_Return)
 		if opened() != "List rooms" || len(w.tabs.tabs) != 2 || w.tabs.bar.CurrentIndex() != 0 {
 			t.Errorf("the pinned one: %q open in %d tabs, tab %d shown", opened(), len(w.tabs.tabs), w.tabs.bar.CurrentIndex())
 		}
@@ -223,12 +225,12 @@ func TestQuickOpen(t *testing.T) {
 		// Without a search, Return in the box starts where the selection
 		// is, or at the first item if there is none.
 		w.requests.search.SetText("")
-		w.requests.search.ReturnPressed()
+		w.requests.search.EmitReturnPressed()
 		if current() != "List rooms" {
 			t.Errorf("without a search: at %q", current())
 		}
 		w.requests.deselect()
-		w.requests.search.ReturnPressed()
+		w.requests.search.EmitReturnPressed()
 		if current() != "Health" {
 			t.Errorf("with nothing selected: at %q", current())
 		}

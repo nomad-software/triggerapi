@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
@@ -41,13 +43,13 @@ const (
 // the whole, which is the last row, and beneath it what is known of the
 // connection. A response with no timing has a hint in its place.
 type timingTab struct {
-	root  *qt.QWidget
-	pages *qt.QStackedWidget
-	table *qt.QTableWidget
+	root  *qtwidgets.QWidget
+	pages *qtwidgets.QStackedWidget
+	table *qtwidgets.QTableWidget
 	// bars are those of the rows, the last being that of the total.
 	bars []*timingBar
 	// details says what the connection was.
-	details *qt.QLabel
+	details *qtwidgets.QLabel
 	// timing is what is shown, which is nil for none.
 	timing *rest.Timing
 }
@@ -55,16 +57,16 @@ type timingTab struct {
 func newTimingTab() *timingTab {
 	t := &timingTab{}
 
-	t.table = qt.NewQTableWidget3(len(rest.Stages)+1, 3)
+	t.table = qtwidgets.NewQTableWidgetWithRows(len(rest.Stages)+1, 3, nil)
 	t.table.SetHorizontalHeaderLabels([]string{"Stage", "Time", "Timeline"})
 	t.table.VerticalHeader().SetVisible(false)
-	t.table.HorizontalHeader().SetSectionResizeMode2(colTimingStage, qt.QHeaderView__ResizeToContents)
-	t.table.HorizontalHeader().SetSectionResizeMode2(colTimingTime, qt.QHeaderView__ResizeToContents)
+	t.table.HorizontalHeader().SetSectionResizeMode(colTimingStage, qtwidgets.QHeaderViewResizeToContents)
+	t.table.HorizontalHeader().SetSectionResizeMode(colTimingTime, qtwidgets.QHeaderViewResizeToContents)
 	t.table.HorizontalHeader().SetStretchLastSection(true)
-	t.table.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
+	t.table.SetEditTriggers(qtwidgets.QAbstractItemViewNoEditTriggers)
 	// The rows are only to be read, and a selected one would put its bar on
 	// the colour of the selection.
-	t.table.SetSelectionMode(qt.QAbstractItemView__NoSelection)
+	t.table.SetSelectionMode(qtwidgets.QAbstractItemViewNoSelection)
 
 	// The rows are made once, and those of stages there were not are
 	// hidden.
@@ -73,11 +75,11 @@ func newTimingTab() *timingTab {
 		if row < len(rest.Stages) {
 			label = stageLabels[rest.Stages[row]]
 		}
-		stage := qt.NewQTableWidgetItem2(label)
-		duration := qt.NewQTableWidgetItem2("")
-		duration.SetTextAlignment(int(qt.AlignRight | qt.AlignVCenter))
+		stage := qtwidgets.NewQTableWidgetItemWithText(label)
+		duration := qtwidgets.NewQTableWidgetItemWithText("")
+		duration.SetTextAlignment(qtcore.AlignRight | qtcore.AlignVCenter)
 		if row == len(rest.Stages) {
-			for _, item := range []*qt.QTableWidgetItem{stage, duration} {
+			for _, item := range []*qtwidgets.QTableWidgetItem{stage, duration} {
 				font := item.Font()
 				font.SetBold(true)
 				item.SetFont(font)
@@ -91,29 +93,29 @@ func newTimingTab() *timingTab {
 		t.table.SetCellWidget(row, colTimingBar, bar.widget)
 	}
 
-	t.details = qt.NewQLabel2()
-	t.details.SetTextFormat(qt.RichText)
+	t.details = qtwidgets.NewQLabel(nil)
+	t.details.SetTextFormat(qtcore.RichText)
 	t.details.SetWordWrap(true)
-	t.details.SetTextInteractionFlags(qt.TextSelectableByMouse)
+	t.details.SetTextInteractionFlags(qtcore.TextSelectableByMouse)
 
 	// The details are in a panel, as the table is, with room about them.
 	// A frame of the style's own is not drawn by every style.
-	details := qt.NewQWidget2()
-	detailsLayout := qt.NewQVBoxLayout(details)
-	detailsLayout.SetContentsMargins(10, 8, 10, 8)
-	detailsLayout.AddWidget(t.details.QWidget)
+	details := qtwidgets.NewQWidget(nil)
+	detailsLayout := qtwidgets.NewQVBoxLayout(details)
+	detailsLayout.SetContentsMargins(qtcore.QMargins{Left: 10, Top: 8, Right: 10, Bottom: 8})
+	detailsLayout.AddWidget(t.details.AsQWidget())
 
-	page := qt.NewQWidget2()
-	layout := qt.NewQVBoxLayout(page)
-	layout.SetContentsMargins(0, 0, 0, 0)
+	page := qtwidgets.NewQWidget(nil)
+	layout := qtwidgets.NewQVBoxLayout(page)
+	layout.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 0, Right: 0, Bottom: 0})
 	layout.SetSpacing(8)
-	layout.AddWidget2(t.table.QWidget, 1)
+	layout.AddWidgetFull(t.table.AsQWidget(), 1, 0)
 	layout.AddWidget(newPanel(details))
 
-	t.pages = qt.NewQStackedWidget2()
+	t.pages = qtwidgets.NewQStackedWidget(nil)
 	t.pages.AddWidget(newHint("Where the time of a response went is shown here."))
 	t.pages.AddWidget(plainPage(page))
-	t.root = t.pages.QWidget
+	t.root = t.pages.AsQWidget()
 
 	t.show(nil, 0)
 	return t
@@ -218,13 +220,13 @@ func formatTiming(d time.Duration) string {
 // from where it started to where it ended, as fractions of the width, in
 // the colour of the timing bars.
 type timingBar struct {
-	widget   *qt.QWidget
+	widget   *qtwidgets.QWidget
 	from, to float64
 }
 
 func newTimingBar() *timingBar {
-	b := &timingBar{widget: qt.NewQWidget2()}
-	b.widget.OnPaintEvent(func(super func(*qt.QPaintEvent), event *qt.QPaintEvent) {
+	b := &timingBar{widget: qtwidgets.NewQWidget(nil)}
+	b.widget.OverridePaintEvent(func(super func(*qtgui.QPaintEvent), event *qtgui.QPaintEvent) {
 		super(event)
 		b.paint()
 	})
@@ -249,10 +251,9 @@ func (b *timingBar) paint() {
 	w := max(1, int((b.to-b.from)*float64(width)))
 	margin := height / 4
 
-	painter := qt.NewQPainter2(b.widget.QPaintDevice)
+	painter := qtgui.NewQPainterOn(b.widget.AsQPaintDevice())
 	defer painter.Delete()
 	defer painter.End()
-	colour := qt.NewQColor6(themeColour(colourTiming))
-	defer colour.Delete()
-	painter.FillRect5(padding+x, margin, min(w, width-x), height-2*margin, colour)
+	colour := qcolour(themeColour(colourTiming))
+	painter.FillRect(qtcore.QRect{X: padding + x, Y: margin, Width: min(w, width-x), Height: height - 2*margin}, colour)
 }

@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -8,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/coder/websocket"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/env"
@@ -59,9 +60,9 @@ func TestWebSocketRequest(t *testing.T) {
 
 	var w *Window
 	field := func(label string) string { return fieldValue(w.wsResponse, label) }
-	log := func() string { return mainthread.Wait2(func() string { return w.wsResponse.body.ToPlainText() }) }
+	log := func() string { return onGUI(func() string { return w.wsResponse.body.ToPlainText() }) }
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 
@@ -81,11 +82,11 @@ func TestWebSocketRequest(t *testing.T) {
 
 	// The connection opens with the environment applied to the handshake.
 	waitFor(t, "the connection", func() bool {
-		return mainthread.Wait2(func() bool {
+		return onGUI(func() bool {
 			return w.ws.send.IsEnabled() && strings.Contains(w.wsResponse.body.ToPlainText(), "hello world")
 		})
 	})
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if w.ws.send.StyleSheet() != primaryStyle() {
 			t.Error("Send is not in the colour of sending while connected")
 		}
@@ -100,7 +101,7 @@ func TestWebSocketRequest(t *testing.T) {
 
 	// What is sent goes in the log, and so does the echo.
 	waitFor(t, "the echo", func() bool { return strings.Count(log(), `{"to": "world"}`) == 2 })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if !strings.Contains(log(), "→ Sent") || field("Messages") != "1 sent, 2 received" {
 			t.Errorf("messages %q, log %q", field("Messages"), log())
 		}
@@ -109,8 +110,8 @@ func TestWebSocketRequest(t *testing.T) {
 		w.ws.message.SetPlainText("bye")
 		w.ws.send.Click()
 	})
-	waitFor(t, "the close", func() bool { return mainthread.Wait2(func() bool { return w.socket == nil }) })
-	mainthread.Wait(func() {
+	waitFor(t, "the close", func() bool { return onGUI(func() bool { return w.socket == nil }) })
+	qute.PostSync(func() {
 		if field(fieldCode) != "1008 POLICY_VIOLATION" || field(fieldError) != "told to go" || w.ws.connect.Text() != "Connect" || w.ws.send.IsEnabled() {
 			t.Errorf("closed: status %q, error %q", field(fieldCode), field(fieldError))
 		}
@@ -118,8 +119,8 @@ func TestWebSocketRequest(t *testing.T) {
 		// Connecting again, then disconnecting, says so.
 		w.ws.connect.Click()
 	})
-	waitFor(t, "the second connection", func() bool { return mainthread.Wait2(func() bool { return w.ws.send.IsEnabled() }) })
-	mainthread.Wait(func() {
+	waitFor(t, "the second connection", func() bool { return onGUI(func() bool { return w.ws.send.IsEnabled() }) })
+	qute.PostSync(func() {
 		w.ws.connect.Click()
 		if w.socket != nil || field(fieldCode) != "Disconnected" || w.ws.send.IsEnabled() || w.ws.send.StyleSheet() != "" {
 			t.Errorf("after disconnecting: status %q", field(fieldCode))
@@ -129,8 +130,8 @@ func TestWebSocketRequest(t *testing.T) {
 		w.ws.url.SetText("ws://127.0.0.1:1/none")
 		w.ws.connect.Click()
 	})
-	waitFor(t, "the failure", func() bool { return mainthread.Wait2(func() bool { return w.socket == nil }) })
-	mainthread.Wait(func() {
+	waitFor(t, "the failure", func() bool { return onGUI(func() bool { return w.socket == nil }) })
+	qute.PostSync(func() {
 		if field(fieldCode) != "Not connected" || field(fieldError) == "" {
 			t.Errorf("failure: status %q, error %q", field(fieldCode), field(fieldError))
 		}
@@ -162,7 +163,7 @@ func TestWebSocketGroupAndDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree
@@ -208,10 +209,10 @@ func TestWebSocketCtrlReturn(t *testing.T) {
 	files := testFiles(t)
 
 	var w *Window
-	log := func() string { return mainthread.Wait2(func() string { return w.wsResponse.body.ToPlainText() }) }
+	log := func() string { return onGUI(func() string { return w.wsResponse.body.ToPlainText() }) }
 	ctrlReturn := func() { w.pageUI(w.stack.CurrentIndex()).send() }
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		defer func(prev collection.Type) { testRequestType = prev }(testRequestType)
@@ -221,11 +222,11 @@ func TestWebSocketCtrlReturn(t *testing.T) {
 		w.ws.message.SetPlainText("ping")
 		ctrlReturn()
 	})
-	waitFor(t, "the connection", func() bool { return mainthread.Wait2(w.ws.send.IsEnabled) })
+	waitFor(t, "the connection", func() bool { return onGUI(w.ws.send.IsEnabled) })
 	if strings.Contains(log(), "ping") {
 		t.Errorf("the message was sent before it was asked for again: %s", log())
 	}
 
-	mainthread.Wait(ctrlReturn)
+	qute.PostSync(ctrlReturn)
 	waitFor(t, "the echo", func() bool { return strings.Count(log(), "ping") == 2 })
 }

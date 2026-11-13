@@ -1,14 +1,14 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/rest"
 	"github.com/nomad-software/triggerapi/internal/rpc"
@@ -29,7 +29,7 @@ func timingRows(tab *timingTab) map[string]string {
 
 // barColour returns the colour of the middle of a bar, which is that of the
 // total and so covers the width.
-func barColour(bar *qt.QWidget) string {
+func barColour(bar *qtwidgets.QWidget) string {
 	image := bar.Grab().ToImage()
 	return image.PixelColor(image.Width()/2, image.Height()/2).Name()
 }
@@ -46,7 +46,7 @@ func TestTimingTab(t *testing.T) {
 	defer srv.Close()
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
@@ -73,7 +73,7 @@ func TestTimingTab(t *testing.T) {
 	})
 	waitFor(t, "the response", func() bool { return fieldValue(w.response, "Status") != "" })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		tab := w.response.timing
 		if tab.pages.CurrentIndex() != timingPageTable {
 			t.Fatal("the timing is not shown")
@@ -99,7 +99,7 @@ func TestTimingTab(t *testing.T) {
 	})
 	waitFor(t, "the redirect", func() bool { _, ok := timingRows(w.response.timing)["Redirects (1)"]; return ok })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// The connection was kept from the request before.
 		rows := timingRows(w.response.timing)
 		if _, ok := rows["TCP connect"]; ok || !strings.Contains(w.response.timing.details.Text(), "Reused") {
@@ -141,7 +141,7 @@ func TestTimingTabGRPC(t *testing.T) {
 	defer srv.Close()
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		w.requests.addFolder()
@@ -151,14 +151,14 @@ func TestTimingTabGRPC(t *testing.T) {
 	})
 	waitFor(t, "the methods", func() bool { return w.grpc.method.count() == 4 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.grpc.method.selectMethod("test.v1.Echo/Say")
 		w.grpc.message.SetPlainText(`{"text": "hello"}`)
 		w.grpc.invoke.Click()
 	})
 	waitFor(t, "the response", func() bool { return strings.Contains(w.grpcResponse.result.Text(), "0 OK") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		tab := w.grpcResponse.timing
 		if tab.pages.CurrentIndex() != timingPageTable {
 			t.Fatal("the timing is not shown")

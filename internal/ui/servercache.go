@@ -1,9 +1,9 @@
 package ui
 
 import (
-	"context"
+	"github.com/nomad-software/qute"
 
-	"github.com/mappu/miqt/qt6/mainthread"
+	"context"
 
 	"github.com/nomad-software/triggerapi/internal/network"
 )
@@ -60,7 +60,7 @@ func (c *serverCache[T]) load(server string, force bool, fetch func(context.Cont
 		value, err := fetch(ctx)
 		err = network.Explain(err)
 
-		mainthread.Start(func() {
+		qute.Post(func() {
 			if err == nil {
 				if c.known == nil {
 					c.known = map[string]T{}

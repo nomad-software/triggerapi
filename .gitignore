@@ -1,2 +1,5 @@
-triggerapi
-build/
+# The program, as make build makes it, and the AppImage, as make appimage
+# makes it. Both are built elsewhere (the AppImage in /tmp) and only the
+# finished file is put here.
+/triggerapi
+/*.AppImage

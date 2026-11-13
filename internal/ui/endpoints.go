@@ -1,10 +1,11 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"slices"
 	"strings"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/rpc"
@@ -32,15 +33,15 @@ const (
 // for are ticked and cannot be unticked, and the button adds requests for the
 // others that are ticked. See setExisting.
 type endpointTable struct {
-	root *qt.QWidget
+	root *qtwidgets.QWidget
 	// search narrows the table to the methods that match what is typed in
 	// it. See applySearch.
-	search *qt.QLineEdit
-	pages  *qt.QStackedWidget
-	table  *qt.QTableWidget
+	search *qtwidgets.QLineEdit
+	pages  *qtwidgets.QStackedWidget
+	table  *qtwidgets.QTableWidget
 	// toggle ticks every method on show, or none of them if they all are.
-	toggle *qt.QPushButton
-	create *qt.QPushButton
+	toggle *qtwidgets.QPushButton
+	create *qtwidgets.QPushButton
 
 	// names holds the full name of the method on each row, as
 	// package.Service/Method. It is empty for the heading rows.
@@ -60,23 +61,23 @@ type endpointTable struct {
 
 func newEndpointTable() *endpointTable {
 	e := &endpointTable{
-		root:   qt.NewQWidget2(),
-		search: qt.NewQLineEdit2(),
-		pages:  qt.NewQStackedWidget2(),
-		table:  qt.NewQTableWidget3(0, 2),
-		toggle: qt.NewQPushButton2(),
-		create: qt.NewQPushButton3("Create Requests"),
+		root:   qtwidgets.NewQWidget(nil),
+		search: qtwidgets.NewQLineEdit(nil),
+		pages:  qtwidgets.NewQStackedWidget(nil),
+		table:  qtwidgets.NewQTableWidgetWithRows(0, 2, nil),
+		toggle: qtwidgets.NewQPushButton(nil),
+		create: qtwidgets.NewQPushButtonWithText("Create Requests", nil),
 	}
 
 	// The columns need no names: there is a box and what it is for.
 	e.table.HorizontalHeader().SetVisible(false)
 	e.table.VerticalHeader().SetVisible(false)
-	e.table.SetSelectionMode(qt.QAbstractItemView__NoSelection)
-	e.table.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
+	e.table.SetSelectionMode(qtwidgets.QAbstractItemViewNoSelection)
+	e.table.SetEditTriggers(qtwidgets.QAbstractItemViewNoEditTriggers)
 	header := e.table.HorizontalHeader()
-	header.SetSectionResizeMode2(colEndpointChosen, qt.QHeaderView__ResizeToContents)
-	header.SetSectionResizeMode2(colEndpointName, qt.QHeaderView__Stretch)
-	e.table.OnItemChanged(func(*qt.QTableWidgetItem) {
+	header.SetSectionResizeMode(colEndpointChosen, qtwidgets.QHeaderViewResizeToContents)
+	header.SetSectionResizeMode(colEndpointName, qtwidgets.QHeaderViewStretch)
+	e.table.OnItemChanged(func(*qtwidgets.QTableWidgetItem) {
 		if !e.updating {
 			e.refresh()
 		}
@@ -89,26 +90,26 @@ func newEndpointTable() *endpointTable {
 		e.refresh()
 	})
 
-	e.toggle.OnClicked(func() { e.setAll(!e.all()) })
-	e.create.OnClicked(func() {
+	e.toggle.OnClicked(func(_ bool) { e.setAll(!e.all()) })
+	e.create.OnClicked(func(_ bool) {
 		if methods := e.added(); len(methods) > 0 && e.onCreate != nil {
 			e.onCreate(methods)
 		}
 	})
 
-	buttons := qt.NewQHBoxLayout2()
-	buttons.AddWidget(e.toggle.QWidget)
-	buttons.AddWidget(e.create.QWidget)
+	buttons := qtwidgets.NewQHBoxLayout(nil)
+	buttons.AddWidget(e.toggle.AsQWidget())
+	buttons.AddWidget(e.create.AsQWidget())
 	buttons.AddStretch()
 
 	// The order matches the page constants.
 	e.pages.AddWidget(newHint("The endpoints of the server are listed here once they have been loaded."))
-	e.pages.AddWidget(e.table.QWidget)
+	e.pages.AddWidget(e.table.AsQWidget())
 
-	layout := qt.NewQVBoxLayout(e.root)
-	layout.AddWidget(e.search.QWidget)
-	layout.AddWidget2(e.pages.QWidget, 1)
-	layout.AddLayout(buttons.QLayout)
+	layout := qtwidgets.NewQVBoxLayout(e.root)
+	layout.AddWidget(e.search.AsQWidget())
+	layout.AddWidgetFull(e.pages.AsQWidget(), 1, 0)
+	layout.AddLayout(buttons.AsQLayout())
 
 	e.setMethods(nil)
 
@@ -133,8 +134,8 @@ func (e *endpointTable) setMethods(methods []string) {
 			service = parent
 
 			// A heading is as wide as the table and cannot be ticked.
-			heading := qt.NewQTableWidgetItem2(service)
-			heading.SetFlags(qt.ItemIsEnabled)
+			heading := qtwidgets.NewQTableWidgetItemWithText(service)
+			heading.SetFlags(qtcore.ItemIsEnabled)
 			font := heading.Font()
 			font.SetBold(true)
 			heading.SetFont(font)
@@ -146,11 +147,11 @@ func (e *endpointTable) setMethods(methods []string) {
 			e.names = append(e.names, "")
 		}
 
-		check := qt.NewQTableWidgetItem()
-		check.SetFlags(qt.ItemIsEnabled | qt.ItemIsUserCheckable)
-		check.SetCheckState(qt.Unchecked)
-		label := qt.NewQTableWidgetItem2(method)
-		label.SetFlags(qt.ItemIsEnabled)
+		check := qtwidgets.NewQTableWidgetItem()
+		check.SetFlags(qtcore.ItemIsEnabled | qtcore.ItemIsUserCheckable)
+		check.SetCheckState(qtcore.Unchecked)
+		label := qtwidgets.NewQTableWidgetItemWithText(method)
+		label.SetFlags(qtcore.ItemIsEnabled)
 
 		row := e.table.RowCount()
 		e.table.InsertRow(row)
@@ -224,9 +225,9 @@ func (e *endpointTable) setExisting(existing map[string]bool, editing bool) {
 		// A box that cannot be changed is drawn as one that is disabled.
 		item := e.table.Item(row, colEndpointChosen)
 		if existing[name] {
-			item.SetFlags(qt.NoItemFlags)
+			item.SetFlags(qtcore.NoItemFlags)
 		} else {
-			item.SetFlags(qt.ItemIsEnabled | qt.ItemIsUserCheckable)
+			item.SetFlags(qtcore.ItemIsEnabled | qtcore.ItemIsUserCheckable)
 		}
 		item.SetCheckState(checkState(existing[name]))
 	}
@@ -245,7 +246,7 @@ func (e *endpointTable) hasService(service string) bool {
 func (e *endpointTable) chosen() []string {
 	var chosen []string
 	for row, name := range e.names {
-		if name != "" && e.table.Item(row, colEndpointChosen).CheckState() == qt.Checked {
+		if name != "" && e.table.Item(row, colEndpointChosen).CheckState() == qtcore.Checked {
 			chosen = append(chosen, name)
 		}
 	}
@@ -276,7 +277,7 @@ func (e *endpointTable) free() []int {
 func (e *endpointTable) all() bool {
 	rows := e.free()
 	for _, row := range rows {
-		if e.table.Item(row, colEndpointChosen).CheckState() != qt.Checked {
+		if e.table.Item(row, colEndpointChosen).CheckState() != qtcore.Checked {
 			return false
 		}
 	}

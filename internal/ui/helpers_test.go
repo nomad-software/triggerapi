@@ -5,13 +5,15 @@ package ui
 // in the background, and the like.
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"slices"
 	"strings"
 	"testing"
 	"time"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 )
@@ -52,14 +54,14 @@ func isFailure(p *responsePanel) bool {
 
 // rowColour returns the colour of the background of the row of an item of
 // a tree, which must be shown, near its right edge, where no text reaches.
-func rowColour(tree *qt.QTreeWidget, item *qt.QTreeWidgetItem) uint {
+func rowColour(tree *qtwidgets.QTreeWidget, item *qtwidgets.QTreeWidgetItem) uint {
 	rect := tree.VisualItemRect(item)
-	return tree.Viewport().Grab().ToImage().Pixel(tree.Viewport().Width()-3, rect.Center().Y())
+	return tree.Viewport().Grab().ToImage().Pixel(tree.Viewport().Width()-3, rect.Center().Y)
 }
 
 // itemType returns the type whose icon an item of the request tree has, or
 // an empty type if it has the icon of a folder.
-func itemType(item *qt.QTreeWidgetItem) collection.Type {
+func itemType(item *qtwidgets.QTreeWidgetItem) collection.Type {
 	icon := item.Icon(colName)
 	if icon.IsNull() || icon.CacheKey() == folderIcon().CacheKey() {
 		return ""
@@ -74,8 +76,8 @@ func itemType(item *qt.QTreeWidgetItem) collection.Type {
 
 // topFolders returns the items of the top level folders in the order they
 // are shown: those under each heading, then those on their own.
-func topFolders(tree *qt.QTreeWidget) []*qt.QTreeWidgetItem {
-	var items []*qt.QTreeWidgetItem
+func topFolders(tree *qtwidgets.QTreeWidget) []*qtwidgets.QTreeWidgetItem {
+	var items []*qtwidgets.QTreeWidgetItem
 	for i := range tree.TopLevelItemCount() {
 		item := tree.TopLevelItem(i)
 		if _, ok := headingGroup(item); !ok {
@@ -90,13 +92,13 @@ func topFolders(tree *qt.QTreeWidget) []*qt.QTreeWidgetItem {
 }
 
 // topCount returns the number of top level folders in the tree.
-func topCount(tree *qt.QTreeWidget) int {
+func topCount(tree *qtwidgets.QTreeWidget) int {
 	return len(topFolders(tree))
 }
 
 // topFolder returns the item of a top level folder, by its position among
 // them as they are shown, or nil if there is none there.
-func topFolder(tree *qt.QTreeWidget, index int) *qt.QTreeWidgetItem {
+func topFolder(tree *qtwidgets.QTreeWidget, index int) *qtwidgets.QTreeWidgetItem {
 	if items := topFolders(tree); index < len(items) {
 		return items[index]
 	}
@@ -108,7 +110,7 @@ func waitFor(t *testing.T, what string, condition func() bool) {
 	t.Helper()
 
 	deadline := time.Now().Add(5 * time.Second)
-	for !mainthread.Wait2(condition) {
+	for !onGUI(condition) {
 		if time.Now().After(deadline) {
 			t.Fatalf("timed out waiting for %s", what)
 		}
@@ -133,15 +135,15 @@ func addRequestOf(w *Window, typ collection.Type) *collection.Request {
 }
 
 // formatColour returns the colour of a text format, as #rrggbb.
-func formatColour(format *qt.QTextCharFormat) string {
+func formatColour(format *qtgui.QTextCharFormat) string {
 	return format.Foreground().Color().Name()
 }
 
 // iconColour returns the colour an icon is drawn on, as #rrggbb.
-func iconColour(icon *qt.QIcon) string {
+func iconColour(icon *qtgui.QIcon) string {
 	// The edge of the icon is clear of its symbol. An icon is not made
 	// larger than it was drawn, so the picture can be smaller than asked.
-	image := icon.Pixmap2(64, 64).ToImage()
+	image := icon.Pixmap(qtcore.QSize{Width: 64, Height: 64}).ToImage()
 	return image.PixelColor(image.Width()/16, image.Height()/2).Name()
 }
 
@@ -160,10 +162,10 @@ func variables(w *Window) map[string]string {
 
 // treeItem finds an item of the request tree by the names on the way to it
 // from the top. It returns nil if there is none.
-func treeItem(tree *qt.QTreeWidget, names ...string) *qt.QTreeWidgetItem {
-	var item *qt.QTreeWidgetItem
+func treeItem(tree *qtwidgets.QTreeWidget, names ...string) *qtwidgets.QTreeWidgetItem {
+	var item *qtwidgets.QTreeWidgetItem
 	for depth, name := range names {
-		var found *qt.QTreeWidgetItem
+		var found *qtwidgets.QTreeWidgetItem
 		if depth == 0 {
 			for i := range topCount(tree) {
 				if topFolder(tree, i).Text(colName) == name {
@@ -187,7 +189,7 @@ func treeItem(tree *qt.QTreeWidget, names ...string) *qt.QTreeWidgetItem {
 
 // treeNames lists the names of the children of an item of the request tree,
 // with a slash after those of folders.
-func treeNames(item *qt.QTreeWidgetItem) []string {
+func treeNames(item *qtwidgets.QTreeWidgetItem) []string {
 	var names []string
 	for i := range item.ChildCount() {
 		child := item.Child(i)
@@ -221,14 +223,21 @@ func tabNames(w *Window) []string {
 
 // doubleClick double clicks a button as the pointer does: a press and a
 // release, then a double click and a release.
-func doubleClick(button *qt.QToolButton) {
-	for _, kind := range []qt.QEvent__Type{qt.QEvent__MouseButtonPress, qt.QEvent__MouseButtonRelease, qt.QEvent__MouseButtonDblClick, qt.QEvent__MouseButtonRelease} {
-		buttons := qt.LeftButton
-		if kind == qt.QEvent__MouseButtonRelease {
-			buttons = qt.NoButton
+func doubleClick(button *qtwidgets.QToolButton) {
+	for _, kind := range []qtcore.QEventType{qtcore.QEventMouseButtonPress, qtcore.QEventMouseButtonRelease, qtcore.QEventMouseButtonDblClick, qtcore.QEventMouseButtonRelease} {
+		buttons := qtcore.LeftButton
+		if kind == qtcore.QEventMouseButtonRelease {
+			buttons = qtcore.NoButton
 		}
-		event := qt.NewQMouseEvent(kind, qt.NewQPointF3(2, 2), qt.LeftButton, buttons, qt.NoModifier)
-		qt.QCoreApplication_SendEvent(button.QObject, event.QEvent)
+		event := qtgui.NewQMouseEvent(kind, qtcore.QPointF{X: 2, Y: 2}, qtcore.QPointF{X: 2, Y: 2}, qtcore.LeftButton, buttons, qtcore.NoModifier)
+		qtcore.QCoreApplicationSendEvent(button.AsQObject(), event.AsQEvent())
 		event.Delete()
 	}
+}
+
+// onGUI returns what f returns, run on the GUI thread.
+func onGUI[T any](f func() T) T {
+	var value T
+	qute.PostSync(func() { value = f() })
+	return value
 }

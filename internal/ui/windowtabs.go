@@ -13,7 +13,7 @@ import (
 // that type in the tab that is not pinned, without saving it: it is added to
 // the sidebar only once it is saved.
 func (w *Window) newRequest() {
-	typ, ok := askRequestType(w.QWidget)
+	typ, ok := askRequestType(w.AsQWidget())
 	if !ok {
 		return
 	}

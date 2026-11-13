@@ -17,12 +17,13 @@ permissions:
 
 env:
   # The Qt that is built with and put in the AppImage. It is Qt's own build,
-  # as the Qt of Ubuntu 22.04 (6.2) is too old for the bindings. It is 6.9
-  # or later because that is the first which can give a window its icon
-  # under Wayland, where a window otherwise only has the icon of an
-  # installed desktop file, which an AppImage does not have.
-  QT_VERSION: "6.9.3"
-  QT_ROOT: /opt/qt/6.9.3/gcc_64
+  # as the bindings (qute) are made from the headers of Qt 6.12 and build
+  # with nothing older, and the Qt of Ubuntu 22.04 is 6.2. (6.9 is also the
+  # first which can give a window its icon under Wayland, where a window
+  # otherwise only has the icon of an installed desktop file, which an
+  # AppImage does not have.)
+  QT_VERSION: "6.12.0"
+  QT_ROOT: /opt/qt/6.12.0/gcc_64
 
 jobs:
   appimage:
@@ -87,7 +88,7 @@ jobs:
           # What is compiled is kept by the step below instead.
           cache: false
 
-      # The Qt bindings take a long time to compile, so what is compiled is
+      # The Qt bindings take minutes to compile, so what is compiled is
       # kept from one run to the next. It is kept for one version of Qt, as
       # what was compiled for another names the place that one was in.
       - name: Say where compiled code is kept
@@ -97,6 +98,8 @@ jobs:
           path: /opt/go-build
           key: go-build-qt-${{ env.QT_VERSION }}-${{ hashFiles('go.sum') }}
 
+      # It is built in a folder of its own in /tmp, and the AppImage is left
+      # in the folder of the repository.
       - name: Build the AppImage
         env:
           VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
@@ -105,12 +108,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: TriggerAPI-AppImage
-          path: build/*.AppImage
+          path: "*.AppImage"
           if-no-files-found: error
 
       - name: Attach it to the release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: build/*.AppImage
+          files: "*.AppImage"
           generate_release_notes: true

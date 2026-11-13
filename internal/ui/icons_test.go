@@ -1,13 +1,13 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"bytes"
 	"image/png"
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/appicon"
 )
@@ -16,59 +16,38 @@ import (
 // the icons into. The test is skipped without it; make icons sets it.
 const iconsEnv = "TRIGGERAPI_ICONS"
 
-// macIconSize and macIconMargin are the size of the icon of the macOS app
-// and the margin Apple's grid gives the shape of an icon inside it, which
-// the icons of the Dock are drawn with.
-const (
-	macIconSize   = 1024
-	macIconMargin = 100
-)
-
-// TestWriteIcons draws the program's icon into its files:
+// TestWriteIcons draws the program's icon into
 // internal/appicon/appicon.png, which is built into the program and is the
-// icon of the desktop entry and the AppImage, and
-// packaging/macos/triggerapi.png, from which the .icns of the macOS app is
-// made.
-// Run make icons again whenever the icon changes.
+// icon of the desktop entry and the AppImage. Run make icons again whenever
+// the icon changes.
 func TestWriteIcons(t *testing.T) {
 	dir := os.Getenv(iconsEnv)
 	if dir == "" {
 		t.Skip(iconsEnv + " is not set")
 	}
-	for _, icon := range []struct {
-		path         string
-		size, margin int
-	}{
-		{filepath.Join("internal", "appicon", "appicon.png"), appicon.Size, 0},
-		{filepath.Join("packaging", "macos", "triggerapi.png"), macIconSize, macIconMargin},
-	} {
-		var data []byte
-		mainthread.Wait(func() { data = appIconPNG(icon.size, icon.margin) })
-		if data == nil {
-			t.Fatalf("%s could not be drawn", icon.path)
-		}
-		path := filepath.Join(dir, icon.path)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, data, 0o644); err != nil {
-			t.Fatal(err)
-		}
+	var data []byte
+	qute.PostSync(func() { data = appIconPNG(appicon.Size) })
+	if data == nil {
+		t.Fatal("the icon could not be drawn")
+	}
+	path := filepath.Join(dir, "internal", "appicon", "appicon.png")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
 func TestAppIconPNG(t *testing.T) {
 	var data []byte
-	mainthread.Wait(func() { data = appIconPNG(macIconSize, macIconMargin) })
+	qute.PostSync(func() { data = appIconPNG(appicon.Size) })
 	img, err := png.Decode(bytes.NewReader(data))
-	if err != nil || img.Bounds().Dx() != macIconSize || img.Bounds().Dy() != macIconSize {
+	if err != nil || img.Bounds().Dx() != appicon.Size || img.Bounds().Dy() != appicon.Size {
 		t.Fatalf("icon %v, %v", img, err)
 	}
-	// The margin is clear, and the shape inside it is not.
-	if _, _, _, a := img.At(macIconMargin/2, macIconSize/2).RGBA(); a != 0 {
-		t.Error("the margin is not clear")
+	// The corners are clear, as the icon is rounded, and the middle is not.
+	if _, _, _, a := img.At(0, 0).RGBA(); a != 0 {
+		t.Error("the corner is not clear")
 	}
-	if _, _, _, a := img.At(macIconSize/2, macIconSize/2).RGBA(); a == 0 {
+	if _, _, _, a := img.At(appicon.Size/2, appicon.Size/2).RGBA(); a == 0 {
 		t.Error("the middle is clear")
 	}
 }

@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -8,9 +12,6 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf16"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/collection"
@@ -24,7 +25,7 @@ import (
 // a response panel: "tick", "cross" or "" for the tab, and the same for each
 // row of the table, in order, with what the Result column of each says.
 func assertMarks(p *responsePanel) (tab string, rows, results []string) {
-	name := func(icon *qt.QIcon) string {
+	name := func(icon *qtgui.QIcon) string {
 		switch {
 		case icon.IsNull():
 			return ""
@@ -70,7 +71,7 @@ func TestAssertions(t *testing.T) {
 
 	var w *Window
 	var request *collection.Request
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.requests.addFolder()
@@ -87,7 +88,7 @@ func TestAssertions(t *testing.T) {
 		if w.wsResponse.assertions != nil {
 			t.Error("a WebSocket response has assertions")
 		}
-		if !w.response.tabs.Widget(tabAssertions).IsAncestorOf(w.request.assertions.table.QWidget) {
+		if !w.response.tabs.Widget(tabAssertions).IsAncestorOf(w.request.assertions.table.AsQWidget()) {
 			t.Error("the assertions are not on the tab")
 		}
 
@@ -108,7 +109,7 @@ func TestAssertions(t *testing.T) {
 	})
 	waitFor(t, "the response", func() bool { return strings.Contains(w.response.result.Text(), "200 OK") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// Each check is marked with how it went and why it failed, the
 		// placeholder of a value replaced, and the tab with a cross as one
 		// failed. One that is switched off is not checked.
@@ -152,7 +153,7 @@ func TestAssertions(t *testing.T) {
 	})
 	waitFor(t, "the marks", func() bool { tab, _, _ := assertMarks(w.response); return tab != "" })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if tab, rows, _ := assertMarks(w.response); tab != "tick" || !slices.Equal(rows, []string{"tick", "tick", ""}) {
 			t.Errorf("tab %q, rows %v", tab, rows)
 		}
@@ -163,7 +164,7 @@ func TestAssertions(t *testing.T) {
 	})
 	waitFor(t, "the failure", func() bool { return strings.Contains(w.response.result.Text(), "404") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if tab, rows, results := assertMarks(w.response); tab != "cross" || rows[0] != "cross" || results[0] != "the status is 404, not 200" {
 			t.Errorf("tab %q, rows %v, results %q", tab, rows, results)
 		}
@@ -179,7 +180,7 @@ func TestAssertions(t *testing.T) {
 // TestAssertionTable checks that rows are added by changing the empty one,
 // and that the path and value are typed only where a check has them.
 func TestAssertionTable(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		w.Show()
 		table := w.request.assertions
@@ -187,7 +188,7 @@ func TestAssertionTable(t *testing.T) {
 		table.onChange = func() { changes++ }
 
 		editable := func(row, column int) bool {
-			return table.table.Item(row, column).Flags()&qt.ItemIsEditable != 0
+			return table.table.Item(row, column).Flags()&qtcore.ItemIsEditable != 0
 		}
 		if table.table.RowCount() != 1 || len(table.checks()) != 0 {
 			t.Fatalf("%d rows, checks %+v", table.table.RowCount(), table.checks())
@@ -254,7 +255,7 @@ func TestAssertionTable(t *testing.T) {
 // The menu of the body of a response offers to assert that the value it is
 // opened on is what it is.
 func TestClickToAssert(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		w.Show()
 
@@ -285,7 +286,7 @@ func TestAssertionsGRPC(t *testing.T) {
 	defer srv.Close()
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		w.requests.addFolder()
@@ -295,7 +296,7 @@ func TestAssertionsGRPC(t *testing.T) {
 	})
 	waitFor(t, "the methods", func() bool { return w.grpc.method.count() == 4 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.grpc.method.selectMethod("test.v1.Echo/Repeat")
 		w.grpc.message.SetPlainText(`{"text": "hello", "count": 3}`)
 		w.grpc.assertions.setChecks([]assert.Check{
@@ -307,7 +308,7 @@ func TestAssertionsGRPC(t *testing.T) {
 	})
 	waitFor(t, "the response", func() bool { return strings.Contains(w.grpcResponse.result.Text(), "0 OK") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// The body is the last message.
 		if tab, rows, _ := assertMarks(w.grpcResponse); tab != "tick" || !slices.Equal(rows, []string{"tick", "tick"}) {
 			t.Errorf("tab %q, rows %v", tab, rows)
@@ -318,7 +319,7 @@ func TestAssertionsGRPC(t *testing.T) {
 	})
 	waitFor(t, "the failure", func() bool { return strings.Contains(w.grpcResponse.result.Text(), "NOT_FOUND") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if tab, _, results := assertMarks(w.grpcResponse); tab != "cross" || results[0] != "the status is NOT_FOUND, not ok" || results[1] != "the response has no body" {
 			t.Errorf("tab %q, results %q", tab, results)
 		}
@@ -334,7 +335,7 @@ func TestAssertionsMCP(t *testing.T) {
 	}
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		defer func(prev collection.Type) { testRequestType = prev }(testRequestType)
@@ -343,9 +344,9 @@ func TestAssertionsMCP(t *testing.T) {
 		w.mcp.url.SetText("{{host}}/mcp")
 		w.mcp.reload.Click()
 	})
-	waitFor(t, "the capabilities", func() bool { return mainthread.Wait2(w.mcp.endpoint.count) == 7 })
+	waitFor(t, "the capabilities", func() bool { return onGUI(w.mcp.endpoint.count) == 7 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.mcp.endpoint.selectMethod("Tools/fail")
 		w.mcp.assertions.setChecks([]assert.Check{
 			{Subject: assert.Status, Comparison: assert.Equals, Value: "OK", Enabled: true},
@@ -355,10 +356,10 @@ func TestAssertionsMCP(t *testing.T) {
 		w.mcp.call.Click()
 	})
 	waitFor(t, "the marks", func() bool {
-		return mainthread.Wait2(func() bool { tab, _, _ := assertMarks(w.mcpResponse); return tab != "" })
+		return onGUI(func() bool { tab, _, _ := assertMarks(w.mcpResponse); return tab != "" })
 	})
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if tab, rows, results := assertMarks(w.mcpResponse); tab != "cross" || !slices.Equal(rows, []string{"cross", "tick"}) || results[0] != "the status is Tool error, not OK" {
 			t.Errorf("tab %q, rows %v, results %q", tab, rows, results)
 		}

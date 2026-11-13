@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -8,8 +10,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/collection"
@@ -67,7 +67,7 @@ func TestScreenshot(t *testing.T) {
 	config.Theme = settings.ThemeDark
 	// The window puts the theme into effect, and the system's is put back
 	// for the tests run after.
-	t.Cleanup(func() { mainthread.Wait(func() { applyTheme("") }) })
+	t.Cleanup(func() { qute.PostSync(func() { applyTheme("") }) })
 	if err := config.Save(files.Settings); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestScreenshot(t *testing.T) {
 	}
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.requests.sets.chooseAt(0)
@@ -120,9 +120,9 @@ func TestScreenshot(t *testing.T) {
 	})
 	waitFor(t, "the response", func() bool { return fieldValue(w.response, fieldCode) == "201 Created" })
 
-	saved := mainthread.Wait2(func() bool {
+	saved := onGUI(func() bool {
 		w.requests.draw(w.open)
-		return w.Grab().Save(path)
+		return w.Grab().Save(path) == nil
 	})
 	if !saved {
 		t.Fatalf("the screenshot could not be saved to %s", path)

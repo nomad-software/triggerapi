@@ -1,7 +1,9 @@
 package ui
 
 import (
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"github.com/nomad-software/triggerapi/internal/settings"
 )
@@ -124,10 +126,10 @@ func themeColour(kind colourKind) string {
 
 // icons holds the icons drawn in the colours of the settings, by what they
 // are of, once they have been drawn. setColours forgets them.
-var icons = map[string]*qt.QIcon{}
+var icons = map[string]*qtgui.QIcon{}
 
 // cachedIcon returns the icon kept under a key, drawing it if there is none.
-func cachedIcon(key string, draw func() *qt.QIcon) *qt.QIcon {
+func cachedIcon(key string, draw func() *qtgui.QIcon) *qtgui.QIcon {
 	icon, ok := icons[key]
 	if !ok {
 		icon = draw()
@@ -138,14 +140,14 @@ func cachedIcon(key string, draw func() *qt.QIcon) *qt.QIcon {
 
 // painted holds, for each button whose icon is in one of the colours, what
 // draws that icon again.
-var painted = map[*qt.QToolButton]func(){}
+var painted = map[*qtwidgets.QToolButton]func(){}
 
 // followColours gives a button its icon with paint, which is called again
 // whenever the colours change, for as long as there is the button.
-func followColours(button *qt.QToolButton, paint func()) {
+func followColours(button *qtwidgets.QToolButton, paint func()) {
 	paint()
 	painted[button] = paint
-	button.OnDestroyed(func() { delete(painted, button) })
+	button.OnDestroyed(func(_ *qtcore.QObject) { delete(painted, button) })
 }
 
 // setColours changes the colours the user has chosen. The icons that are
@@ -158,9 +160,19 @@ func setColours(custom settings.Colours) {
 	}
 	customColours = custom
 
-	icons = map[string]*qt.QIcon{}
+	icons = map[string]*qtgui.QIcon{}
 
 	for _, paint := range painted {
 		paint()
 	}
+}
+
+// qcolour returns the colour a name such as #rrggbb stands for, or the
+// invalid colour if it stands for none.
+func qcolour(name string) qtgui.QColor {
+	colour, err := qtgui.ParseColor(name)
+	if err != nil {
+		return qtgui.QColor{}
+	}
+	return colour
 }

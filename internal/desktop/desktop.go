@@ -62,7 +62,7 @@ func Entry(exec, class, icon string) string {
 	b.WriteString("[Desktop Entry]\n")
 	b.WriteString("Type=Application\n")
 	b.WriteString("Name=TriggerAPI\n")
-	b.WriteString("Comment=Make REST API, gRPC and WebSocket requests\n")
+	b.WriteString("Comment=Make REST API, GraphQL, gRPC, MCP and WebSocket requests\n")
 	b.WriteString("Exec=" + escape(quote(exec)) + "\n")
 	b.WriteString("TryExec=" + escape(exec) + "\n")
 	b.WriteString("Icon=" + escape(icon) + "\n")

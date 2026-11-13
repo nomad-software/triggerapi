@@ -1,13 +1,15 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"os"
 	"slices"
 	"testing"
 	"time"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/crypt"
@@ -51,7 +53,7 @@ func TestHistoryDays(t *testing.T) {
 	older := testHistory(time.Date(2026, 10, 12, 8, 5, 9, 0, time.Local), "c")
 	store.Entries = append(store.Entries, older.Entries...)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		h := newHistoryList(&history.Store{}, "")
 		h.now = func() time.Time { return now }
 		h.load(store, "")
@@ -63,7 +65,7 @@ func TestHistoryDays(t *testing.T) {
 			t.Errorf("time = %q", got)
 		}
 		// A heading cannot be selected.
-		if h.tree.TopLevelItem(0).Flags()&qt.ItemIsSelectable != 0 {
+		if h.tree.TopLevelItem(0).Flags()&qtcore.ItemIsSelectable != 0 {
 			t.Error("a heading can be selected")
 		}
 	})
@@ -71,7 +73,7 @@ func TestHistoryDays(t *testing.T) {
 
 func TestHistorySearch(t *testing.T) {
 	now := time.Now()
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		h := newHistoryList(testHistory(now, "list rooms", "book room", "cancel"), "")
 		opened := 0
 		h.onOpen = func(*history.Entry) { opened++ }
@@ -106,7 +108,7 @@ func TestHistorySearch(t *testing.T) {
 // clickHistory clicks an item of the history in a column, or twice for a
 // double click. The first column of a heading is clicked on its box, past
 // its arrow.
-func clickHistory(h *historyList, item *qt.QTreeWidgetItem, column int, double bool) {
+func clickHistory(h *historyList, item *qtwidgets.QTreeWidgetItem, column int, double bool) {
 	x := h.tree.Header().SectionViewportPosition(column) + 3
 	if item.Parent() == nil && column == colHistoryCheck {
 		x += h.tree.Indentation()
@@ -116,27 +118,26 @@ func clickHistory(h *historyList, item *qt.QTreeWidgetItem, column int, double b
 
 // clickDate clicks the date of a heading of the history, past its box, or
 // twice for a double click.
-func clickDate(h *historyList, item *qt.QTreeWidgetItem, double bool) {
+func clickDate(h *historyList, item *qtwidgets.QTreeWidgetItem, double bool) {
 	clickHistoryAt(h, item, h.tree.Header().SectionViewportPosition(colHistoryTitle), double)
 }
 
 // clickHistoryAt clicks the row of an item of the history at a place across
 // it, or twice for a double click.
-func clickHistoryAt(h *historyList, item *qt.QTreeWidgetItem, x int, double bool) {
+func clickHistoryAt(h *historyList, item *qtwidgets.QTreeWidgetItem, x int, double bool) {
 	rect := h.tree.VisualItemRect(item)
-	at := qt.NewQPointF3(float64(x), float64(rect.Center().Y()))
-	defer at.Delete()
-	kinds := []qt.QEvent__Type{qt.QEvent__MouseButtonPress, qt.QEvent__MouseButtonRelease}
+	at := qtcore.QPointF{X: float64(x), Y: float64(rect.Center().Y)}
+	kinds := []qtcore.QEventType{qtcore.QEventMouseButtonPress, qtcore.QEventMouseButtonRelease}
 	if double {
-		kinds = append(kinds, qt.QEvent__MouseButtonDblClick, qt.QEvent__MouseButtonRelease)
+		kinds = append(kinds, qtcore.QEventMouseButtonDblClick, qtcore.QEventMouseButtonRelease)
 	}
 	for _, kind := range kinds {
-		buttons := qt.LeftButton
-		if kind == qt.QEvent__MouseButtonRelease {
-			buttons = qt.NoButton
+		buttons := qtcore.LeftButton
+		if kind == qtcore.QEventMouseButtonRelease {
+			buttons = qtcore.NoButton
 		}
-		event := qt.NewQMouseEvent(kind, at, qt.LeftButton, buttons, qt.NoModifier)
-		qt.QCoreApplication_SendEvent(h.tree.Viewport().QObject, event.QEvent)
+		event := qtgui.NewQMouseEvent(kind, at, at, qtcore.LeftButton, buttons, qtcore.NoModifier)
+		qtcore.QCoreApplicationSendEvent(h.tree.Viewport().AsQObject(), event.AsQEvent())
 		event.Delete()
 	}
 }
@@ -155,7 +156,7 @@ func tickedTitles(h *historyList) []string {
 func TestHistoryRemove(t *testing.T) {
 	files := testFiles(t)
 	now := time.Now()
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		h := newHistoryList(testHistory(now, "a", "b", "c"), files.History)
 		h.keys = func() *crypt.Keys { return testKeys }
 
@@ -185,6 +186,28 @@ func TestHistoryRemove(t *testing.T) {
 	}
 }
 
+// TestHistoryTicksDropped checks that an entry dropped to make room for a new
+// one is no longer ticked, so that it is not counted among those to compare.
+func TestHistoryTicksDropped(t *testing.T) {
+	now := time.Now()
+	qute.PostSync(func() {
+		h := newHistoryList(testHistory(now, "a", "b"), "")
+		h.limit = func() int { return 2 }
+		today := h.tree.TopLevelItem(0)
+		h.toggle(today.Child(0))
+		h.toggle(today.Child(1))
+		if !h.diff.IsEnabled() {
+			t.Fatal("two ticked entries cannot be compared")
+		}
+
+		added := testHistory(now.Add(time.Minute), "c").Entries[0]
+		h.add(added)
+		if got := tickedTitles(h); !slices.Equal(got, []string{"a"}) || len(h.ticked) != 1 || h.diff.IsEnabled() {
+			t.Errorf("ticked %q, %d kept, compare enabled %v", got, len(h.ticked), h.diff.IsEnabled())
+		}
+	})
+}
+
 func TestHistoryTicking(t *testing.T) {
 	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.Local)
 	store := testHistory(now, "a", "b", "c", "d")
@@ -192,7 +215,7 @@ func TestHistoryTicking(t *testing.T) {
 	store.Entries[3].Time = now.AddDate(0, 0, -1)
 	store.Entries[3].Path = []string{"Folder", "d"}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		h := newHistoryList(store, "")
 		h.now = func() time.Time { return now }
 		h.draw(nil)
@@ -210,7 +233,7 @@ func TestHistoryTicking(t *testing.T) {
 		if got := tickedTitles(h); !slices.Equal(got, []string{"a"}) || len(opened) != 0 || h.selected() != nil {
 			t.Errorf("ticked %q, opened %q", got, opened)
 		}
-		if today.CheckState(colHistoryCheck) != qt.PartiallyChecked {
+		if today.CheckState(colHistoryCheck) != qtcore.PartiallyChecked {
 			t.Errorf("heading %v", today.CheckState(colHistoryCheck))
 		}
 
@@ -224,7 +247,7 @@ func TestHistoryTicking(t *testing.T) {
 		// A click on the box of a heading ticks every entry of its day, and
 		// again unticks them.
 		clickHistory(h, yesterday, colHistoryCheck, false)
-		if got := tickedTitles(h); !slices.Equal(got, []string{"a", "c", "d"}) || yesterday.CheckState(colHistoryCheck) != qt.Checked {
+		if got := tickedTitles(h); !slices.Equal(got, []string{"a", "c", "d"}) || yesterday.CheckState(colHistoryCheck) != qtcore.Checked {
 			t.Errorf("ticked %q", got)
 		}
 		clickHistory(h, yesterday, colHistoryCheck, false)
@@ -233,7 +256,7 @@ func TestHistoryTicking(t *testing.T) {
 		}
 		// A day partly ticked is ticked whole.
 		clickHistory(h, today, colHistoryCheck, false)
-		if got := tickedTitles(h); !slices.Equal(got, []string{"a", "b"}) || today.CheckState(colHistoryCheck) != qt.Checked {
+		if got := tickedTitles(h); !slices.Equal(got, []string{"a", "b"}) || today.CheckState(colHistoryCheck) != qtcore.Checked {
 			t.Errorf("ticked %q", got)
 		}
 
@@ -251,7 +274,7 @@ func TestHistoryTicking(t *testing.T) {
 		// The ticks stay while a search hides them.
 		h.search.SetText("c")
 		h.search.Clear()
-		if got := tickedTitles(h); !slices.Equal(got, []string{"a", "b"}) || h.tree.TopLevelItem(0).CheckState(colHistoryCheck) != qt.Checked {
+		if got := tickedTitles(h); !slices.Equal(got, []string{"a", "b"}) || h.tree.TopLevelItem(0).CheckState(colHistoryCheck) != qtcore.Checked {
 			t.Errorf("ticked %q", got)
 		}
 
@@ -269,7 +292,7 @@ func TestHistoryKeyboard(t *testing.T) {
 	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.Local)
 	store := testHistory(now, "a", "b")
 	store.Entries[1].Time = now.AddDate(0, 0, -1)
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		h := newHistoryList(store, "")
 		h.now = func() time.Time { return now }
 		h.draw(nil)
@@ -278,30 +301,30 @@ func TestHistoryKeyboard(t *testing.T) {
 		h.root.Show()
 		defer h.root.Hide()
 
-		press := func(key qt.Key) {
-			event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(key), qt.NoModifier)
+		press := func(key qtcore.Key) {
+			event := qtgui.NewQKeyEvent(qtcore.QEventKeyPress, int(key), qtcore.NoModifier)
 			defer event.Delete()
-			qt.QCoreApplication_SendEvent(h.tree.QObject, event.QEvent)
+			qtcore.QCoreApplicationSendEvent(h.tree.AsQObject(), event.AsQEvent())
 		}
 
 		// Down goes over the heading of yesterday to its entry, without
 		// opening it, and Return opens it.
 		h.tree.SetCurrentItem(h.tree.TopLevelItem(0).Child(0))
 		opened = nil
-		press(qt.Key_Down)
+		press(qtcore.Key_Down)
 		if e := h.selected(); e == nil || e.Title() != "b" || len(opened) != 0 {
 			t.Errorf("selected %v, opened %q", e, opened)
 		}
-		press(qt.Key_Return)
+		press(qtcore.Key_Return)
 		if !slices.Equal(opened, []string{"b"}) {
 			t.Errorf("opened %q", opened)
 		}
 		// Space ticks it, and Delete removes what is ticked.
-		press(qt.Key_Space)
+		press(qtcore.Key_Space)
 		if got := tickedTitles(h); !slices.Equal(got, []string{"b"}) {
 			t.Errorf("ticked %q", got)
 		}
-		press(qt.Key_Delete)
+		press(qtcore.Key_Delete)
 		if len(h.store.Entries) != 1 || h.selected().Title() != "a" {
 			t.Errorf("%d entries, selected %v", len(h.store.Entries), h.selected())
 		}
@@ -309,7 +332,7 @@ func TestHistoryKeyboard(t *testing.T) {
 }
 
 func TestHistoryHeadingsShaded(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		h := newHistoryList(testHistory(time.Now(), "a", "b"), "")
 		h.root.Resize(400, 300)
 		h.root.Show()
@@ -318,7 +341,7 @@ func TestHistoryHeadingsShaded(t *testing.T) {
 		heading := h.tree.TopLevelItem(0)
 		// The heading is drawn as other text is, on a shaded background,
 		// which its entries are not.
-		if heading.Foreground(colHistoryCheck).Style() != qt.NoBrush {
+		if heading.Foreground(colHistoryCheck).Style() != qtcore.NoBrush {
 			t.Error("the heading has a colour of its own")
 		}
 		if rowColour(h.tree, heading) == rowColour(h.tree, heading.Child(0)) {
@@ -334,7 +357,7 @@ func TestHistoryDaysOpenAndClose(t *testing.T) {
 	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.Local)
 	store := testHistory(now, "a", "b", "c")
 	store.Entries[2].Time = now.AddDate(0, 0, -1)
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		h := newHistoryList(store, "")
 		h.now = func() time.Time { return now }
 		h.limit = func() int { return 10 }
@@ -342,8 +365,8 @@ func TestHistoryDaysOpenAndClose(t *testing.T) {
 		h.root.Resize(400, 400)
 		h.root.Show()
 		defer h.root.Hide()
-		today := func() *qt.QTreeWidgetItem { return h.tree.TopLevelItem(0) }
-		yesterday := func() *qt.QTreeWidgetItem { return h.tree.TopLevelItem(1) }
+		today := func() *qtwidgets.QTreeWidgetItem { return h.tree.TopLevelItem(0) }
+		yesterday := func() *qtwidgets.QTreeWidgetItem { return h.tree.TopLevelItem(1) }
 
 		// Every day is open to begin with.
 		if !today().IsExpanded() || !yesterday().IsExpanded() || !h.tree.RootIsDecorated() {
@@ -400,16 +423,16 @@ func TestHistoryDaysOpenAndClose(t *testing.T) {
 		// Left and Right on an entry close and open its day.
 		h.tree.SetFocus()
 		h.tree.SetCurrentItem(today().Child(0))
-		press := func(key qt.Key) {
-			event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(key), qt.NoModifier)
+		press := func(key qtcore.Key) {
+			event := qtgui.NewQKeyEvent(qtcore.QEventKeyPress, int(key), qtcore.NoModifier)
 			defer event.Delete()
-			qt.QCoreApplication_SendEvent(h.tree.QObject, event.QEvent)
+			qtcore.QCoreApplicationSendEvent(h.tree.AsQObject(), event.AsQEvent())
 		}
-		press(qt.Key_Left)
+		press(qtcore.Key_Left)
 		if today().IsExpanded() {
 			t.Error("Left did not close the day")
 		}
-		press(qt.Key_Right)
+		press(qtcore.Key_Right)
 		if !today().IsExpanded() {
 			t.Error("Right did not open the day")
 		}

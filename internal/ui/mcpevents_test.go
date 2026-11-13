@@ -1,11 +1,11 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"strings"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/mcp"
@@ -22,10 +22,10 @@ func TestMCPEvents(t *testing.T) {
 	var sampled *mcp.Sampling
 	var sampleAnswer *mcp.SampleAnswer
 	defer func(elicit, sample any) {
-		askElicitation = elicit.(func(*qt.QWidget, string, *mcp.Elicitation, func(*mcp.ElicitAnswer)) func())
-		askSampling = sample.(func(*qt.QWidget, string, *mcp.Sampling, func(*mcp.SampleAnswer)) func())
+		askElicitation = elicit.(func(*qtwidgets.QWidget, string, *mcp.Elicitation, func(*mcp.ElicitAnswer)) func())
+		askSampling = sample.(func(*qtwidgets.QWidget, string, *mcp.Sampling, func(*mcp.SampleAnswer)) func())
 	}(askElicitation, askSampling)
-	askElicitation = func(_ *qt.QWidget, server string, e *mcp.Elicitation, done func(*mcp.ElicitAnswer)) func() {
+	askElicitation = func(_ *qtwidgets.QWidget, server string, e *mcp.Elicitation, done func(*mcp.ElicitAnswer)) func() {
 		asked = e
 		if !strings.HasSuffix(server, "/mcp") {
 			t.Errorf("the server is named %q", server)
@@ -33,7 +33,7 @@ func TestMCPEvents(t *testing.T) {
 		done(&mcp.ElicitAnswer{Action: mcp.ActionAccept, Content: map[string]any{"name": "Ada"}})
 		return func() {}
 	}
-	askSampling = func(_ *qt.QWidget, _ string, s *mcp.Sampling, done func(*mcp.SampleAnswer)) func() {
+	askSampling = func(_ *qtwidgets.QWidget, _ string, s *mcp.Sampling, done func(*mcp.SampleAnswer)) func() {
 		sampled = s
 		done(sampleAnswer)
 		return func() {}
@@ -44,13 +44,13 @@ func TestMCPEvents(t *testing.T) {
 	events := func() string { return w.mcpResponse.events.log.ToPlainText() }
 	tabText := func() string { return w.mcpResponse.tabs.TabText(w.mcpResponse.events.index) }
 	call := func(tool, arguments string) {
-		mainthread.Wait(func() {
+		qute.PostSync(func() {
 			w.mcp.endpoint.selectMethod("Tools/" + tool)
 			w.mcp.arguments.SetPlainText(arguments)
 			w.mcp.call.Click()
 		})
 	}
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		defer func(prev collection.Type) { testRequestType = prev }(testRequestType)
@@ -64,12 +64,12 @@ func TestMCPEvents(t *testing.T) {
 			t.Error("the panel of MCP requests has no Events tab after Capture")
 		}
 	})
-	waitFor(t, "the capabilities", func() bool { return mainthread.Wait2(w.mcp.endpoint.count) == 7 })
+	waitFor(t, "the capabilities", func() bool { return onGUI(w.mcp.endpoint.count) == 7 })
 
 	// Progress and messages logged.
 	call("progress", `{"steps": 3}`)
 	waitFor(t, "the result", func() bool { return strings.Contains(body(), `"steps": 3`) })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if tabText() != "Events (6)" || !strings.Contains(events(), "Progress 3/3 (100%)\nstep 3") || !strings.Contains(events(), "Log info counter\nstep 1") {
 			t.Errorf("tab %q, events %q", tabText(), events())
 		}
@@ -85,7 +85,7 @@ func TestMCPEvents(t *testing.T) {
 	// Elicitation.
 	call("who", "")
 	waitFor(t, "the answer", func() bool { return strings.Contains(body(), `"name": "Ada"`) })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if asked == nil || asked.Message != "Who are you?" {
 			t.Errorf("asked %+v", asked)
 		}
@@ -98,7 +98,7 @@ func TestMCPEvents(t *testing.T) {
 	sampleAnswer = &mcp.SampleAnswer{Text: "Hello there", Model: "by-hand"}
 	call("sample", "")
 	waitFor(t, "the reply", func() bool { return strings.Contains(body(), `"text": "Hello there"`) })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if sampled == nil || sampled.Messages[0].Text != "Say hello." || !strings.Contains(events(), "Sampling: replied") {
 			t.Errorf("sampled %+v, events %q", sampled, events())
 		}
@@ -114,15 +114,15 @@ func TestMCPEventsCancelled(t *testing.T) {
 	srv := mcptest.NewServer(t)
 	opened, closed := make(chan struct{}, 1), make(chan struct{}, 1)
 	defer func(prev any) {
-		askElicitation = prev.(func(*qt.QWidget, string, *mcp.Elicitation, func(*mcp.ElicitAnswer)) func())
+		askElicitation = prev.(func(*qtwidgets.QWidget, string, *mcp.Elicitation, func(*mcp.ElicitAnswer)) func())
 	}(askElicitation)
-	askElicitation = func(*qt.QWidget, string, *mcp.Elicitation, func(*mcp.ElicitAnswer)) func() {
+	askElicitation = func(*qtwidgets.QWidget, string, *mcp.Elicitation, func(*mcp.ElicitAnswer)) func() {
 		opened <- struct{}{}
 		return func() { closed <- struct{}{} }
 	}
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		defer func(prev collection.Type) { testRequestType = prev }(testRequestType)
@@ -131,13 +131,13 @@ func TestMCPEventsCancelled(t *testing.T) {
 		w.mcp.url.SetText(srv.URL + "/mcp")
 		w.mcp.reload.Click()
 	})
-	waitFor(t, "the capabilities", func() bool { return mainthread.Wait2(w.mcp.endpoint.count) == 7 })
-	mainthread.Wait(func() {
+	waitFor(t, "the capabilities", func() bool { return onGUI(w.mcp.endpoint.count) == 7 })
+	qute.PostSync(func() {
 		w.mcp.endpoint.selectMethod("Tools/who")
 		w.mcp.call.Click()
 	})
 	<-opened
-	mainthread.Wait(func() { w.mcp.call.Click() })
+	qute.PostSync(func() { w.mcp.call.Click() })
 	<-closed
 	waitFor(t, "the call to be cancelled", func() bool { return fieldValue(w.mcpResponse, fieldError) == "Cancelled" })
 }

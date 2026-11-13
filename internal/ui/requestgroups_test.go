@@ -1,9 +1,9 @@
 package ui
 
 import (
-	"testing"
+	"github.com/nomad-software/qute"
 
-	"github.com/mappu/miqt/qt6/mainthread"
+	"testing"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -18,7 +18,7 @@ func TestHeadingsShaded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree

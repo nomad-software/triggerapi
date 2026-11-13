@@ -1,10 +1,11 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"fmt"
 	"slices"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/mcp"
 )
@@ -13,14 +14,14 @@ import (
 // calls done with how they answered once they have. It returns what closes
 // the dialog, as cancelled, if it is still open, as it is when the call is
 // given up. Tests replace it rather than let the dialog open.
-var askElicitation = func(parent *qt.QWidget, server string, e *mcp.Elicitation, done func(*mcp.ElicitAnswer)) (close func()) {
+var askElicitation = func(parent *qtwidgets.QWidget, server string, e *mcp.Elicitation, done func(*mcp.ElicitAnswer)) (close func()) {
 	return newElicitDialog(parent, server, e).open(done)
 }
 
 // elicitDialog asks the user to fill in the form an MCP server sent, and to
 // accept it, decline it or cancel.
 type elicitDialog struct {
-	*qt.QDialog
+	*qtwidgets.QDialog
 	inputs  []elicitInput
 	problem statusLine
 	// answer is how the user answered, which is nil until they have:
@@ -33,33 +34,33 @@ type elicitDialog struct {
 // beside its description, if it has one, in what is put in the form.
 type elicitInput struct {
 	field  mcp.Field
-	widget *qt.QWidget
+	widget *qtwidgets.QWidget
 	read   func() (any, bool, error)
 }
 
 // elicitMinWidth is the narrowest the dialog is.
 const elicitMinWidth = 460
 
-func newElicitDialog(parent *qt.QWidget, server string, e *mcp.Elicitation) *elicitDialog {
-	d := &elicitDialog{QDialog: qt.NewQDialog(parent), problem: newStatusLine()}
+func newElicitDialog(parent *qtwidgets.QWidget, server string, e *mcp.Elicitation) *elicitDialog {
+	d := &elicitDialog{QDialog: qtwidgets.NewQDialog(parent), problem: newStatusLine()}
 	d.SetWindowTitle("The Server Asks")
 	d.SetMinimumWidth(elicitMinWidth)
 
-	layout := qt.NewQVBoxLayout(d.QWidget)
-	layout.SetContentsMargins(18, 18, 18, 18)
+	layout := qtwidgets.NewQVBoxLayout(d.AsQWidget())
+	layout.SetContentsMargins(qtcore.QMargins{Left: 18, Top: 18, Right: 18, Bottom: 18})
 	layout.SetSpacing(12)
 
-	from := qt.NewQLabel3(server + " asks:")
+	from := qtwidgets.NewQLabelWithText(server+" asks:", nil)
 	from.SetEnabled(false)
 	from.SetWordWrap(true)
-	layout.AddWidget(from.QWidget)
-	message := qt.NewQLabel3(e.Message)
+	layout.AddWidget(from.AsQWidget())
+	message := qtwidgets.NewQLabelWithText(e.Message, nil)
 	message.SetWordWrap(true)
-	message.SetTextInteractionFlags(qt.TextSelectableByMouse)
-	layout.AddWidget(message.QWidget)
+	message.SetTextInteractionFlags(qtcore.TextSelectableByMouse)
+	layout.AddWidget(message.AsQWidget())
 
 	if len(e.Fields) > 0 {
-		form := qt.NewQFormLayout2()
+		form := qtwidgets.NewQFormLayout(nil)
 		for _, field := range e.Fields {
 			input, placed := newElicitInput(field)
 			d.inputs = append(d.inputs, input)
@@ -67,28 +68,28 @@ func newElicitDialog(parent *qt.QWidget, server string, e *mcp.Elicitation) *eli
 			if field.Required {
 				label += " *"
 			}
-			form.AddRow3(label, placed)
+			form.AddRowText(label, placed)
 		}
-		layout.AddLayout(form.QLayout)
+		layout.AddLayout(form.AsQLayout())
 	}
-	layout.AddWidget(d.problem.QWidget)
+	layout.AddWidget(d.problem.AsQWidget())
 
-	accept := qt.NewQPushButton3("Accept")
+	accept := qtwidgets.NewQPushButtonWithText("Accept", nil)
 	accept.SetDefault(true)
-	accept.OnClicked(d.accept)
-	decline := qt.NewQPushButton3("Decline")
+	accept.OnClicked(func(_ bool) { d.accept() })
+	decline := qtwidgets.NewQPushButtonWithText("Decline", nil)
 	decline.SetAutoDefault(false)
-	decline.OnClicked(func() { d.finish(&mcp.ElicitAnswer{Action: mcp.ActionDecline}) })
-	cancel := qt.NewQPushButton3("Cancel")
+	decline.OnClicked(func(_ bool) { d.finish(&mcp.ElicitAnswer{Action: mcp.ActionDecline}) })
+	cancel := qtwidgets.NewQPushButtonWithText("Cancel", nil)
 	cancel.SetAutoDefault(false)
-	cancel.OnClicked(d.Reject)
+	cancel.OnClicked(func(_ bool) { d.Reject() })
 
-	buttons := qt.NewQHBoxLayout2()
+	buttons := qtwidgets.NewQHBoxLayout(nil)
 	buttons.AddStretch()
-	buttons.AddWidget(accept.QWidget)
-	buttons.AddWidget(decline.QWidget)
-	buttons.AddWidget(cancel.QWidget)
-	layout.AddLayout(buttons.QLayout)
+	buttons.AddWidget(accept.AsQWidget())
+	buttons.AddWidget(decline.AsQWidget())
+	buttons.AddWidget(cancel.AsQWidget())
+	layout.AddLayout(buttons.AsQLayout())
 	return d
 }
 
@@ -96,26 +97,26 @@ func newElicitDialog(parent *qt.QWidget, server string, e *mcp.Elicitation) *eli
 // drop-down for one of a few options, a check box for each of the options of
 // which any can be chosen, and otherwise a line to type the value in. What
 // is put in the form for it has its description beneath it.
-func newElicitInput(field mcp.Field) (input elicitInput, placed *qt.QWidget) {
+func newElicitInput(field mcp.Field) (input elicitInput, placed *qtwidgets.QWidget) {
 	input.field = field
-	var widget *qt.QWidget
+	var widget *qtwidgets.QWidget
 	switch {
 	case field.Type == mcp.FieldBoolean:
-		box := qt.NewQCheckBox2()
+		box := qtwidgets.NewQCheckBox(nil)
 		box.SetChecked(field.Default == true)
 		input.read = func() (any, bool, error) { return box.IsChecked(), true, nil }
-		widget = box.QWidget
+		widget = box.AsQWidget()
 
 	case field.Type == mcp.FieldChoices:
 		chosen, _ := field.Default.([]any)
-		holder := qt.NewQWidget2()
-		column := qt.NewQVBoxLayout(holder)
-		column.SetContentsMargins(0, 0, 0, 0)
-		var boxes []*qt.QCheckBox
+		holder := qtwidgets.NewQWidget(nil)
+		column := qtwidgets.NewQVBoxLayout(holder)
+		column.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 0, Right: 0, Bottom: 0})
+		var boxes []*qtwidgets.QCheckBox
 		for _, option := range field.Options {
-			box := qt.NewQCheckBox3(optionLabel(option))
+			box := qtwidgets.NewQCheckBoxWithText(optionLabel(option), nil)
 			box.SetChecked(slices.Contains(chosen, any(option.Value)))
-			column.AddWidget(box.QWidget)
+			column.AddWidget(box.AsQWidget())
 			boxes = append(boxes, box)
 		}
 		input.read = func() (any, bool, error) {
@@ -133,7 +134,7 @@ func newElicitInput(field mcp.Field) (input elicitInput, placed *qt.QWidget) {
 		widget = holder
 
 	case len(field.Options) > 0:
-		combo := qt.NewQComboBox2()
+		combo := qtwidgets.NewQComboBox(nil)
 		values := []string{}
 		// One that need not be given can be left out.
 		if !field.Required {
@@ -151,31 +152,31 @@ func newElicitInput(field mcp.Field) (input elicitInput, placed *qt.QWidget) {
 			value := values[max(combo.CurrentIndex(), 0)]
 			return value, value != "", nil
 		}
-		widget = combo.QWidget
+		widget = combo.AsQWidget()
 
 	default:
-		line := qt.NewQLineEdit2()
+		line := qtwidgets.NewQLineEdit(nil)
 		if field.Default != nil {
 			line.SetText(fmt.Sprint(field.Default))
 		}
 		line.SetPlaceholderText(field.Format)
 		input.read = func() (any, bool, error) { return field.Parse(line.Text()) }
-		widget = line.QWidget
+		widget = line.AsQWidget()
 	}
 
 	input.widget = widget
 	if field.Description == "" {
 		return input, widget
 	}
-	holder := qt.NewQWidget2()
-	column := qt.NewQVBoxLayout(holder)
-	column.SetContentsMargins(0, 0, 0, 0)
+	holder := qtwidgets.NewQWidget(nil)
+	column := qtwidgets.NewQVBoxLayout(holder)
+	column.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 0, Right: 0, Bottom: 0})
 	column.SetSpacing(2)
 	column.AddWidget(widget)
-	description := qt.NewQLabel3(field.Description)
+	description := qtwidgets.NewQLabelWithText(field.Description, nil)
 	description.SetWordWrap(true)
 	description.SetEnabled(false)
-	column.AddWidget(description.QWidget)
+	column.AddWidget(description.AsQWidget())
 	return input, holder
 }
 
@@ -223,7 +224,7 @@ func (d *elicitDialog) finish(answer *mcp.ElicitAnswer) {
 // answered, and calls done with the answer once it is. It returns what
 // closes it, as cancelled, if it is still open.
 func (d *elicitDialog) open(done func(*mcp.ElicitAnswer)) func() {
-	return openDialog(d.QDialog, func() {
+	return openDialog(d.AsQDialog(), func() {
 		answer := d.answer
 		if answer == nil {
 			answer = &mcp.ElicitAnswer{Action: mcp.ActionCancel}

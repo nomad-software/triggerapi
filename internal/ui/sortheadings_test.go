@@ -1,12 +1,13 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"math"
 	"slices"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 )
 
 // A click on a heading sorts by its column alone, and one with Shift adds it
@@ -70,7 +71,7 @@ func TestSortMarkLayout(t *testing.T) {
 
 // The mark is painted in the colour of the heading's text at half opacity.
 func TestSortMarkPainted(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		table := newKeyValueTable("Key", "Value")
 		defer table.table.Delete()
 		table.sortByHeadings()
@@ -79,13 +80,13 @@ func TestSortMarkPainted(t *testing.T) {
 		defer table.table.Hide()
 		header := table.table.HorizontalHeader()
 
-		pixel := func(image *qt.QImage, x, y float64) *qt.QColor {
+		pixel := func(image *qtgui.QImage, x, y float64) qtgui.QColor {
 			return image.PixelColor(int(math.Round(x)), int(math.Round(y)))
 		}
-		grab := func() *qt.QImage { return header.Grab().ToImage() }
+		grab := func() *qtgui.QImage { return header.Grab().ToImage() }
 
 		size := float64(header.FontMetrics().Height()) / 2
-		margin := float64(header.Style().PixelMetric(qt.QStyle__PM_HeaderMargin, nil, header.QWidget))
+		margin := float64(header.Style().PixelMetricFull(qtwidgets.QStylePM_HeaderMargin, nil, header.AsQWidget()))
 		section := box{float64(header.SectionViewportPosition(colKey)), 0, float64(header.SectionSize(colKey)), float64(header.Height())}
 		triangle, _ := sortMarkLayout(section, size, 0, margin)
 
@@ -94,14 +95,14 @@ func TestSortMarkPainted(t *testing.T) {
 		background := pixel(grab(), x, y)
 		table.setSort([]sortKey{{colKey, false}})
 		mark := pixel(grab(), x, y)
-		text := header.Palette().ColorWithCr(qt.QPalette__ButtonText)
+		text := header.Palette().Color(qtgui.QPaletteButtonText)
 		for _, c := range []struct {
 			name                   string
 			mark, background, text int
 		}{
-			{"red", mark.Red(), background.Red(), text.Red()},
-			{"green", mark.Green(), background.Green(), text.Green()},
-			{"blue", mark.Blue(), background.Blue(), text.Blue()},
+			{"red", int(mark.R), int(background.R), int(text.R)},
+			{"green", int(mark.G), int(background.G), int(text.G)},
+			{"blue", int(mark.B), int(background.B), int(text.B)},
 		} {
 			if want := (c.background + c.text) / 2; c.mark < want-12 || c.mark > want+12 {
 				t.Errorf("%s of the mark = %d, want about %d (text %d on %d)", c.name, c.mark, want, c.text, c.background)
@@ -110,7 +111,7 @@ func TestSortMarkPainted(t *testing.T) {
 
 		// Unsorted, the heading has no mark.
 		table.setSort(nil)
-		if got := pixel(grab(), x, y); got.Rgb() != background.Rgb() {
+		if got := pixel(grab(), x, y); got.Name() != background.Name() {
 			t.Errorf("a mark is left: %v", got.Name())
 		}
 	})

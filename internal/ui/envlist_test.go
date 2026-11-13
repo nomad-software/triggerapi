@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,9 +17,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/env"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -31,7 +32,7 @@ func TestEnvironments(t *testing.T) {
 	files := testFiles(t)
 	path := files.Environments
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 
@@ -117,7 +118,7 @@ func TestEnvironments(t *testing.T) {
 	}
 
 	// A new window restores the environments and the selection.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 
 		if w.environments.list.Count() != 2 || w.environments.list.CurrentRow() != 0 || w.environments.list.Item(1).Text() != "Other" {
@@ -160,7 +161,7 @@ func TestEnvironmentsUnreadableFile(t *testing.T) {
 	path := files.Environments
 	os.WriteFile(path, []byte("{oops"), 0o644)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		if !strings.Contains(w.StatusBar().CurrentMessage(), "could not be loaded") {
 			t.Error("no error shown")
@@ -187,7 +188,7 @@ func TestVariableDescriptions(t *testing.T) {
 	}
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.environments.edit()
@@ -198,7 +199,7 @@ func TestVariableDescriptions(t *testing.T) {
 		if table.table.IsColumnHidden(colDescription) || colDescription != colValue+1 || table.table.HorizontalHeaderItem(colDescription).Text() != "Description" {
 			t.Error("the descriptions are not shown after the values")
 		}
-		if alpha := table.table.Item(0, colDescription).Foreground().Color().Alpha(); alpha != 127 {
+		if alpha := table.table.Item(0, colDescription).Foreground().Color().A; alpha != 127 {
 			t.Errorf("alpha = %d", alpha)
 		}
 		// The other tables have none.
@@ -254,7 +255,7 @@ func TestOneVariableOfAName(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		w.environments.edit()
@@ -267,24 +268,24 @@ func TestOneVariableOfAName(t *testing.T) {
 			}
 			return got
 		}
-		check := func(row int, state qt.CheckState) { table.table.Item(row, colEnabled).SetCheckState(state) }
+		check := func(row int, state qtcore.CheckState) { table.table.Item(row, colEnabled).SetCheckState(state) }
 
 		// Switching on one of the variables with a name switches off the
 		// one that was on, and no others.
-		check(2, qt.Checked)
+		check(2, qtcore.Checked)
 		if got, want := enabled(), []bool{false, false, true, true}; !slices.Equal(got, want) {
 			t.Errorf("got %v, want %v", got, want)
 		}
 		if got := w.expand("{{host}} {{token}}"); got != "https://staging.test abc" {
 			t.Errorf("expanded to %q", got)
 		}
-		check(1, qt.Checked)
+		check(1, qtcore.Checked)
 		if got, want := enabled(), []bool{false, true, false, true}; !slices.Equal(got, want) {
 			t.Errorf("got %v, want %v", got, want)
 		}
 
 		// They can all be off.
-		check(1, qt.Unchecked)
+		check(1, qtcore.Unchecked)
 		if got, want := enabled(), []bool{false, false, false, true}; !slices.Equal(got, want) {
 			t.Errorf("got %v, want %v", got, want)
 		}
@@ -341,7 +342,7 @@ func TestImportEnvironment(t *testing.T) {
 	other := filepath.Join(dir, "collection.json")
 	os.WriteFile(other, []byte(`{"info": {"name": "A"}, "item": []}`), 0o644)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		el := w.environments
@@ -387,14 +388,14 @@ func TestImportEnvironment(t *testing.T) {
 		}
 
 		// The dialog offers Postman alone.
-		dialog := newEnvImportDialog(w.QWidget)
+		dialog := newEnvImportDialog(w.AsQWidget())
 		dialog.Show()
 		button := dialog.buttons[envImportPostman]
 		if len(dialog.buttons) != 1 || button == nil || button.Text() != "Postman" {
 			t.Fatal("no button labelled Postman")
 		}
 		button.Click()
-		if dialog.chosen != envImportPostman || dialog.Result() != int(qt.QDialog__Accepted) {
+		if dialog.chosen != envImportPostman || dialog.Result() != int(qtwidgets.QDialogAccepted) {
 			t.Errorf("clicking chose %q with result %d", dialog.chosen, dialog.Result())
 		}
 	})
@@ -426,7 +427,7 @@ func TestFunctionVariables(t *testing.T) {
 	}
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.request.load(rest.Request{
@@ -440,7 +441,7 @@ func TestFunctionVariables(t *testing.T) {
 		w.request.send.Click()
 	})
 	waitFor(t, "the first request", func() bool { return requests.Load() == 1 && fieldValue(w.response, "Status") != "" })
-	mainthread.Wait(func() { w.request.send.Click() })
+	qute.PostSync(func() { w.request.send.Click() })
 	waitFor(t, "the second request", func() bool { return requests.Load() == 2 })
 
 	first, _ := seen.Load(int32(1))
@@ -458,7 +459,7 @@ func TestFunctionVariables(t *testing.T) {
 
 	// The curl command has one value throughout too, and it is the command
 	// as shown that Execute runs.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		p := w.request
 		p.curl.Click()
 		id := p.commanded.Body

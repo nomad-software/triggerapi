@@ -8,12 +8,13 @@ package ui
 // requesttreesearch.go.
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"os"
 	"path/filepath"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/crypt"
@@ -25,19 +26,16 @@ import (
 )
 
 // TestMain runs the Qt event loop on the main thread and the tests on another
-// goroutine. Tests must touch widgets through mainthread.Wait.
+// goroutine. Tests must touch widgets through qute.PostSync.
 func TestMain(m *testing.M) {
 	os.Setenv("QT_QPA_PLATFORM", "offscreen")
-	qt.NewQApplication(os.Args[:1])
-	// Tests close windows, which must not end the event loop.
-	qt.QGuiApplication_SetQuitOnLastWindowClosed(false)
 	// Answer the request type dialog rather than show it.
-	askRequestType = func(*qt.QWidget) (collection.Type, bool) {
+	askRequestType = func(*qtwidgets.QWidget) (collection.Type, bool) {
 		return testRequestType, testRequestType != ""
 	}
 
 	// The dialog which says keys are needed is counted rather than shown.
-	adviseKeys = func(*qt.QWidget) { advised++ }
+	adviseKeys = func(*qtwidgets.QWidget) { advised++ }
 
 	// Every window is given the keys it needs to read and save anything.
 	keyDir, err := os.MkdirTemp("", "triggerapi-keys-")
@@ -51,15 +49,15 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	code := 0
-	go func() {
-		code = m.Run()
-		os.RemoveAll(keyDir)
-		mainthread.Start(qt.QCoreApplication_Quit)
-	}()
-
-	qt.QApplication_Exec()
-	os.Exit(code)
+	os.Exit(qute.Main(func() {
+		// Tests close windows, which must not end the event loop.
+		qtgui.QGuiApplicationSetQuitOnLastWindowClosed(false)
+		go func() {
+			code := m.Run()
+			os.RemoveAll(keyDir)
+			qute.Quit(code)
+		}()
+	}))
 }
 
 // testPublic and testPrivate are the paths of the files of the keys the
@@ -92,7 +90,7 @@ func loadRequests(path string) (*collection.Store, error) {
 
 // saveTestKeys makes a settings file which names the keys of the tests and
 // nothing else, as a window without keys reads and saves nothing.
-func saveTestKeys(t *testing.T, path string) {
+func saveTestKeys(t testing.TB, path string) {
 	t.Helper()
 	if err := settings.Prepare(path); err != nil {
 		t.Fatal(err)
@@ -119,10 +117,10 @@ type testPaths struct {
 // its settings when it is closed, which the ones left open would otherwise
 // do when the tests are over and the folder of their settings is gone. It is
 // called after the folder is made, so that it is still there.
-func closeWindows(t *testing.T) {
+func closeWindows(t testing.TB) {
 	t.Cleanup(func() {
-		mainthread.Wait(func() {
-			for _, widget := range qt.QApplication_TopLevelWidgets() {
+		qute.PostSync(func() {
+			for _, widget := range qtwidgets.QApplicationTopLevelWidgets() {
 				if widget.IsVisible() {
 					widget.Close()
 				}
@@ -133,7 +131,7 @@ func closeWindows(t *testing.T) {
 
 // testFiles returns places in a temporary folder for a window to keep its
 // data in, with a workspace named Default that has nothing in it yet.
-func testFiles(t *testing.T) testPaths {
+func testFiles(t testing.TB) testPaths {
 	dir := t.TempDir()
 	closeWindows(t)
 	workspaces := filepath.Join(dir, "workspaces")

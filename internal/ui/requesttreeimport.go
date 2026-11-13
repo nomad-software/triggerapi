@@ -1,7 +1,7 @@
 package ui
 
 import (
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtwidgets"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/openapi"
@@ -29,7 +29,7 @@ var importSources = map[importSource]importKind[*collection.Folder]{
 }
 
 // newImportDialog returns a dialog which asks what kind of file to import.
-func newImportDialog(parent *qt.QWidget) *choiceDialog[importSource] {
+func newImportDialog(parent *qtwidgets.QWidget) *choiceDialog[importSource] {
 	return newSourceDialog(parent, "Choose what to import requests from.", importOrder, importSources)
 }
 

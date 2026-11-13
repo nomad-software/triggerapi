@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"fmt"
 	"slices"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/env"
@@ -14,8 +16,8 @@ import (
 // envList lists the environments. The selected environment is the active one
 // and every change is saved.
 type envList struct {
-	root *qt.QWidget
-	list *qt.QListWidget
+	root *qtwidgets.QWidget
+	list *qtwidgets.QListWidget
 
 	store *env.Store
 	// path is the file the store is saved to. Nothing is saved if it is empty.
@@ -52,12 +54,12 @@ type envList struct {
 
 func newEnvList(store *env.Store, path string) *envList {
 	s := &envList{
-		root: qt.NewQWidget2(),
-		list: qt.NewQListWidget2(),
+		root: qtwidgets.NewQWidget(nil),
+		list: qtwidgets.NewQListWidget(nil),
 	}
 
 	s.confirm = func(question string) bool {
-		return qt.QMessageBox_Question(s.root, "TriggerAPI", question) == qt.QMessageBox__Yes
+		return qtwidgets.QMessageBoxQuestion(s.root, "TriggerAPI", question) == qtwidgets.QMessageBoxYes
 	}
 	s.chooseSource = func() (envImportSource, bool) {
 		return newEnvImportDialog(s.root).ask()
@@ -71,26 +73,26 @@ func newEnvList(store *env.Store, path string) *envList {
 	// its tooltip. They are the colour of the icon of the tab, but for the one
 	// which removes, and the one which imports is apart at the right.
 	add := newIconButton(colourEnvironments, drawPlus, "Add an environment")
-	add.OnClicked(s.add)
+	add.OnClicked(func(_ bool) { s.add() })
 	duplicate := newIconButton(colourEnvironments, drawCopy, "Duplicate the selected environment")
-	duplicate.OnClicked(s.duplicate)
+	duplicate.OnClicked(func(_ bool) { s.duplicate() })
 	importButton := newIconButton(colourEnvironments, drawImport, "Import an environment exported from Postman")
-	importButton.OnClicked(s.importDocument)
+	importButton.OnClicked(func(_ bool) { s.importDocument() })
 	edit := newIconButton(colourEnvironments, drawPencil, "Edit the selected environment")
-	edit.OnClicked(s.edit)
+	edit.OnClicked(func(_ bool) { s.edit() })
 	remove := newIconButton(colourRemove, drawBin, "Remove the selected environment")
-	remove.OnClicked(s.remove)
+	remove.OnClicked(func(_ bool) { s.remove() })
 
-	hint := qt.NewQLabel3("Use {{variable}} in any request field to insert a value from the selected environment.")
+	hint := qtwidgets.NewQLabelWithText("Use {{variable}} in any request field to insert a value from the selected environment.", nil)
 	hint.SetWordWrap(true)
 	hint.SetEnabled(false)
 
-	layout := qt.NewQVBoxLayout(s.root)
-	layout.AddWidget2(s.list.QWidget, 1)
-	layout.AddWidget(hint.QWidget)
+	layout := qtwidgets.NewQVBoxLayout(s.root)
+	layout.AddWidgetFull(s.list.AsQWidget(), 1, 0)
+	layout.AddWidget(hint.AsQWidget())
 	buttons := newButtonRow(add, duplicate, edit, remove)
-	buttons.AddWidget(importButton.QWidget)
-	layout.AddLayout(buttons.QLayout)
+	buttons.AddWidget(importButton.AsQWidget())
+	layout.AddLayout(buttons.AsQLayout())
 
 	s.load(store, path)
 
@@ -101,16 +103,16 @@ func newEnvList(store *env.Store, path string) *envList {
 		s.store.Active = row
 		s.selected()
 	})
-	s.list.OnItemDoubleClicked(func(*qt.QListWidgetItem) { s.edit() })
+	s.list.OnItemDoubleClicked(func(*qtwidgets.QListWidgetItem) { s.edit() })
 	// F2 does what the edit button does, which is where an environment is
 	// renamed.
-	s.list.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
+	s.list.OverrideKeyPressEvent(func(super func(*qtgui.QKeyEvent), event *qtgui.QKeyEvent) {
 		switch {
-		case event.Key() == int(qt.Key_F2):
+		case event.Key() == int(qtcore.Key_F2):
 			s.edit()
-		case event.Matches(qt.QKeySequence__Copy):
+		case event.Matches(qtgui.QKeySequenceCopy):
 			s.copy()
-		case event.Matches(qt.QKeySequence__Paste):
+		case event.Matches(qtgui.QKeySequencePaste):
 			s.paste()
 		default:
 			super(event)
@@ -131,9 +133,9 @@ func (s *envList) load(store *env.Store, path string) {
 
 	s.list.Clear()
 	for _, e := range store.Environments {
-		item := qt.NewQListWidgetItem2(e.Name)
+		item := qtwidgets.NewQListWidgetItemWithText(e.Name, nil)
 		item.SetIcon(environmentIcon())
-		s.list.AddItemWithItem(item)
+		s.list.AddItem(item)
 	}
 	s.list.SetCurrentRow(store.Active)
 }
@@ -219,7 +221,7 @@ var envImportSources = map[envImportSource]importKind[env.Environment]{
 
 // newEnvImportDialog returns a dialog which asks what kind of file to import
 // an environment from.
-func newEnvImportDialog(parent *qt.QWidget) *choiceDialog[envImportSource] {
+func newEnvImportDialog(parent *qtwidgets.QWidget) *choiceDialog[envImportSource] {
 	return newSourceDialog(parent, "Choose what to import an environment from.", envImportOrder, envImportSources)
 }
 
@@ -306,6 +308,6 @@ func (s *envList) save() {
 }
 
 // environmentIcon returns the icon shown before the name of an environment.
-func environmentIcon() *qt.QIcon {
-	return cachedIcon("environment", func() *qt.QIcon { return drawIcon(iconSize*2, themeColour(colourEnvironments), drawGlobe) })
+func environmentIcon() *qtgui.QIcon {
+	return cachedIcon("environment", func() *qtgui.QIcon { return drawIcon(iconSize*2, themeColour(colourEnvironments), drawGlobe) })
 }

@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"fmt"
 	"path/filepath"
 	"strings"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/settings"
 )
@@ -15,38 +17,38 @@ import (
 // Network (settingsTabNetwork), History (settingsTabHistory) and User
 // interface (settingsTabInterface).
 type settingsDialog struct {
-	*qt.QDialog
+	*qtwidgets.QDialog
 
-	tabs *qt.QTabWidget
-	font *qt.QFontComboBox
+	tabs *qtwidgets.QTabWidget
+	font *qtwidgets.QFontComboBox
 	// theme chooses one of themes.
-	theme *qt.QComboBox
+	theme *qtwidgets.QComboBox
 	// timeout is how long a request can take, in seconds, which is zero
 	// for no limit, and redirects whether a REST request follows them.
-	timeout   *qt.QSpinBox
-	redirects *qt.QCheckBox
+	timeout   *qtwidgets.QSpinBox
+	redirects *qtwidgets.QCheckBox
 	// network is the Network tab, in a file of its own.
 	network *networkTab
 	// history is whether the requests sent are kept in the history of the
 	// workspace, and historyLimit how many are.
-	history      *qt.QCheckBox
-	historyLimit *qt.QSpinBox
+	history      *qtwidgets.QCheckBox
+	historyLimit *qtwidgets.QSpinBox
 	// diffCommand is the command the responses of the history are compared
 	// with.
-	diffCommand *qt.QLineEdit
-	workspaces  *qt.QLineEdit
+	diffCommand *qtwidgets.QLineEdit
+	workspaces  *qtwidgets.QLineEdit
 	// publicKey and privateKey are the paths of the files of the SSH keys
 	// the saved files are encrypted with.
-	publicKey  *qt.QLineEdit
-	privateKey *qt.QLineEdit
+	publicKey  *qtwidgets.QLineEdit
+	privateKey *qtwidgets.QLineEdit
 	// exportButton and importButton write the workspaces to an archive
 	// for someone else and add those of an archive, by calling onExport
 	// and onImport, which are given the dialog to be the parent of theirs.
-	exportButton *qt.QPushButton
-	importButton *qt.QPushButton
-	onExport     func(parent *qt.QWidget)
-	onImport     func(parent *qt.QWidget)
-	buttons      *qt.QDialogButtonBox
+	exportButton *qtwidgets.QPushButton
+	importButton *qtwidgets.QPushButton
+	onExport     func(parent *qtwidgets.QWidget)
+	onImport     func(parent *qtwidgets.QWidget)
+	buttons      *qtwidgets.QDialogButtonBox
 
 	// colours and jsonColours are the colours the user has chosen. One
 	// that is empty is the default, which is what its swatch shows.
@@ -55,7 +57,7 @@ type settingsDialog struct {
 	swatches    map[colourKind]*swatch
 	json        map[tokenKind]*swatch
 	// colourList is the table the swatches are listed in.
-	colourList *qt.QTableWidget
+	colourList *qtwidgets.QTableWidget
 
 	// initialFont is the family the font selector started on. It can differ
 	// from the setting if that font is not installed.
@@ -82,23 +84,23 @@ const colourTableHeight = 300
 
 // newSettingsDialog creates the dialog showing the current settings. The
 // defaults are the locations used when the settings do not name one.
-func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults Files) *settingsDialog {
+func newSettingsDialog(parent *qtwidgets.QWidget, current settings.Settings, defaults Files) *settingsDialog {
 	d := &settingsDialog{
-		QDialog:      qt.NewQDialog(parent),
-		tabs:         qt.NewQTabWidget2(),
-		font:         qt.NewQFontComboBox2(),
-		theme:        qt.NewQComboBox2(),
-		timeout:      qt.NewQSpinBox2(),
-		redirects:    qt.NewQCheckBox3("Follow redirects"),
-		history:      qt.NewQCheckBox3("Enabled"),
-		historyLimit: qt.NewQSpinBox2(),
-		diffCommand:  qt.NewQLineEdit2(),
-		workspaces:   qt.NewQLineEdit2(),
-		publicKey:    qt.NewQLineEdit2(),
-		privateKey:   qt.NewQLineEdit2(),
-		exportButton: qt.NewQPushButton3("Export…"),
-		importButton: qt.NewQPushButton3("Import…"),
-		buttons:      qt.NewQDialogButtonBox4(qt.QDialogButtonBox__Ok | qt.QDialogButtonBox__Cancel),
+		QDialog:      qtwidgets.NewQDialog(parent),
+		tabs:         qtwidgets.NewQTabWidget(nil),
+		font:         qtwidgets.NewQFontComboBox(nil),
+		theme:        qtwidgets.NewQComboBox(nil),
+		timeout:      qtwidgets.NewQSpinBox(nil),
+		redirects:    qtwidgets.NewQCheckBoxWithText("Follow redirects", nil),
+		history:      qtwidgets.NewQCheckBoxWithText("Enabled", nil),
+		historyLimit: qtwidgets.NewQSpinBox(nil),
+		diffCommand:  qtwidgets.NewQLineEdit(nil),
+		workspaces:   qtwidgets.NewQLineEdit(nil),
+		publicKey:    qtwidgets.NewQLineEdit(nil),
+		privateKey:   qtwidgets.NewQLineEdit(nil),
+		exportButton: qtwidgets.NewQPushButtonWithText("Export…", nil),
+		importButton: qtwidgets.NewQPushButtonWithText("Import…", nil),
+		buttons:      qtwidgets.NewQDialogButtonBoxWithStandardButton(qtwidgets.QDialogButtonBoxOk|qtwidgets.QDialogButtonBoxCancel, nil),
 		defaults:     defaults,
 		colours:      current.Colours,
 		jsonColours:  current.JSONColours,
@@ -108,7 +110,7 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	d.SetWindowTitle("Settings")
 	d.SetMinimumWidth(680)
 
-	d.font.SetCurrentFont(qt.NewQFont2(current.ResponseFont))
+	d.font.SetCurrentFont(qtgui.NewQFontWithFamily(current.ResponseFont))
 	d.initialFont = d.font.CurrentFont().Family()
 
 	for _, t := range themes {
@@ -133,10 +135,10 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 
 	d.workspaces.SetText(orDefault(current.WorkspacesDir, defaults.Workspaces))
 
-	note := qt.NewQLabel3("Each workspace has a folder of its own in this one, holding its environments and requests. " +
-		"Choosing a folder that already has workspaces shows those. " +
-		"Choosing one that has none copies the current workspaces there. " +
-		"A relative path is relative to the directory TriggerAPI is run from.")
+	note := qtwidgets.NewQLabelWithText("Each workspace has a folder of its own in this one, holding its environments and requests. "+
+		"Choosing a folder that already has workspaces shows those. "+
+		"Choosing one that has none copies the current workspaces there. "+
+		"A relative path is relative to the directory TriggerAPI is run from.", nil)
 	note.SetWordWrap(true)
 	note.SetEnabled(false)
 
@@ -145,128 +147,128 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	d.privateKey.SetText(current.PrivateKey)
 	d.privateKey.SetPlaceholderText("Such as ~/.ssh/id_ed25519")
 
-	keysNote := qt.NewQLabel3("The environments and requests of every workspace are encrypted with this pair of SSH keys, " +
-		"which can be Ed25519 or RSA. TriggerAPI needs them to work: without them nothing is loaded or saved. " +
-		"Changing the keys encrypts every file again with the new ones. " +
-		"The passphrase of a private key that has one is asked for when TriggerAPI starts.")
+	keysNote := qtwidgets.NewQLabelWithText("The environments and requests of every workspace are encrypted with this pair of SSH keys, "+
+		"which can be Ed25519 or RSA. TriggerAPI needs them to work: without them nothing is loaded or saved. "+
+		"Changing the keys encrypts every file again with the new ones. "+
+		"The passphrase of a private key that has one is asked for when TriggerAPI starts.", nil)
 	keysNote.SetWordWrap(true)
 	keysNote.SetEnabled(false)
 
 	encryption := sectionHeading("Encryption")
-	encryption.SetContentsMargins(0, 12, 0, 0)
+	encryption.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 12, Right: 0, Bottom: 0})
 
 	sharing := sectionHeading("Import and export")
-	sharing.SetContentsMargins(0, 12, 0, 0)
+	sharing.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 12, Right: 0, Bottom: 0})
 
-	d.exportButton.OnClicked(func() {
+	d.exportButton.OnClicked(func(_ bool) {
 		if d.onExport != nil {
-			d.onExport(d.QWidget)
+			d.onExport(d.AsQWidget())
 		}
 	})
-	d.importButton.OnClicked(func() {
+	d.importButton.OnClicked(func(_ bool) {
 		if d.onImport != nil {
-			d.onImport(d.QWidget)
+			d.onImport(d.AsQWidget())
 		}
 	})
-	sharingRow := qt.NewQHBoxLayout2()
-	sharingRow.AddWidget(d.exportButton.QWidget)
-	sharingRow.AddWidget(d.importButton.QWidget)
+	sharingRow := qtwidgets.NewQHBoxLayout(nil)
+	sharingRow.AddWidget(d.exportButton.AsQWidget())
+	sharingRow.AddWidget(d.importButton.AsQWidget())
 	sharingRow.AddStretch()
 
-	sharingNote := qt.NewQLabel3("Export asks for the public SSH key of whoever the workspaces are for, " +
-		"and writes every workspace to a zip file encrypted so that only their private key can read it. " +
-		"Your own files are left as they are. " +
-		"Import adds the workspaces of such a file that was exported for your public key. " +
-		"Both use the keys and the folder in effect, not changes made here that have yet to be accepted.")
+	sharingNote := qtwidgets.NewQLabelWithText("Export asks for the public SSH key of whoever the workspaces are for, "+
+		"and writes every workspace to a zip file encrypted so that only their private key can read it. "+
+		"Your own files are left as they are. "+
+		"Import adds the workspaces of such a file that was exported for your public key. "+
+		"Both use the keys and the folder in effect, not changes made here that have yet to be accepted.", nil)
 	sharingNote.SetWordWrap(true)
 	sharingNote.SetEnabled(false)
 
-	general := qt.NewQWidget2()
-	form := qt.NewQFormLayout(general)
-	form.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
-	form.AddRow4("Workspaces folder", d.folderRow(d.workspaces, "Workspaces Folder"))
+	general := qtwidgets.NewQWidget(nil)
+	form := qtwidgets.NewQFormLayout(general)
+	form.SetContentsMargins(qtcore.QMargins{Left: tabMargin, Top: tabMargin, Right: tabMargin, Bottom: tabMargin})
+	form.AddRowTextLayout("Workspaces folder", d.folderRow(d.workspaces, "Workspaces Folder"))
 	// The note is about the folder above it.
-	form.AddRowWithWidget(note.QWidget)
-	form.AddRowWithWidget(encryption.QWidget)
-	form.AddRow4("Public key", d.fileRow(d.publicKey, "Public Key"))
-	form.AddRow4("Private key", d.fileRow(d.privateKey, "Private Key"))
-	form.AddRowWithWidget(keysNote.QWidget)
-	form.AddRowWithWidget(sharing.QWidget)
-	form.AddRowWithLayout(sharingRow.QLayout)
-	form.AddRowWithWidget(sharingNote.QWidget)
+	form.AddRowWidget(note.AsQWidget())
+	form.AddRowWidget(encryption.AsQWidget())
+	form.AddRowTextLayout("Public key", d.fileRow(d.publicKey, "Public Key"))
+	form.AddRowTextLayout("Private key", d.fileRow(d.privateKey, "Private Key"))
+	form.AddRowWidget(keysNote.AsQWidget())
+	form.AddRowWidget(sharing.AsQWidget())
+	form.AddRowSpanLayout(sharingRow)
+	form.AddRowWidget(sharingNote.AsQWidget())
 
-	requests := qt.NewQWidget2()
-	requestsForm := qt.NewQFormLayout(requests)
-	requestsForm.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
-	requestsForm.AddRow3("Timeout", d.timeout.QWidget)
-	requestsForm.AddRow3("", d.redirects.QWidget)
+	requests := qtwidgets.NewQWidget(nil)
+	requestsForm := qtwidgets.NewQFormLayout(requests)
+	requestsForm.SetContentsMargins(qtcore.QMargins{Left: tabMargin, Top: tabMargin, Right: tabMargin, Bottom: tabMargin})
+	requestsForm.AddRowText("Timeout", d.timeout.AsQWidget())
+	requestsForm.AddRowText("", d.redirects.AsQWidget())
 
-	historyNote := qt.NewQLabel3("Each workspace keeps the requests sent from it, newest first, with their responses, " +
-		"encrypted like its requests, and written when the workspace is left or TriggerAPI closes. " +
-		"The oldest are dropped beyond this number, and a response body larger than 1 MB is not kept.")
+	historyNote := qtwidgets.NewQLabelWithText("Each workspace keeps the requests sent from it, newest first, with their responses, "+
+		"encrypted like its requests, and written when the workspace is left or TriggerAPI closes. "+
+		"The oldest are dropped beyond this number, and a response body larger than 1 MB is not kept.", nil)
 	historyNote.SetWordWrap(true)
 	historyNote.SetEnabled(false)
 	diffHeading := sectionHeading("Comparing responses")
-	diffHeading.SetContentsMargins(0, 12, 0, 0)
-	diffNote := qt.NewQLabel3("The responses of the entries ticked in the history are compared with this command. " +
-		"Each is written to a file of its own, oldest first, and the paths of the files are added to the end of the command, " +
-		"which is run as it is written, not by a shell; quote a word with spaces in it. " +
-		"The files are deleted when TriggerAPI closes.")
+	diffHeading.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 12, Right: 0, Bottom: 0})
+	diffNote := qtwidgets.NewQLabelWithText("The responses of the entries ticked in the history are compared with this command. "+
+		"Each is written to a file of its own, oldest first, and the paths of the files are added to the end of the command, "+
+		"which is run as it is written, not by a shell; quote a word with spaces in it. "+
+		"The files are deleted when TriggerAPI closes.", nil)
 	diffNote.SetWordWrap(true)
 	diffNote.SetEnabled(false)
 
-	historyPage := qt.NewQWidget2()
-	historyForm := qt.NewQFormLayout(historyPage)
-	historyForm.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
-	historyForm.AddRow3("", d.history.QWidget)
-	historyForm.AddRow3("Keep", d.historyLimit.QWidget)
-	historyForm.AddRowWithWidget(historyNote.QWidget)
-	historyForm.AddRowWithWidget(diffHeading.QWidget)
-	historyForm.AddRow3("Diff tool", d.diffCommand.QWidget)
-	historyForm.AddRowWithWidget(diffNote.QWidget)
+	historyPage := qtwidgets.NewQWidget(nil)
+	historyForm := qtwidgets.NewQFormLayout(historyPage)
+	historyForm.SetContentsMargins(qtcore.QMargins{Left: tabMargin, Top: tabMargin, Right: tabMargin, Bottom: tabMargin})
+	historyForm.AddRowText("", d.history.AsQWidget())
+	historyForm.AddRowText("Keep", d.historyLimit.AsQWidget())
+	historyForm.AddRowWidget(historyNote.AsQWidget())
+	historyForm.AddRowWidget(diffHeading.AsQWidget())
+	historyForm.AddRowText("Diff tool", d.diffCommand.AsQWidget())
+	historyForm.AddRowWidget(diffNote.AsQWidget())
 
-	colours := qt.NewQWidget2()
-	coloursLayout := qt.NewQVBoxLayout(colours)
-	coloursLayout.SetContentsMargins(tabMargin, tabMargin, tabMargin, tabMargin)
-	themeRow := qt.NewQHBoxLayout2()
-	themeRow.SetContentsMargins(12, 0, 0, 0)
+	colours := qtwidgets.NewQWidget(nil)
+	coloursLayout := qtwidgets.NewQVBoxLayout(colours)
+	coloursLayout.SetContentsMargins(qtcore.QMargins{Left: tabMargin, Top: tabMargin, Right: tabMargin, Bottom: tabMargin})
+	themeRow := qtwidgets.NewQHBoxLayout(nil)
+	themeRow.SetContentsMargins(qtcore.QMargins{Left: 12, Top: 0, Right: 0, Bottom: 0})
 	themeRow.SetSpacing(16)
-	themeRow.AddWidget(qt.NewQLabel3("Theme").QWidget)
-	themeRow.AddWidget(d.theme.QWidget)
+	themeRow.AddWidget(qtwidgets.NewQLabelWithText("Theme", nil).AsQWidget())
+	themeRow.AddWidget(d.theme.AsQWidget())
 	themeRow.AddStretch()
-	themeNote := qt.NewQLabel3("Follow the system looks as the desktop's theme does, and changes with it.")
+	themeNote := qtwidgets.NewQLabelWithText("Follow the system looks as the desktop's theme does, and changes with it.", nil)
 	themeNote.SetWordWrap(true)
 	themeNote.SetEnabled(false)
-	coloursLayout.AddWidget(sectionHeading("Theme").QWidget)
-	coloursLayout.AddLayout(themeRow.QLayout)
-	coloursLayout.AddWidget(themeNote.QWidget)
+	coloursLayout.AddWidget(sectionHeading("Theme").AsQWidget())
+	coloursLayout.AddLayout(themeRow.AsQLayout())
+	coloursLayout.AddWidget(themeNote.AsQWidget())
 	coloursLayout.AddSpacing(14)
 	// The font has the whole width, as the names of fonts are long.
-	fontRow := qt.NewQHBoxLayout2()
-	fontRow.SetContentsMargins(12, 0, 0, 0)
+	fontRow := qtwidgets.NewQHBoxLayout(nil)
+	fontRow.SetContentsMargins(qtcore.QMargins{Left: 12, Top: 0, Right: 0, Bottom: 0})
 	fontRow.SetSpacing(16)
-	fontRow.AddWidget(qt.NewQLabel3("Code").QWidget)
-	fontRow.AddWidget2(d.font.QWidget, 1)
-	coloursLayout.AddWidget(sectionHeading("Font").QWidget)
-	coloursLayout.AddLayout(fontRow.QLayout)
+	fontRow.AddWidget(qtwidgets.NewQLabelWithText("Code", nil).AsQWidget())
+	fontRow.AddWidgetFull(d.font.AsQWidget(), 1, 0)
+	coloursLayout.AddWidget(sectionHeading("Font").AsQWidget())
+	coloursLayout.AddLayout(fontRow.AsQLayout())
 	coloursLayout.AddSpacing(14)
-	coloursLayout.AddWidget(sectionHeading("Colours").QWidget)
+	coloursLayout.AddWidget(sectionHeading("Colours").AsQWidget())
 	// The table has what height the tab has left, and scrolls.
 	d.colourList = d.colourTable()
 	d.colourList.SetMinimumHeight(colourTableHeight)
-	coloursLayout.AddWidget2(d.colourList.QWidget, 1)
+	coloursLayout.AddWidgetFull(d.colourList.AsQWidget(), 1, 0)
 
-	reset := qt.NewQPushButton3("Use Default Colours")
-	reset.OnClicked(d.resetColours)
-	resetRow := qt.NewQHBoxLayout2()
+	reset := qtwidgets.NewQPushButtonWithText("Use Default Colours", nil)
+	reset.OnClicked(func(_ bool) { d.resetColours() })
+	resetRow := qtwidgets.NewQHBoxLayout(nil)
 	resetRow.AddStretch()
-	resetRow.AddWidget(reset.QWidget)
-	coloursLayout.AddLayout(resetRow.QLayout)
+	resetRow.AddWidget(reset.AsQWidget())
+	coloursLayout.AddLayout(resetRow.AsQLayout())
 
 	// The order matches the tab constants.
 	d.tabs.AddTab(plainPage(general), "Workspaces")
 	d.tabs.AddTab(plainPage(requests), "Requests")
-	d.network = newNetworkTab(d.QWidget, current.Network)
+	d.network = newNetworkTab(d.AsQWidget(), current.Network)
 	d.tabs.AddTab(plainPage(d.network.root), "Network")
 	d.tabs.AddTab(plainPage(historyPage), "History")
 	d.tabs.AddTab(plainPage(colours), "User interface")
@@ -274,44 +276,44 @@ func newSettingsDialog(parent *qt.QWidget, current settings.Settings, defaults F
 	d.buttons.OnAccepted(d.Accept)
 	d.buttons.OnRejected(d.Reject)
 
-	layout := qt.NewQVBoxLayout(d.QWidget)
-	layout.AddWidget2(d.tabs.QWidget, 1)
-	layout.AddWidget(d.buttons.QWidget)
+	layout := qtwidgets.NewQVBoxLayout(d.AsQWidget())
+	layout.AddWidgetFull(d.tabs.AsQWidget(), 1, 0)
+	layout.AddWidget(d.buttons.AsQWidget())
 
 	return d
 }
 
 // folderRow lays out a path field beside a button to browse for the folder.
-func (d *settingsDialog) folderRow(edit *qt.QLineEdit, caption string) *qt.QLayout {
+func (d *settingsDialog) folderRow(edit *qtwidgets.QLineEdit, caption string) *qtwidgets.QLayout {
 	return browseRow(edit, func() string {
-		return qt.QFileDialog_GetExistingDirectory3(d.QWidget, caption, edit.Text())
+		return askDirectory(d.AsQWidget(), caption, edit.Text())
 	})
 }
 
 // fileRow lays out a path field beside a button to browse for the file,
 // which starts in the folder of the path there is, or where SSH keys are
 // kept.
-func (d *settingsDialog) fileRow(edit *qt.QLineEdit, caption string) *qt.QLayout {
+func (d *settingsDialog) fileRow(edit *qtwidgets.QLineEdit, caption string) *qtwidgets.QLayout {
 	return browseRow(edit, func() string {
 		start := strings.TrimSpace(edit.Text())
 		if start == "" {
-			start = filepath.Join(qt.QDir_HomePath(), ".ssh")
+			start = filepath.Join(qtcore.QDirHomePath(), ".ssh")
 		}
-		return qt.QFileDialog_GetOpenFileName3(d.QWidget, caption, start)
+		return askOpenFile(d.AsQWidget(), caption, start, "")
 	})
 }
 
 // browseRow lays out a path field beside a button to browse for the path
 // with, which puts what choose returns in the field unless it is empty.
-func browseRow(edit *qt.QLineEdit, choose func() string) *qt.QLayout {
+func browseRow(edit *qtwidgets.QLineEdit, choose func() string) *qtwidgets.QLayout {
 	return pathRow(edit, browseButton(edit, choose))
 }
 
 // browseButton returns a button to browse for a path with, which puts what
 // choose returns in the field unless it is empty.
-func browseButton(edit *qt.QLineEdit, choose func() string) *qt.QPushButton {
-	browse := qt.NewQPushButton3("Browse…")
-	browse.OnClicked(func() {
+func browseButton(edit *qtwidgets.QLineEdit, choose func() string) *qtwidgets.QPushButton {
+	browse := qtwidgets.NewQPushButtonWithText("Browse…", nil)
+	browse.OnClicked(func(_ bool) {
 		if path := choose(); path != "" {
 			edit.SetText(path)
 		}
@@ -320,16 +322,16 @@ func browseButton(edit *qt.QLineEdit, choose func() string) *qt.QPushButton {
 }
 
 // pathRow lays out a path field beside its button.
-func pathRow(edit *qt.QLineEdit, button *qt.QPushButton) *qt.QLayout {
-	row := qt.NewQHBoxLayout2()
-	row.AddWidget2(edit.QWidget, 1)
-	row.AddWidget(button.QWidget)
-	return row.QLayout
+func pathRow(edit *qtwidgets.QLineEdit, button *qtwidgets.QPushButton) *qtwidgets.QLayout {
+	row := qtwidgets.NewQHBoxLayout(nil)
+	row.AddWidgetFull(edit.AsQWidget(), 1, 0)
+	row.AddWidget(button.AsQWidget())
+	return row.AsQLayout()
 }
 
 // sectionHeading returns the heading of a section of a tab.
-func sectionHeading(title string) *qt.QLabel {
-	label := qt.NewQLabel3(title)
+func sectionHeading(title string) *qtwidgets.QLabel {
+	label := qtwidgets.NewQLabelWithText(title, nil)
 	font := label.Font()
 	font.SetBold(true)
 	label.SetFont(font)
@@ -363,24 +365,24 @@ const (
 // colourTable lists every colour in a table, which scrolls: a row for each,
 // with its name and its swatch, under a heading row for each section, as
 // the endpoints of a gRPC server are listed under their services.
-func (d *settingsDialog) colourTable() *qt.QTableWidget {
-	table := qt.NewQTableWidget3(0, 2)
+func (d *settingsDialog) colourTable() *qtwidgets.QTableWidget {
+	table := qtwidgets.NewQTableWidgetWithRows(0, 2, nil)
 	table.SetHorizontalHeaderLabels([]string{"Name", "Colour"})
 	table.VerticalHeader().SetVisible(false)
-	table.VerticalHeader().SetSectionResizeMode(qt.QHeaderView__ResizeToContents)
-	table.SetSelectionMode(qt.QAbstractItemView__NoSelection)
-	table.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
-	table.SetFocusPolicy(qt.NoFocus)
-	table.SetVerticalScrollBarPolicy(qt.ScrollBarAsNeeded)
-	table.SetHorizontalScrollBarPolicy(qt.ScrollBarAlwaysOff)
+	table.VerticalHeader().SetSectionResizeModeAll(qtwidgets.QHeaderViewResizeToContents)
+	table.SetSelectionMode(qtwidgets.QAbstractItemViewNoSelection)
+	table.SetEditTriggers(qtwidgets.QAbstractItemViewNoEditTriggers)
+	table.SetFocusPolicy(qtcore.NoFocus)
+	table.SetVerticalScrollBarPolicy(qtcore.ScrollBarAsNeeded)
+	table.SetHorizontalScrollBarPolicy(qtcore.ScrollBarAlwaysOff)
 	header := table.HorizontalHeader()
-	header.SetSectionResizeMode2(colColourName, qt.QHeaderView__Stretch)
-	header.SetSectionResizeMode2(colColourSwatch, qt.QHeaderView__ResizeToContents)
+	header.SetSectionResizeMode(colColourName, qtwidgets.QHeaderViewStretch)
+	header.SetSectionResizeMode(colColourSwatch, qtwidgets.QHeaderViewResizeToContents)
 
 	heading := func(title string) {
 		// A heading is as wide as the table.
-		item := qt.NewQTableWidgetItem2(title)
-		item.SetFlags(qt.ItemIsEnabled)
+		item := qtwidgets.NewQTableWidgetItemWithText(title)
+		item.SetFlags(qtcore.ItemIsEnabled)
 		font := item.Font()
 		font.SetBold(true)
 		item.SetFont(font)
@@ -391,14 +393,14 @@ func (d *settingsDialog) colourTable() *qt.QTableWidget {
 		table.SetSpan(row, colColourName, 1, 2)
 	}
 	add := func(name string, s *swatch) {
-		item := qt.NewQTableWidgetItem2(name)
-		item.SetFlags(qt.ItemIsEnabled)
+		item := qtwidgets.NewQTableWidgetItemWithText(name)
+		item.SetFlags(qtcore.ItemIsEnabled)
 
 		// The swatch stands a little clear of the lines of its cell.
-		cell := qt.NewQWidget2()
-		layout := qt.NewQHBoxLayout(cell)
-		layout.SetContentsMargins(6, 3, 6, 3)
-		layout.AddWidget(s.button.QWidget)
+		cell := qtwidgets.NewQWidget(nil)
+		layout := qtwidgets.NewQHBoxLayout(cell)
+		layout.SetContentsMargins(qtcore.QMargins{Left: 6, Top: 3, Right: 6, Bottom: 3})
+		layout.AddWidget(s.button.AsQWidget())
 
 		row := table.RowCount()
 		table.InsertRow(row)
@@ -433,7 +435,7 @@ func (d *settingsDialog) colourTable() *qt.QTableWidget {
 // swatch is a button which shows one of the colours and lets the user choose
 // another for it.
 type swatch struct {
-	button *qt.QPushButton
+	button *qtwidgets.QPushButton
 	// chosen is where the colour the user has chosen is kept, which is
 	// empty for the default.
 	chosen *string
@@ -444,12 +446,11 @@ type swatch struct {
 // newSwatch returns a swatch for the colour kept at chosen, which is called
 // label.
 func (d *settingsDialog) newSwatch(label string, chosen *string, fallback func() string) *swatch {
-	s := &swatch{button: qt.NewQPushButton2(), chosen: chosen, fallback: fallback}
+	s := &swatch{button: qtwidgets.NewQPushButton(nil), chosen: chosen, fallback: fallback}
 	s.button.SetFixedWidth(swatchWidth)
-	s.button.OnClicked(func() {
-		current := qt.NewQColor6(s.colour())
-		defer current.Delete()
-		picked := qt.QColorDialog_GetColor3(current, d.QWidget, "Colour of "+label)
+	s.button.OnClicked(func(_ bool) {
+		current := qcolour(s.colour())
+		picked := qtwidgets.QColorDialogGetColorFull(current, d.AsQWidget(), "Colour of "+label, 0)
 		if picked.IsValid() {
 			s.set(picked.Name())
 		}
@@ -469,8 +470,7 @@ func (s *swatch) colour() string {
 func (s *swatch) show() {
 	colour := s.colour()
 
-	shown := qt.NewQColor6(colour)
-	defer shown.Delete()
+	shown := qcolour(colour)
 	text := readableOn(shown)
 
 	s.button.SetText(colour)
@@ -520,7 +520,7 @@ func (d *settingsDialog) settings(base settings.Settings) settings.Settings {
 		base.ResponseFont = family
 	}
 
-	location := func(edit *qt.QLineEdit, fallback string) string {
+	location := func(edit *qtwidgets.QLineEdit, fallback string) string {
 		if path := strings.TrimSpace(edit.Text()); path != fallback {
 			return path
 		}

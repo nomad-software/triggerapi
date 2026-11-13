@@ -1,9 +1,10 @@
 package ui
 
 import (
-	"strings"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
-	qt "github.com/mappu/miqt/qt6"
+	"strings"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/ws"
@@ -14,19 +15,19 @@ import (
 // to send once connected. Connect opens the connection, which stays open
 // until it is closed, and Send sends the message over it as often as wanted.
 type wsPanel struct {
-	root *qt.QWidget
+	root *qtwidgets.QWidget
 
-	url *qt.QLineEdit
+	url *qtwidgets.QLineEdit
 	// connect opens the connection, and closes it while it is open.
-	connect *qt.QPushButton
+	connect *qtwidgets.QPushButton
 	// save saves a request that is not saved yet.
-	save *qt.QPushButton
+	save *qtwidgets.QPushButton
 
-	message *qt.QPlainTextEdit
+	message *qtwidgets.QPlainTextEdit
 	// messageFold folds the objects and arrays of a message that is JSON.
 	messageFold *folder
 	// send sends the message. It is enabled while connected.
-	send *qt.QPushButton
+	send *qtwidgets.QPushButton
 	// format sets out a message that is JSON.
 	format  *formatButton
 	headers *keyValueTable
@@ -36,26 +37,26 @@ type wsPanel struct {
 }
 
 func newWSPanel() *wsPanel {
-	p := &wsPanel{root: qt.NewQWidget2(), panelState: newPanelState()}
+	p := &wsPanel{root: qtwidgets.NewQWidget(nil), panelState: newPanelState()}
 
-	p.url = qt.NewQLineEdit2()
+	p.url = qtwidgets.NewQLineEdit(nil)
 	p.url.SetPlaceholderText("Server address, e.g. ws://localhost:8080/socket or {{host}}/socket")
 	p.typedLine(p.url)
 	p.highlight.lineEdit(p.url)
 
-	p.connect = qt.NewQPushButton3("Connect")
+	p.connect = qtwidgets.NewQPushButtonWithText("Connect", nil)
 	makePrimary(p.connect)
 	// Save is only for a request that is not saved, as one that is saved is
 	// saved with every change.
-	p.save = qt.NewQPushButton3("Save")
+	p.save = qtwidgets.NewQPushButtonWithText("Save", nil)
 
-	top := qt.NewQHBoxLayout2()
-	top.AddWidget2(p.url.QWidget, 1)
-	top.AddWidget(p.connect.QWidget)
-	top.AddWidget(p.save.QWidget)
+	top := qtwidgets.NewQHBoxLayout(nil)
+	top.AddWidgetFull(p.url.AsQWidget(), 1, 0)
+	top.AddWidget(p.connect.AsQWidget())
+	top.AddWidget(p.save.AsQWidget())
 
-	p.message = qt.NewQPlainTextEdit2()
-	p.message.SetFont(qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont))
+	p.message = qtwidgets.NewQPlainTextEdit(nil)
+	p.message.SetFont(qtgui.QFontDatabaseGetSystemFont(qtgui.QFontDatabaseFixedFont))
 	p.message.SetPlaceholderText("The message to send, as text or JSON")
 	p.typedText(p.message)
 	// A message can be any text, and is coloured and folded when it looks
@@ -69,19 +70,19 @@ func newWSPanel() *wsPanel {
 
 	// Send is in the colour of the other buttons which send while it can
 	// be pressed, and a plain button while it cannot (styleSend).
-	p.send = qt.NewQPushButton3("Send")
+	p.send = qtwidgets.NewQPushButtonWithText("Send", nil)
 	p.send.SetEnabled(false)
 	p.format = newFormatButton(p.message, p.commit)
 
-	sendBar := qt.NewQHBoxLayout2()
-	sendBar.AddWidget(p.send.QWidget)
-	sendBar.AddWidget(p.format.button.QWidget)
+	sendBar := qtwidgets.NewQHBoxLayout(nil)
+	sendBar.AddWidget(p.send.AsQWidget())
+	sendBar.AddWidget(p.format.button.AsQWidget())
 	sendBar.AddStretch()
 
-	messageTab := qt.NewQWidget2()
-	messageLayout := qt.NewQVBoxLayout(messageTab)
-	messageLayout.AddWidget2(p.message.QWidget, 1)
-	messageLayout.AddLayout(sendBar.QLayout)
+	messageTab := qtwidgets.NewQWidget(nil)
+	messageLayout := qtwidgets.NewQVBoxLayout(messageTab)
+	messageLayout.AddWidgetFull(p.message.AsQWidget(), 1, 0)
+	messageLayout.AddLayout(sendBar.AsQLayout())
 
 	p.headers = newExclusiveTable("Header", "Value")
 	p.headers.onChange = p.changed
@@ -90,21 +91,21 @@ func newWSPanel() *wsPanel {
 	p.auth = newAuthEditor(&p.panelState)
 	p.auth.onChange = p.changed
 
-	tabs := qt.NewQTabWidget2()
+	tabs := qtwidgets.NewQTabWidget(nil)
 	tabs.AddTab(plainPage(messageTab), "Message")
 	tabs.AddTab(p.headers.widget(), "Headers")
 	tabs.AddTab(p.auth.root, "Authorization")
 
-	layout := qt.NewQVBoxLayout(p.root)
-	layout.AddLayout(top.QLayout)
-	layout.AddWidget(tabs.QWidget)
+	layout := qtwidgets.NewQVBoxLayout(p.root)
+	layout.AddLayout(top.AsQLayout())
+	layout.AddWidget(tabs.AsQWidget())
 
 	return p
 }
 
-func (p *wsPanel) widget() *qt.QWidget { return p.root }
+func (p *wsPanel) widget() *qtwidgets.QWidget { return p.root }
 
-func (p *wsPanel) saveButton() *qt.QPushButton { return p.save }
+func (p *wsPanel) saveButton() *qtwidgets.QPushButton { return p.save }
 
 func (p *wsPanel) authorization() *authEditor { return p.auth }
 

@@ -1,17 +1,19 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"reflect"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/rest"
 )
 
 func TestKeyValueTable(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		table := newKeyValueTable("Key", "Value")
 
 		// Typing into the trailing row adds a new empty one.
@@ -21,7 +23,7 @@ func TestKeyValueTable(t *testing.T) {
 		}
 
 		table.add("b", "2")
-		table.table.Item(1, colEnabled).SetCheckState(qt.Unchecked)
+		table.table.Item(1, colEnabled).SetCheckState(qtcore.Unchecked)
 
 		items := table.items()
 		if len(items) != 2 || !items[0].Enabled || items[1].Enabled || items[1].Value != "2" {
@@ -42,7 +44,7 @@ func TestKeyValueTable(t *testing.T) {
 }
 
 func TestKeyValueOrder(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		table := newKeyValueTable("Key", "Value")
 		changes := 0
 		table.onChange = func() { changes++ }
@@ -108,7 +110,7 @@ func TestKeyValueOrder(t *testing.T) {
 
 func TestKeyValueOrderAfterEditing(t *testing.T) {
 	var table *keyValueTable
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		table = newKeyValueTable("Key", "Value")
 		table.setItems([]rest.KeyValue{{Key: "a", Value: "1", Enabled: true}, {Key: "b", Value: "2", Enabled: true}})
 		table.table.Show()
@@ -130,7 +132,7 @@ func TestKeyValueOrderAfterEditing(t *testing.T) {
 func TestKeyValueRemoveButtons(t *testing.T) {
 	var table *keyValueTable
 	changes := 0
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		table = newKeyValueTable("Key", "Value")
 		table.onChange = func() { changes++ }
 		table.setItems([]rest.KeyValue{{Key: "a", Value: "1", Enabled: true}, {Key: "b", Value: "2", Enabled: true}, {Key: "c", Value: "3", Enabled: true}})
@@ -138,7 +140,7 @@ func TestKeyValueRemoveButtons(t *testing.T) {
 		table.table.Show()
 	})
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		keys := func() []string {
 			var keys []string
 			for _, item := range table.items() {
@@ -147,7 +149,7 @@ func TestKeyValueRemoveButtons(t *testing.T) {
 			return keys
 		}
 		click := func(row int) {
-			qt.UnsafeNewQAbstractButton(table.table.CellWidget(row, colRemove).UnsafePointer()).Click()
+			qtwidgets.QAbstractButtonCast(table.table.CellWidget(row, colRemove)).Click()
 		}
 
 		// Every row but the empty one has a button.
@@ -179,26 +181,25 @@ func TestKeyValueRemoveButtons(t *testing.T) {
 
 func TestKeyValueRowClicks(t *testing.T) {
 	var table *keyValueTable
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		table = newKeyValueTable("Key", "Value")
 		table.setItems([]rest.KeyValue{{Key: "a", Value: "1", Enabled: true}, {Key: "b", Value: "2", Enabled: true}})
 		table.table.Resize(500, 300)
 		table.table.Show()
 	})
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// click clicks a cell at its right edge, away from a checkbox.
 		click := func(row, col int) {
 			rect := table.table.VisualItemRect(table.table.Item(row, col))
-			at := qt.NewQPointF3(float64(rect.Right()-2), float64(rect.Center().Y()))
-			defer at.Delete()
-			for _, kind := range []qt.QEvent__Type{qt.QEvent__MouseButtonPress, qt.QEvent__MouseButtonRelease} {
-				buttons := qt.LeftButton
-				if kind == qt.QEvent__MouseButtonRelease {
-					buttons = qt.NoButton
+			at := qtcore.QPointF{X: float64(rect.Right() - 2), Y: float64(rect.Center().Y)}
+			for _, kind := range []qtcore.QEventType{qtcore.QEventMouseButtonPress, qtcore.QEventMouseButtonRelease} {
+				buttons := qtcore.LeftButton
+				if kind == qtcore.QEventMouseButtonRelease {
+					buttons = qtcore.NoButton
 				}
-				event := qt.NewQMouseEvent(kind, at, qt.LeftButton, buttons, qt.NoModifier)
-				qt.QCoreApplication_SendEvent(table.table.Viewport().QObject, event.QEvent)
+				event := qtgui.NewQMouseEvent(kind, at, at, qtcore.LeftButton, buttons, qtcore.NoModifier)
+				qtcore.QCoreApplicationSendEvent(table.table.Viewport().AsQObject(), event.AsQEvent())
 				event.Delete()
 			}
 		}
@@ -235,7 +236,7 @@ func TestKeyValueRowClicks(t *testing.T) {
 // Switching on a param, a header or gRPC metadata switches off the others of
 // that name.
 func TestRequestTablesKeepOne(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		request, grpc, ws, graphql, mcp := newRequestPanel(), newGRPCPanel(), newWSPanel(), newGraphQLPanel(), newMCPPanel()
 		for _, panel := range []requestEditor{request, grpc, ws, graphql, mcp} {
 			defer panel.widget().Delete()
@@ -249,7 +250,7 @@ func TestRequestTablesKeepOne(t *testing.T) {
 			"MCP headers":     mcp.headers,
 		} {
 			table.setItems([]rest.KeyValue{{Key: "a", Value: "1", Enabled: true}, {Key: "a", Value: "2"}, {Key: "b", Value: "3", Enabled: true}})
-			table.table.Item(1, colEnabled).SetCheckState(qt.Checked)
+			table.table.Item(1, colEnabled).SetCheckState(qtcore.Checked)
 
 			want := []rest.KeyValue{{Key: "a", Value: "1"}, {Key: "a", Value: "2", Enabled: true}, {Key: "b", Value: "3", Enabled: true}}
 			if got := table.items(); !reflect.DeepEqual(got, want) {
@@ -260,7 +261,7 @@ func TestRequestTablesKeepOne(t *testing.T) {
 		// The URL follows the param switched on.
 		request.url.SetText("http://api.test")
 		request.params.setItems([]rest.KeyValue{{Key: "a", Value: "1", Enabled: true}, {Key: "a", Value: "2"}})
-		request.params.table.Item(1, colEnabled).SetCheckState(qt.Checked)
+		request.params.table.Item(1, colEnabled).SetCheckState(qtcore.Checked)
 		if got := request.url.Text(); got != "http://api.test?a=2" {
 			t.Errorf("URL %q", got)
 		}

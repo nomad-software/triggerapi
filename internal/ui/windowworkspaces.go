@@ -1,12 +1,13 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/crypt"
@@ -113,13 +114,13 @@ const needKeys = "TriggerAPI needs a pair of SSH keys to encrypt its files with.
 
 // adviseKeys tells the user that the program cannot work until the settings
 // are given keys. Tests replace it rather than let the dialog open.
-var adviseKeys = func(parent *qt.QWidget) {
-	qt.QMessageBox_Warning(parent, "Keys Needed", needKeys)
+var adviseKeys = func(parent *qtwidgets.QWidget) {
+	qtwidgets.QMessageBoxWarning(parent, "Keys Needed", needKeys)
 }
 
 // askPassphrase asks for the passphrase of the private key in the file at
 // path. Tests replace it rather than let the dialog open.
-var askPassphrase = func(parent *qt.QWidget, path string) ([]byte, error) {
+var askPassphrase = func(parent *qtwidgets.QWidget, path string) ([]byte, error) {
 	passphrase, err := askHidden(parent, "Private Key", "Passphrase of "+path)
 	if err != nil {
 		return nil, errors.New("no passphrase was given")
@@ -129,9 +130,8 @@ var askPassphrase = func(parent *qt.QWidget, path string) ([]byte, error) {
 
 // askHidden asks for a passphrase or password in a dialog which does not
 // show what is typed. It is an error if the user cancels.
-func askHidden(parent *qt.QWidget, title, label string) (string, error) {
-	ok := false
-	value := qt.QInputDialog_GetText4(parent, title, label, qt.QLineEdit__Password, "", &ok)
+func askHidden(parent *qtwidgets.QWidget, title, label string) (string, error) {
+	value, ok := qtwidgets.QInputDialogGetTextFull(parent, title, label, qtwidgets.QLineEditPassword, "", 0, 0)
 	if !ok {
 		return "", errors.New("none was given")
 	}
@@ -141,7 +141,7 @@ func askHidden(parent *qt.QWidget, title, label string) (string, error) {
 // openKeys returns the keys the settings name, which are nil if they name
 // none. Keys that cannot be opened are returned, with the reason, as ones
 // that cannot be used, so that nothing is saved without them.
-func openKeys(parent *qt.QWidget, s settings.Settings) (*crypt.Keys, error) {
+func openKeys(parent *qtwidgets.QWidget, s settings.Settings) (*crypt.Keys, error) {
 	if s.PublicKey == "" && s.PrivateKey == "" {
 		return nil, nil
 	}
@@ -168,7 +168,7 @@ func (w *Window) changeKeys(keys *crypt.Keys) error {
 	if keys == nil {
 		w.keys = nil
 		w.workspaces.open(w.config.Workspace)
-		adviseKeys(w.QWidget)
+		adviseKeys(w.AsQWidget())
 		return nil
 	}
 
@@ -284,25 +284,25 @@ const exportName = "triggerapi-workspaces.zip"
 
 // chooseExport asks whose public key the workspaces are to be exported for
 // and where to, and exports them.
-func (w *Window) chooseExport(parent *qt.QWidget) {
+func (w *Window) chooseExport(parent *qtwidgets.QWidget) {
 	if w.keys == nil {
 		adviseKeys(parent)
 		return
 	}
-	public := qt.QFileDialog_GetOpenFileName3(parent, "Public Key To Export For", filepath.Join(qt.QDir_HomePath(), ".ssh"))
+	public := askOpenFile(parent, "Public Key To Export For", filepath.Join(qtcore.QDirHomePath(), ".ssh"), "")
 	if public == "" {
 		return
 	}
-	archive := qt.QFileDialog_GetSaveFileName4(parent, "Export Workspaces", filepath.Join(qt.QDir_HomePath(), exportName), "Zip files (*.zip)")
+	archive := askSaveFile(parent, "Export Workspaces", filepath.Join(qtcore.QDirHomePath(), exportName), "Zip files (*.zip)")
 	if archive == "" {
 		return
 	}
 
 	if err := w.exportWorkspaces(public, archive); err != nil {
-		qt.QMessageBox_Warning(parent, "Export Workspaces", fmt.Sprintf("The workspaces were not exported: %v.", err))
+		qtwidgets.QMessageBoxWarning(parent, "Export Workspaces", fmt.Sprintf("The workspaces were not exported: %v.", err))
 		return
 	}
-	qt.QMessageBox_Information(parent, "Export Workspaces", "The workspaces were exported to "+archive+
+	qtwidgets.QMessageBoxInformation(parent, "Export Workspaces", "The workspaces were exported to "+archive+
 		", which can be read only with the private key that goes with "+public+".")
 }
 
@@ -318,22 +318,22 @@ func (w *Window) exportWorkspaces(public, archive string) error {
 }
 
 // chooseImport asks for a file of exported workspaces and adds them.
-func (w *Window) chooseImport(parent *qt.QWidget) {
+func (w *Window) chooseImport(parent *qtwidgets.QWidget) {
 	if w.keys == nil {
 		adviseKeys(parent)
 		return
 	}
-	archive := qt.QFileDialog_GetOpenFileName4(parent, "Import Workspaces", qt.QDir_HomePath(), "Zip files (*.zip);;All files (*)")
+	archive := askOpenFile(parent, "Import Workspaces", qtcore.QDirHomePath(), "Zip files (*.zip);;All files (*)")
 	if archive == "" {
 		return
 	}
 
 	added, err := w.importWorkspaces(archive)
 	if err != nil {
-		qt.QMessageBox_Warning(parent, "Import Workspaces", fmt.Sprintf("The workspaces were not all imported: %v.", err))
+		qtwidgets.QMessageBoxWarning(parent, "Import Workspaces", fmt.Sprintf("The workspaces were not all imported: %v.", err))
 		return
 	}
-	qt.QMessageBox_Information(parent, "Import Workspaces", "Imported "+strings.Join(added, ", ")+".")
+	qtwidgets.QMessageBoxInformation(parent, "Import Workspaces", "Imported "+strings.Join(added, ", ")+".")
 }
 
 // importWorkspaces adds the workspaces of a zip file made by exporting, which

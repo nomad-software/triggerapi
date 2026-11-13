@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"encoding/json"
 	"fmt"
 	"html"
@@ -12,8 +16,6 @@ import (
 	"strings"
 	"time"
 	"unicode"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/assert"
 	"github.com/nomad-software/triggerapi/internal/atomicfile"
@@ -27,15 +29,15 @@ import (
 
 // responsePanel displays the result of the last request.
 type responsePanel struct {
-	root *qt.QWidget
+	root *qtwidgets.QWidget
 
-	tabs    *qt.QTabWidget
-	body    *qt.QPlainTextEdit
-	headers *qt.QTableWidget
+	tabs    *qtwidgets.QTabWidget
+	body    *qtwidgets.QPlainTextEdit
+	headers *qtwidgets.QTableWidget
 
 	// save writes the body of the response to a file. It is at the right
 	// of the line the tabs are on.
-	save *qt.QToolButton
+	save *qtwidgets.QToolButton
 	// find is the bar above the body in which text to find in it is typed.
 	// Its button is before save.
 	find *findBar
@@ -92,13 +94,13 @@ type responsePanel struct {
 	fold *folder
 	// formats are the colours JSON is shown in, applied by the highlighter.
 	formats     jsonFormats
-	highlighter *qt.QSyntaxHighlighter
+	highlighter *highlighter
 
 	// result and details make up the bar beneath the response, which shows
 	// the fields. The code and any error are in result, at the left, and
 	// the rest in details, at the right.
-	result  *qt.QLabel
-	details *qt.QLabel
+	result  *qtwidgets.QLabel
+	details *qtwidgets.QLabel
 	// fields describe the response: its code, the error there was, the time
 	// it took and so on.
 	fields []field
@@ -133,15 +135,15 @@ func (f field) html(faded string) (label, value string) {
 // newResponsePanel creates the panel, showing the response body in the named
 // font family.
 func newResponsePanel(bodyFont string) *responsePanel {
-	p := &responsePanel{root: qt.NewQWidget2()}
+	p := &responsePanel{root: qtwidgets.NewQWidget(nil)}
 
-	p.body = qt.NewQPlainTextEdit2()
+	p.body = qtwidgets.NewQPlainTextEdit(nil)
 	p.body.SetReadOnly(true)
 
 	isJSON := func() bool { return p.json }
 	p.formats = newJSONFormats()
-	p.highlighter = qt.NewQSyntaxHighlighter2(p.body.Document())
-	p.highlighter.OnHighlightBlock(func(text string) {
+	p.highlighter = newHighlighter(p.body.Document())
+	p.highlighter.block = func(text string) {
 		if isJSON() {
 			p.formats.apply(p.highlighter, jsonTokens(text))
 		}
@@ -149,63 +151,63 @@ func newResponsePanel(bodyFont string) *responsePanel {
 		if p.find != nil {
 			p.find.highlight(text)
 		}
-	})
+	}
 	p.fold = newFolder(p.body, isJSON)
 	// The menu of the body offers to capture the value it is opened on.
-	p.body.OnContextMenuEvent(func(_ func(*qt.QContextMenuEvent), event *qt.QContextMenuEvent) {
+	p.body.OverrideContextMenuEvent(func(_ func(*qtgui.QContextMenuEvent), event *qtgui.QContextMenuEvent) {
 		cursor := p.body.CursorForPosition(event.Pos())
 		menu := p.contextMenu(cursor.Position())
-		release(cursor)
-		menu.ExecWithPos(event.GlobalPos())
+		cursor.Delete()
+		menu.ExecAt(event.GlobalPos())
 		menu.DeleteLater()
 	})
 	p.find = newFindBar(p.body, p.highlighter, p.fold)
 	p.find.onShow = func() { p.tabs.SetCurrentIndex(tabResponse) }
 	p.setBodyFont(bodyFont)
 
-	p.headers = qt.NewQTableWidget3(0, 2)
+	p.headers = qtwidgets.NewQTableWidgetWithRows(0, 2, nil)
 	p.headers.SetHorizontalHeaderLabels([]string{"Header", "Value"})
 	p.headers.VerticalHeader().SetVisible(false)
-	p.headers.HorizontalHeader().SetSectionResizeMode2(0, qt.QHeaderView__ResizeToContents)
+	p.headers.HorizontalHeader().SetSectionResizeMode(0, qtwidgets.QHeaderViewResizeToContents)
 	p.headers.HorizontalHeader().SetStretchLastSection(true)
-	p.headers.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
-	p.headers.SetSelectionBehavior(qt.QAbstractItemView__SelectRows)
+	p.headers.SetEditTriggers(qtwidgets.QAbstractItemViewNoEditTriggers)
+	p.headers.SetSelectionBehavior(qtwidgets.QAbstractItemViewSelectRows)
 
 	p.save = newIconButton(colourAction, drawDisk, "Save the response to a file")
 	p.save.SetEnabled(false)
-	p.save.OnClicked(p.saveBody)
+	p.save.OnClicked(func(_ bool) { p.saveBody() })
 
 	// The bar to find text with is above the body it is found in.
-	response := qt.NewQWidget2()
-	responseLayout := qt.NewQVBoxLayout(response)
-	responseLayout.SetContentsMargins(0, 0, 0, 0)
+	response := qtwidgets.NewQWidget(nil)
+	responseLayout := qtwidgets.NewQVBoxLayout(response)
+	responseLayout.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 0, Right: 0, Bottom: 0})
 	responseLayout.AddWidget(p.find.root)
-	responseLayout.AddWidget2(p.body.QWidget, 1)
+	responseLayout.AddWidgetFull(p.body.AsQWidget(), 1, 0)
 
 	p.tabs = newButtonTabs(p.find.button, p.save)
 	p.tabs.AddTab(response, "Response")
-	p.tabs.AddTab(p.headers.QWidget, "Headers")
+	p.tabs.AddTab(p.headers.AsQWidget(), "Headers")
 
 	p.now = time.Now
 	p.chooseSave = func(name string) (string, bool) {
-		path := qt.QFileDialog_GetSaveFileName3(p.root, "Save Response", name)
+		path := askSaveFile(p.root, "Save Response", name, "")
 		return path, path != ""
 	}
 	p.warn = warnDialog(p.root)
-	layout := qt.NewQVBoxLayout(p.root)
-	p.result = qt.NewQLabel2()
-	p.result.SetTextFormat(qt.RichText)
+	layout := qtwidgets.NewQVBoxLayout(p.root)
+	p.result = qtwidgets.NewQLabel(nil)
+	p.result.SetTextFormat(qtcore.RichText)
 	p.result.SetWordWrap(true)
-	p.result.SetTextInteractionFlags(qt.TextSelectableByMouse)
-	p.details = qt.NewQLabel2()
-	p.details.SetTextFormat(qt.RichText)
+	p.result.SetTextInteractionFlags(qtcore.TextSelectableByMouse)
+	p.details = qtwidgets.NewQLabel(nil)
+	p.details.SetTextFormat(qtcore.RichText)
 
-	fields := qt.NewQHBoxLayout2()
-	fields.AddWidget2(p.result.QWidget, 1)
-	fields.AddWidget3(p.details.QWidget, 0, qt.AlignRight|qt.AlignTop)
+	fields := qtwidgets.NewQHBoxLayout(nil)
+	fields.AddWidgetFull(p.result.AsQWidget(), 1, 0)
+	fields.AddWidgetFull(p.details.AsQWidget(), 0, qtcore.AlignRight|qtcore.AlignTop)
 
-	layout.AddWidget2(p.tabs.QWidget, 1)
-	layout.AddLayout(fields.QLayout)
+	layout.AddWidgetFull(p.tabs.AsQWidget(), 1, 0)
+	layout.AddLayout(fields.AsQLayout())
 
 	return p
 }
@@ -310,8 +312,8 @@ func (p *responsePanel) setBodyFont(family string) {
 
 // fixedFont returns the font of a family, falling back to the fixed width
 // font of the system where it is not installed.
-func fixedFont(family string) *qt.QFont {
-	font := qt.QFontDatabase_SystemFont(qt.QFontDatabase__FixedFont)
+func fixedFont(family string) *qtgui.QFont {
+	font := qtgui.QFontDatabaseGetSystemFont(qtgui.QFontDatabaseFixedFont)
 	font.SetFamilies(append([]string{family}, font.Families()...))
 	return font
 }
@@ -368,7 +370,7 @@ func (p *responsePanel) capturePath(position int) (path, name string, ok bool) {
 // contextMenu returns the menu of the body for a position in it: the usual
 // one of an editor and, if there is a value there that can be captured, the
 // offer to capture it and the offer to assert that it is what it is.
-func (p *responsePanel) contextMenu(position int) *qt.QMenu {
+func (p *responsePanel) contextMenu(position int) *qtwidgets.QMenu {
 	menu := p.body.CreateStandardContextMenu()
 	if path, name, ok := p.capturePath(position); ok {
 		// An & would otherwise underline the letter after it.
@@ -378,9 +380,9 @@ func (p *responsePanel) contextMenu(position int) *qt.QMenu {
 			captureLabel, assertLabel = "Capture "+shown, "Assert "+shown
 		}
 		menu.AddSeparator()
-		menu.AddActionWithText(captureLabel).OnTriggered(func() { p.addCapture(path, name) })
+		menu.AddActionText(captureLabel).OnTriggered(func(_ bool) { p.addCapture(path, name) })
 		if p.assertions != nil {
-			menu.AddActionWithText(assertLabel).OnTriggered(func() { p.addAssertion(path) })
+			menu.AddActionText(assertLabel).OnTriggered(func(_ bool) { p.addAssertion(path) })
 		}
 	}
 	return menu
@@ -448,7 +450,7 @@ func (p *responsePanel) showAsserted(results []assert.Result) {
 	p.assertions.showResults(results)
 
 	if len(results) == 0 {
-		none := qt.NewQIcon()
+		none := qtgui.NewQIcon()
 		defer none.Delete()
 		p.tabs.SetTabIcon(tabAssertions, none)
 		return
@@ -494,7 +496,7 @@ func (p *responsePanel) showCaptured(results []captureResult) {
 
 	switch {
 	case len(results) == 0:
-		none := qt.NewQIcon()
+		none := qtgui.NewQIcon()
 		defer none.Delete()
 		p.tabs.SetTabIcon(tabCapture, none)
 		p.tabs.SetTabToolTip(tabCapture, "")
@@ -701,8 +703,8 @@ func (p *responsePanel) setHeaders(rows [][2]string) {
 	for _, pair := range rows {
 		row := p.headers.RowCount()
 		p.headers.InsertRow(row)
-		p.headers.SetItem(row, 0, qt.NewQTableWidgetItem2(pair[0]))
-		p.headers.SetItem(row, 1, qt.NewQTableWidgetItem2(pair[1]))
+		p.headers.SetItem(row, 0, qtwidgets.NewQTableWidgetItemWithText(pair[0]))
+		p.headers.SetItem(row, 1, qtwidgets.NewQTableWidgetItemWithText(pair[1]))
 	}
 	p.tabs.SetTabText(tabResponseHeaders, fmt.Sprintf("Headers (%d)", len(rows)))
 }

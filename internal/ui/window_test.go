@@ -1,15 +1,16 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -27,7 +28,7 @@ func withoutLayout(s settings.Settings) settings.Settings {
 func TestWindowSizeRemembered(t *testing.T) {
 	files := testFiles(t)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		if w.Width() != 1024 || w.Height() != 768 {
 			t.Errorf("default size = %dx%d", w.Width(), w.Height())
@@ -41,7 +42,7 @@ func TestWindowSizeRemembered(t *testing.T) {
 		t.Errorf("saved %+v, want %+v", got, want)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		if w.Width() != 1000 || w.Height() != 650 {
 			t.Errorf("restored size = %dx%d", w.Width(), w.Height())
@@ -50,7 +51,7 @@ func TestWindowSizeRemembered(t *testing.T) {
 
 	// A maximised window is restored maximised and keeps its normal size.
 	settings.Settings{Width: 1000, Height: 650, Maximized: true, PublicKey: testPublic, PrivateKey: testPrivate}.Save(files.Settings)
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		if !w.IsMaximized() {
@@ -64,7 +65,7 @@ func TestWindowSizeRemembered(t *testing.T) {
 }
 
 func TestSidebarTabs(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		if w.sidebar.Count() != 4 || w.sidebar.TabToolTip(tabWorkspaces) != "Workspaces" || w.sidebar.TabToolTip(tabEnvironments) != "Environments" || w.sidebar.TabToolTip(tabRequests) != "Requests" || w.sidebar.TabToolTip(tabHistory) != "History" {
 			t.Errorf("tabs = %d: %q, %q, %q, %q", w.sidebar.Count(), w.sidebar.TabToolTip(0), w.sidebar.TabToolTip(1), w.sidebar.TabToolTip(2), w.sidebar.TabToolTip(3))
@@ -82,7 +83,7 @@ func TestSidebarTabs(t *testing.T) {
 func TestMenuBar(t *testing.T) {
 	files := testFiles(t)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 
@@ -124,9 +125,9 @@ func TestAboutBox(t *testing.T) {
 		text  string
 		wants []string
 	}{
-		{mainthread.Wait2(aboutText), []string{"Copyright © 2026 Gary Willoughby", "MCP"}},
+		{onGUI(aboutText), []string{"Copyright © 2026 Gary Willoughby", "MCP"}},
 		// The notice the LGPL asks for, and the libraries it is built with.
-		{mainthread.Wait2(licenceText), []string{"Qt version 6.", "LGPLv3", "https://www.gnu.org/licenses/lgpl-3.0.html", "The Qt Company Ltd", "miqt", "MCP Go SDK", "age"}},
+		{onGUI(licenceText), []string{"Qt version 6.", "LGPLv3", "https://www.gnu.org/licenses/lgpl-3.0.html", "The Qt Company Ltd", "qute", "MCP Go SDK", "age"}},
 	} {
 		for _, want := range c.wants {
 			if !strings.Contains(c.text, want) {
@@ -139,7 +140,7 @@ func TestAboutBox(t *testing.T) {
 		}
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		d := newAboutDialog(nil)
 		defer d.DeleteLater()
 		d.Show()
@@ -151,7 +152,7 @@ func TestAboutBox(t *testing.T) {
 		}
 		// The notices are in a frame of the style, not one drawn by a style
 		// sheet.
-		if d.notices.FrameShape() != qt.QFrame__StyledPanel || d.notices.StyleSheet() != "" || d.StyleSheet() != "" {
+		if d.notices.FrameShape() != qtwidgets.QFrameStyledPanel || d.notices.StyleSheet() != "" || d.StyleSheet() != "" {
 			t.Error("the notices are not in a frame of the style")
 		}
 		d.Close()
@@ -159,11 +160,11 @@ func TestAboutBox(t *testing.T) {
 }
 
 func TestRequestTypeDialog(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 
 		for _, typ := range []collection.Type{collection.TypeREST, collection.TypeGRPC} {
-			dialog := newRequestTypeDialog(w.QWidget)
+			dialog := newRequestTypeDialog(w.AsQWidget())
 			dialog.Show()
 
 			button := dialog.buttons[typ]
@@ -172,7 +173,7 @@ func TestRequestTypeDialog(t *testing.T) {
 			}
 
 			button.Click()
-			if dialog.chosen != typ || dialog.Result() != int(qt.QDialog__Accepted) || dialog.IsVisible() {
+			if dialog.chosen != typ || dialog.Result() != int(qtwidgets.QDialogAccepted) || dialog.IsVisible() {
 				t.Errorf("clicking %s chose %q with result %d", typ, dialog.chosen, dialog.Result())
 			}
 		}
@@ -180,7 +181,7 @@ func TestRequestTypeDialog(t *testing.T) {
 }
 
 func TestMenuShortcuts(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		if got := w.about.Shortcut().ToString(); got != "Ctrl+I" {
 			t.Errorf("about shortcut = %q", got)
@@ -200,7 +201,7 @@ func TestStatusBar(t *testing.T) {
 	defer srv.Close()
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
@@ -226,10 +227,10 @@ func TestStatusBar(t *testing.T) {
 
 	// A request that fails is reported in the bar and in the response.
 	srv.Close()
-	mainthread.Wait(func() { w.request.send.Click() })
+	qute.PostSync(func() { w.request.send.Click() })
 	waitFor(t, "the failure", func() bool { return fieldValue(w.response, "Error") != "" })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if w.StatusBar().CurrentMessage() != "" || w.response.body.ToPlainText() != "" || !isFailure(w.response) || fieldValue(w.response, "Time") == "" || fieldValue(w.response, "Status") != "" {
 			t.Errorf("response = %q, bar = %+v", w.response.body.ToPlainText(), w.response.fields)
 		}
@@ -237,7 +238,7 @@ func TestStatusBar(t *testing.T) {
 }
 
 func TestIcons(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		if w.WindowIcon().IsNull() || appIcon().IsNull() {
 			t.Error("the window has no icon")
@@ -249,7 +250,7 @@ func TestLayoutRemembered(t *testing.T) {
 	files := testFiles(t)
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Resize(1000, 700)
 		w.Show()
@@ -261,7 +262,7 @@ func TestLayoutRemembered(t *testing.T) {
 	waitFor(t, "the layout", func() bool { return w.split.Sizes()[0] == defaultSidebarWidth })
 
 	var total int
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		sizes := w.split.Sizes()
 		w.split.SetSizes([]int{350, sizes[0] + sizes[1] - 350})
 
@@ -278,7 +279,7 @@ func TestLayoutRemembered(t *testing.T) {
 		t.Fatalf("saved %+v", saved)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 	})
@@ -286,7 +287,7 @@ func TestLayoutRemembered(t *testing.T) {
 	waitFor(t, "the response height", func() bool { return w.splits[pageRequest].Sizes()[1] == 210 })
 
 	// The other page with a response is given the same height when shown.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		tree := w.requests.tree
 		tree.SetCurrentItem(topFolder(tree, 0).Child(0))
 		if w.stack.CurrentIndex() != pageGRPC {
@@ -296,7 +297,7 @@ func TestLayoutRemembered(t *testing.T) {
 	waitFor(t, "the gRPC response height", func() bool { return w.splits[pageGRPC].Sizes()[1] == 210 })
 
 	// Closing from the other page saves the height it has.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		split := w.splits[pageGRPC]
 		sizes := split.Sizes()
 		split.SetSizes([]int{sizes[0] + sizes[1] - 260, 260})
@@ -308,24 +309,24 @@ func TestLayoutRemembered(t *testing.T) {
 }
 
 func TestFocusSidebar(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		w.Show()
 
 		// A window that is not on a screen is not the active one, so it is
 		// asked which of its widgets the keyboard goes to.
-		lists := map[int]*qt.QWidget{
-			tabWorkspaces:   w.workspaces.list.QWidget,
-			tabEnvironments: w.environments.list.QWidget,
-			tabRequests:     w.requests.tree.QWidget,
-			tabHistory:      w.history.tree.QWidget,
+		lists := map[int]*qtwidgets.QWidget{
+			tabWorkspaces:   w.workspaces.list.AsQWidget(),
+			tabEnvironments: w.environments.list.AsQWidget(),
+			tabRequests:     w.requests.tree.AsQWidget(),
+			tabHistory:      w.history.tree.AsQWidget(),
 		}
 		// The requests are shown even from the sets.
 		w.requests.showView(viewSets)
 		for _, tab := range []int{tabWorkspaces, tabEnvironments, tabRequests, tabHistory} {
 			w.focusSidebar(tab)
 			focused := w.FocusWidget()
-			if w.sidebar.CurrentIndex() != tab || focused == nil || focused.UnsafePointer() != lists[tab].UnsafePointer() {
+			if w.sidebar.CurrentIndex() != tab || focused == nil || focused.Ptr() != lists[tab].Ptr() {
 				t.Errorf("tab %d: shown %d, and its list does not have the keyboard", tab, w.sidebar.CurrentIndex())
 			}
 		}
@@ -350,7 +351,7 @@ func TestSelectingRequestsClosesEditor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		w.environments.add()
@@ -382,7 +383,7 @@ func TestSelectingRequestsClosesEditor(t *testing.T) {
 // leaves the page as it is.
 func TestEscapeWithNothingOpen(t *testing.T) {
 	files := testFiles(t)
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		defer func(prev collection.Type) { testRequestType = prev }(testRequestType)
@@ -403,9 +404,9 @@ func TestEscapeWithNothingOpen(t *testing.T) {
 func TestActivate(t *testing.T) {
 	t.Setenv("XDG_ACTIVATION_TOKEN", "")
 	files := testFiles(t).Files
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files)
-		w.SetWindowState(qt.WindowMaximized | qt.WindowMinimized)
+		w.SetWindowState(qtcore.WindowMaximized | qtcore.WindowMinimized)
 		w.Show()
 		w.Activate("token-1")
 		if w.IsMinimized() || !w.IsMaximized() || !w.IsVisible() {

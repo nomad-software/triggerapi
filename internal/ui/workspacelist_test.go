@@ -1,13 +1,13 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/crypt/crypttest"
 	"github.com/nomad-software/triggerapi/internal/settings"
@@ -20,7 +20,7 @@ func TestWorkspaces(t *testing.T) {
 
 	var w *Window
 	var warned []string
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		ws := w.workspaces
@@ -70,7 +70,7 @@ func TestWorkspaces(t *testing.T) {
 		return reflect.DeepEqual(w.workspaces.names, []string{"Alpha", "Default"}) && w.workspaces.current() == "Alpha"
 	})
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		ws := w.workspaces
 		if w.config.Workspace != "Alpha" || w.environments.path != workspace.Environments(dir, "Alpha") || w.requests.path != workspace.Requests(dir, "Alpha") {
 			t.Errorf("after rename: workspace %q, paths %q and %q", w.config.Workspace, w.environments.path, w.requests.path)
@@ -91,7 +91,7 @@ func TestWorkspaces(t *testing.T) {
 
 	waitFor(t, "the name to be refused", func() bool { return len(warned) == 1 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		ws := w.workspaces
 		if !strings.Contains(warned[0], "already a workspace") || !reflect.DeepEqual(ws.names, []string{"Alpha", "Default"}) || ws.list.Item(0).Text() != "Alpha" {
 			t.Errorf("warned %q, workspaces %q, shown %q", warned, ws.names, ws.list.Item(0).Text())
@@ -138,7 +138,7 @@ func TestWorkspaces(t *testing.T) {
 	}
 
 	// The next run opens the workspace that was in use.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		ws := w.workspaces
@@ -175,7 +175,7 @@ func TestWorkspaces(t *testing.T) {
 	}
 
 	// A workspace whose folder has other files in it is not removed.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		ws := w.workspaces
 		ws.add()
 		os.WriteFile(filepath.Join(dir, "New Workspace", "notes.txt"), []byte("mine"), 0o644)
@@ -195,7 +195,7 @@ func TestFirstRun(t *testing.T) {
 	saveTestKeys(t, files.Settings)
 
 	// With nothing saved at all there is still a workspace to work in.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files)
 		if !reflect.DeepEqual(w.workspaces.names, []string{"Default"}) || w.StatusBar().CurrentMessage() != "" {
 			t.Fatalf("workspaces = %q, status %q", w.workspaces.names, w.StatusBar().CurrentMessage())
@@ -220,7 +220,7 @@ func TestExportAndImportWorkspaces(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.environments.add()
 		w.requests.addFolder()
@@ -242,7 +242,7 @@ func TestExportAndImportWorkspaces(t *testing.T) {
 		}
 	})
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(theirFiles.Files)
 		added, err := w.importWorkspaces(archive)
 		if err != nil || !reflect.DeepEqual(added, []string{"Default 2"}) {

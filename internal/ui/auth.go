@@ -1,9 +1,10 @@
 package ui
 
 import (
-	"context"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtwidgets"
 
-	qt "github.com/mappu/miqt/qt6"
+	"context"
 
 	"github.com/nomad-software/triggerapi/internal/oauth"
 	"github.com/nomad-software/triggerapi/internal/rest"
@@ -53,34 +54,34 @@ type clientAuthEntry struct {
 
 // authEditor edits the authorization of a request.
 type authEditor struct {
-	root *qt.QWidget
+	root *qtwidgets.QWidget
 
-	typ      *qt.QComboBox
-	username *qt.QLineEdit
-	password *qt.QLineEdit
-	token    *qt.QLineEdit
+	typ      *qtwidgets.QComboBox
+	username *qtwidgets.QLineEdit
+	password *qtwidgets.QLineEdit
+	token    *qtwidgets.QLineEdit
 
 	// The fields of OAuth 2.0, those of URLs being shown only for the grants
 	// that use them.
-	grant        *qt.QComboBox
-	tokenURL     *qt.QLineEdit
-	authURL      *qt.QLineEdit
-	deviceURL    *qt.QLineEdit
-	redirectURL  *qt.QLineEdit
-	clientID     *qt.QLineEdit
-	clientSecret *qt.QLineEdit
-	scopes       *qt.QLineEdit
-	params       *qt.QLineEdit
-	clientAuth   *qt.QComboBox
-	oauthForm    *qt.QFormLayout
+	grant        *qtwidgets.QComboBox
+	tokenURL     *qtwidgets.QLineEdit
+	authURL      *qtwidgets.QLineEdit
+	deviceURL    *qtwidgets.QLineEdit
+	redirectURL  *qtwidgets.QLineEdit
+	clientID     *qtwidgets.QLineEdit
+	clientSecret *qtwidgets.QLineEdit
+	scopes       *qtwidgets.QLineEdit
+	params       *qtwidgets.QLineEdit
+	clientAuth   *qtwidgets.QComboBox
+	oauthForm    *qtwidgets.QFormLayout
 	// tokenState says what token there is, or what the user has to do to
 	// sign in, and problem why one could not be got. getToken gets a new
 	// token, and reads Cancel while it does (cancel is then set), and
 	// clearToken forgets the one there is.
-	tokenState *qt.QLabel
+	tokenState *qtwidgets.QLabel
 	problem    statusLine
-	getToken   *qt.QPushButton
-	clearToken *qt.QPushButton
+	getToken   *qtwidgets.QPushButton
+	clearToken *qtwidgets.QPushButton
 	cancel     context.CancelFunc
 
 	// onChange is called after the type, grant or client authentication
@@ -98,24 +99,24 @@ type authEditor struct {
 // placeholder in it can be read.
 func newAuthEditor(state *panelState) *authEditor {
 	a := &authEditor{
-		typ:          qt.NewQComboBox2(),
-		username:     qt.NewQLineEdit2(),
-		password:     qt.NewQLineEdit2(),
-		token:        qt.NewQLineEdit2(),
-		grant:        qt.NewQComboBox2(),
-		tokenURL:     qt.NewQLineEdit2(),
-		authURL:      qt.NewQLineEdit2(),
-		deviceURL:    qt.NewQLineEdit2(),
-		redirectURL:  qt.NewQLineEdit2(),
-		clientID:     qt.NewQLineEdit2(),
-		clientSecret: qt.NewQLineEdit2(),
-		scopes:       qt.NewQLineEdit2(),
-		params:       qt.NewQLineEdit2(),
-		clientAuth:   qt.NewQComboBox2(),
-		tokenState:   qt.NewQLabel2(),
+		typ:          qtwidgets.NewQComboBox(nil),
+		username:     qtwidgets.NewQLineEdit(nil),
+		password:     qtwidgets.NewQLineEdit(nil),
+		token:        qtwidgets.NewQLineEdit(nil),
+		grant:        qtwidgets.NewQComboBox(nil),
+		tokenURL:     qtwidgets.NewQLineEdit(nil),
+		authURL:      qtwidgets.NewQLineEdit(nil),
+		deviceURL:    qtwidgets.NewQLineEdit(nil),
+		redirectURL:  qtwidgets.NewQLineEdit(nil),
+		clientID:     qtwidgets.NewQLineEdit(nil),
+		clientSecret: qtwidgets.NewQLineEdit(nil),
+		scopes:       qtwidgets.NewQLineEdit(nil),
+		params:       qtwidgets.NewQLineEdit(nil),
+		clientAuth:   qtwidgets.NewQComboBox(nil),
+		tokenState:   qtwidgets.NewQLabel(nil),
 		problem:      newStatusLine(),
-		getToken:     qt.NewQPushButton3("Get Token"),
-		clearToken:   qt.NewQPushButton3("Clear Token"),
+		getToken:     qtwidgets.NewQPushButtonWithText("Get Token", nil),
+		clearToken:   qtwidgets.NewQPushButtonWithText("Clear Token", nil),
 	}
 
 	for _, t := range authTypes {
@@ -137,17 +138,17 @@ func newAuthEditor(state *panelState) *authEditor {
 	a.scopes.SetPlaceholderText("Separated by spaces")
 	a.params.SetPlaceholderText("audience=…&resource=…")
 
-	basic := qt.NewQWidget2()
-	basicForm := qt.NewQFormLayout(basic)
-	basicForm.AddRow3("Username", a.username.QWidget)
-	basicForm.AddRow3("Password", a.password.QWidget)
+	basic := qtwidgets.NewQWidget(nil)
+	basicForm := qtwidgets.NewQFormLayout(basic)
+	basicForm.AddRowText("Username", a.username.AsQWidget())
+	basicForm.AddRowText("Password", a.password.AsQWidget())
 
-	bearer := qt.NewQWidget2()
-	bearerForm := qt.NewQFormLayout(bearer)
-	bearerForm.AddRow3("Token", a.token.QWidget)
+	bearer := qtwidgets.NewQWidget(nil)
+	bearerForm := qtwidgets.NewQFormLayout(bearer)
+	bearerForm.AddRowText("Token", a.token.AsQWidget())
 
 	// Page order matches authTypes.
-	stack := qt.NewQStackedWidget2()
+	stack := qtwidgets.NewQStackedWidget(nil)
 	stack.AddWidget(newHint("This request does not use any authorization."))
 	stack.AddWidget(basic)
 	stack.AddWidget(bearer)
@@ -170,66 +171,66 @@ func newAuthEditor(state *panelState) *authEditor {
 }
 
 // edits returns the fields that are typed into.
-func (a *authEditor) edits() []*qt.QLineEdit {
-	return []*qt.QLineEdit{a.username, a.password, a.token,
+func (a *authEditor) edits() []*qtwidgets.QLineEdit {
+	return []*qtwidgets.QLineEdit{a.username, a.password, a.token,
 		a.tokenURL, a.authURL, a.deviceURL, a.redirectURL, a.clientID, a.clientSecret, a.scopes, a.params}
 }
 
 // newOAuthPage returns the page of OAuth 2.0: its settings, and beneath them
 // the token there is and the buttons which get and clear it. It scrolls, as
 // it is taller than the room a request is often given.
-func (a *authEditor) newOAuthPage() *qt.QWidget {
-	page := qt.NewQWidget2()
-	a.oauthForm = qt.NewQFormLayout2()
-	a.oauthForm.AddRow3("Grant", a.grant.QWidget)
-	a.oauthForm.AddRow3("Token URL", a.tokenURL.QWidget)
-	a.oauthForm.AddRow3("Authorization URL", a.authURL.QWidget)
-	a.oauthForm.AddRow3("Device Authorization URL", a.deviceURL.QWidget)
-	a.oauthForm.AddRow3("Redirect URL", a.redirectURL.QWidget)
-	a.oauthForm.AddRow3("Client ID", a.clientID.QWidget)
-	a.oauthForm.AddRow3("Client Secret", a.clientSecret.QWidget)
-	a.oauthForm.AddRow3("Scopes", a.scopes.QWidget)
-	a.oauthForm.AddRow3("Extra Parameters", a.params.QWidget)
-	a.oauthForm.AddRow3("Client Authentication", a.clientAuth.QWidget)
+func (a *authEditor) newOAuthPage() *qtwidgets.QWidget {
+	page := qtwidgets.NewQWidget(nil)
+	a.oauthForm = qtwidgets.NewQFormLayout(nil)
+	a.oauthForm.AddRowText("Grant", a.grant.AsQWidget())
+	a.oauthForm.AddRowText("Token URL", a.tokenURL.AsQWidget())
+	a.oauthForm.AddRowText("Authorization URL", a.authURL.AsQWidget())
+	a.oauthForm.AddRowText("Device Authorization URL", a.deviceURL.AsQWidget())
+	a.oauthForm.AddRowText("Redirect URL", a.redirectURL.AsQWidget())
+	a.oauthForm.AddRowText("Client ID", a.clientID.AsQWidget())
+	a.oauthForm.AddRowText("Client Secret", a.clientSecret.AsQWidget())
+	a.oauthForm.AddRowText("Scopes", a.scopes.AsQWidget())
+	a.oauthForm.AddRowText("Extra Parameters", a.params.AsQWidget())
+	a.oauthForm.AddRowText("Client Authentication", a.clientAuth.AsQWidget())
 
 	// The state of the token is rich text, for the link to the page the
 	// user signs in at, which opens in the browser.
 	a.tokenState.SetWordWrap(true)
-	a.tokenState.SetTextFormat(qt.RichText)
+	a.tokenState.SetTextFormat(qtcore.RichText)
 	a.tokenState.SetOpenExternalLinks(true)
-	a.tokenState.SetTextInteractionFlags(qt.TextBrowserInteraction)
+	a.tokenState.SetTextInteractionFlags(qtcore.TextBrowserInteraction)
 
-	buttons := qt.NewQHBoxLayout2()
-	buttons.AddWidget(a.getToken.QWidget)
-	buttons.AddWidget(a.clearToken.QWidget)
+	buttons := qtwidgets.NewQHBoxLayout(nil)
+	buttons.AddWidget(a.getToken.AsQWidget())
+	buttons.AddWidget(a.clearToken.AsQWidget())
 	buttons.AddStretch()
 
 	// The state of the token is beneath the form, across the whole page:
 	// a style which keeps the fields of a form at their size hint (Breeze,
 	// for one) would squeeze it, as wrapped text, into a narrow column cut
 	// off after its first line.
-	layout := qt.NewQVBoxLayout(page)
-	layout.AddLayout(a.oauthForm.QLayout)
-	layout.AddWidget(a.tokenState.QWidget)
-	layout.AddWidget(a.problem.QWidget)
-	layout.AddLayout(buttons.QLayout)
+	layout := qtwidgets.NewQVBoxLayout(page)
+	layout.AddLayout(a.oauthForm.AsQLayout())
+	layout.AddWidget(a.tokenState.AsQWidget())
+	layout.AddWidget(a.problem.AsQWidget())
+	layout.AddLayout(buttons.AsQLayout())
 	layout.AddStretch()
 
-	scroll := qt.NewQScrollArea2()
-	scroll.SetFrameShape(qt.QFrame__NoFrame)
+	scroll := qtwidgets.NewQScrollArea(nil)
+	scroll.SetFrameShape(qtwidgets.QFrameNoFrame)
 	scroll.SetWidgetResizable(true)
 	scroll.SetWidget(plainPage(page))
 	plainPage(scroll.Viewport())
-	return scroll.QWidget
+	return scroll.AsQWidget()
 }
 
 // showGrantFields shows the fields of URLs the grant chosen uses, and hides
 // the others.
 func (a *authEditor) showGrantFields() {
 	grant := grants[a.grant.CurrentIndex()].grant
-	a.oauthForm.SetRowVisible2(a.authURL.QWidget, grant == rest.GrantAuthorizationCode)
-	a.oauthForm.SetRowVisible2(a.redirectURL.QWidget, grant == rest.GrantAuthorizationCode)
-	a.oauthForm.SetRowVisible2(a.deviceURL.QWidget, grant == rest.GrantDeviceCode)
+	a.oauthForm.SetRowVisibleOf(a.authURL.AsQWidget(), grant == rest.GrantAuthorizationCode)
+	a.oauthForm.SetRowVisibleOf(a.redirectURL.AsQWidget(), grant == rest.GrantAuthorizationCode)
+	a.oauthForm.SetRowVisibleOf(a.deviceURL.AsQWidget(), grant == rest.GrantDeviceCode)
 }
 
 // changed reports a choice of the type, the grant or the client

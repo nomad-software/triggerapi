@@ -1,12 +1,12 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+
 	"reflect"
 	"slices"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/rpc"
@@ -19,7 +19,7 @@ func TestGRPCEndpoints(t *testing.T) {
 
 	files := testFiles(t)
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 
@@ -38,7 +38,7 @@ func TestGRPCEndpoints(t *testing.T) {
 
 	waitFor(t, "the endpoints", func() bool { return w.grpc.endpoints.count() == 4 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		e := w.grpc.endpoints
 
 		// The methods are listed by their short names under the service,
@@ -67,7 +67,7 @@ func TestGRPCEndpoints(t *testing.T) {
 		// Ticking the last of them is the same as ticking them all.
 		for r, name := range e.names {
 			if name != "" {
-				e.table.Item(r, colEndpointChosen).SetCheckState(qt.Checked)
+				e.table.Item(r, colEndpointChosen).SetCheckState(qtcore.Checked)
 			}
 		}
 		if e.toggle.Text() != "Select None" {
@@ -77,8 +77,8 @@ func TestGRPCEndpoints(t *testing.T) {
 
 		// A request is made of each that is ticked, in a folder for its
 		// service inside one for the server.
-		e.table.Item(row, colEndpointChosen).SetCheckState(qt.Checked)
-		e.table.Item(slices.Index(e.names, "test.v1.Echo/Fail"), colEndpointChosen).SetCheckState(qt.Checked)
+		e.table.Item(row, colEndpointChosen).SetCheckState(qtcore.Checked)
+		e.table.Item(slices.Index(e.names, "test.v1.Echo/Fail"), colEndpointChosen).SetCheckState(qtcore.Checked)
 		open := w.open
 		w.sidebar.SetCurrentIndex(tabEnvironments)
 		e.create.Click()
@@ -121,7 +121,7 @@ func TestGRPCEndpointSearch(t *testing.T) {
 	defer srv.Close()
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 
@@ -136,7 +136,7 @@ func TestGRPCEndpointSearch(t *testing.T) {
 
 	waitFor(t, "the endpoints", func() bool { return w.grpc.endpoints.count() == 4 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		e := w.grpc.endpoints
 
 		// shown lists the rows that are not hidden, by the name of the
@@ -200,12 +200,12 @@ func TestGRPCEndpointSearch(t *testing.T) {
 	})
 
 	waitFor(t, "the endpoints again", func() bool {
-		return mainthread.Wait2(func() bool {
+		return onGUI(func() bool {
 			e := w.grpc.endpoints
 			return e.count() == 4 && len(e.chosen()) == 0 && !e.table.IsRowHidden(slices.Index(e.names, "test.v1.Echo/Say"))
 		})
 	})
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		e := w.grpc.endpoints
 		if e.table.IsRowHidden(0) || !e.table.IsRowHidden(slices.Index(e.names, "test.v1.Echo/Fail")) {
 			t.Error("the search was not applied to the endpoints listed again")
@@ -221,7 +221,7 @@ func TestGRPCEndpointCollection(t *testing.T) {
 
 	files := testFiles(t)
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.requests.confirm = func(string) bool { return true }
@@ -235,9 +235,9 @@ func TestGRPCEndpointCollection(t *testing.T) {
 
 	// tick ticks the box of a method as a click would, which does nothing
 	// to one that cannot be changed.
-	tick := func(method string, state qt.CheckState) {
+	tick := func(method string, state qtcore.CheckState) {
 		e := w.grpc.endpoints
-		if item := e.table.Item(slices.Index(e.names, method), colEndpointChosen); item.Flags()&qt.ItemIsUserCheckable != 0 {
+		if item := e.table.Item(slices.Index(e.names, method), colEndpointChosen); item.Flags()&qtcore.ItemIsUserCheckable != 0 {
 			item.SetCheckState(state)
 		}
 	}
@@ -256,13 +256,13 @@ func TestGRPCEndpointCollection(t *testing.T) {
 	}
 
 	var first, second *collection.Folder
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		e := w.grpc.endpoints
 
 		// Two collections are made, each with the same two requests. The
 		// request on show is in neither, so nothing is ticked for it.
-		tick(fail, qt.Checked)
-		tick(say, qt.Checked)
+		tick(fail, qtcore.Checked)
+		tick(say, qtcore.Checked)
 		e.create.Click()
 		e.create.Click()
 		if e.create.Text() != "Create Requests" || len(e.existing) != 0 {
@@ -295,7 +295,7 @@ func TestGRPCEndpointCollection(t *testing.T) {
 
 	waitFor(t, "the endpoints of the collection", func() bool { return len(w.grpc.endpoints.existing) == 2 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		e := w.grpc.endpoints
 
 		if w.open.GRPC.Method != say || !reflect.DeepEqual(e.chosen(), []string{fail, say}) || len(e.added()) != 0 {
@@ -304,8 +304,8 @@ func TestGRPCEndpointCollection(t *testing.T) {
 		if e.create.Text() != "Update Requests" || e.create.IsEnabled() || e.toggle.Text() != "Select All" {
 			t.Errorf("button = %q, toggle %q", e.create.Text(), e.toggle.Text())
 		}
-		tick(fail, qt.Unchecked)
-		tick(say, qt.Unchecked)
+		tick(fail, qtcore.Unchecked)
+		tick(say, qtcore.Unchecked)
 		if !reflect.DeepEqual(e.chosen(), []string{fail, say}) {
 			t.Errorf("chosen = %q after unticking", e.chosen())
 		}
@@ -323,7 +323,7 @@ func TestGRPCEndpointCollection(t *testing.T) {
 		// Another that is ticked is added to this collection and to no
 		// other, and the request stays the one on show.
 		was := w.open
-		tick(repeat, qt.Checked)
+		tick(repeat, qtcore.Checked)
 		e.create.Click()
 		if got := methods(first); !reflect.DeepEqual(got, []string{fail, repeat, say}) {
 			t.Errorf("collection = %q", got)
@@ -338,7 +338,7 @@ func TestGRPCEndpointCollection(t *testing.T) {
 		if w.open != was || len(e.existing) != 3 || len(e.added()) != 0 || e.create.IsEnabled() {
 			t.Errorf("open = %+v, existing %v, added %q", w.open, e.existing, e.added())
 		}
-		tick(repeat, qt.Unchecked)
+		tick(repeat, qtcore.Unchecked)
 		if len(e.chosen()) != 3 {
 			t.Errorf("chosen = %q after unticking the one added", e.chosen())
 		}
@@ -351,7 +351,7 @@ func TestGRPCEndpointCollection(t *testing.T) {
 
 	waitFor(t, "the endpoints of the collection", func() bool { return len(w.grpc.endpoints.existing) == 2 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if e := w.grpc.endpoints; !reflect.DeepEqual(e.chosen(), []string{fail, say}) || len(e.free()) != 2 {
 			t.Errorf("chosen = %q after removing, %d free", e.chosen(), e.free())
 		}

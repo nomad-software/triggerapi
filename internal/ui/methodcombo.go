@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"slices"
 	"strings"
-
-	qt "github.com/mappu/miqt/qt6"
 )
 
 // methodCombo is a drop-down of what can be called on a server, grouped under
@@ -14,9 +16,9 @@ import (
 // and the closed drop-down what closed makes of the full name of the one
 // selected, which is the full name itself unless it is set.
 type methodCombo struct {
-	*qt.QComboBox
+	qtwidgets.QComboBoxBase
 
-	model *qt.QStandardItemModel
+	model *qtgui.QStandardItemModel
 	// names holds the full name on each row, as heading/name, such as
 	// package.Service/Method. It is empty for the heading rows.
 	names []string
@@ -25,27 +27,29 @@ type methodCombo struct {
 }
 
 func newMethodCombo() *methodCombo {
-	c := &methodCombo{QComboBox: qt.NewQComboBox2(), model: qt.NewQStandardItemModel()}
+	c := &methodCombo{}
+	qtwidgets.NewQComboBoxWith(c, nil)
+	c.model = qtgui.NewQStandardItemModel(c)
 
-	c.SetModel(c.model.QAbstractItemModel)
+	c.SetModel(c.model.AsQAbstractItemModel())
 	// Stop a long method name from forcing the window wider: the width is
 	// not taken from the names, and the combo fills whatever room there is.
-	c.SetSizeAdjustPolicy(qt.QComboBox__AdjustToMinimumContentsLengthWithIcon)
-	c.SetSizePolicy2(qt.QSizePolicy__Expanding, qt.QSizePolicy__Fixed)
+	c.SetSizeAdjustPolicy(qtwidgets.QComboBoxAdjustToMinimumContentsLengthWithIcon)
+	c.SetSizePolicy(qtwidgets.NewQSizePolicyWithPolicy(qtwidgets.QSizePolicyExpanding, qtwidgets.QSizePolicyFixed))
 	c.SetMaxVisibleItems(25)
 
-	// The text of a row is the short name, so the full name is substituted
-	// when the closed drop-down is drawn.
-	c.OnInitStyleOption(func(super func(*qt.QStyleOptionComboBox), option *qt.QStyleOptionComboBox) {
-		super(option)
-		if c.closed != nil {
-			option.SetCurrentText(c.closed(c.current()))
-		} else {
-			option.SetCurrentText(c.current())
-		}
-	})
-
 	return c
+}
+
+// InitStyleOption substitutes the full name for the text of the row, which
+// is the short name, when the closed drop-down is drawn.
+func (c *methodCombo) InitStyleOption(option *qtwidgets.QStyleOptionComboBox) {
+	c.Super().InitStyleOption(option)
+	if c.closed != nil {
+		option.SetCurrentText(c.closed(c.current()))
+	} else {
+		option.SetCurrentText(c.current())
+	}
 }
 
 // setMethods replaces the list with the methods, which must be sorted so that
@@ -56,9 +60,9 @@ func (c *methodCombo) setMethods(methods []string, selected string) {
 	c.model.Clear()
 	c.names = nil
 
-	add := func(text, name string) *qt.QStandardItem {
-		item := qt.NewQStandardItem2(text)
-		c.model.AppendRowWithItem(item)
+	add := func(text, name string) *qtgui.QStandardItem {
+		item := qtgui.NewQStandardItemWithText(text)
+		c.model.AppendRow(item)
 		c.names = append(c.names, name)
 		return item
 	}
@@ -75,7 +79,7 @@ func (c *methodCombo) setMethods(methods []string, selected string) {
 
 			// A heading can be seen but not chosen.
 			heading := add(service, "")
-			heading.SetFlags(qt.ItemIsEnabled)
+			heading.SetFlags(qtcore.ItemIsEnabled)
 			font := heading.Font()
 			font.SetBold(true)
 			heading.SetFont(font)

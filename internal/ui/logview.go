@@ -1,7 +1,7 @@
 package ui
 
 import (
-	qt "github.com/mappu/miqt/qt6"
+	"github.com/nomad-software/qute/qtwidgets"
 )
 
 // What is shown as a log in an editor: entries, oldest first, with a blank
@@ -9,7 +9,7 @@ import (
 // a stream and those of an MCP call are.
 
 // appendEntry adds an entry to the end of a log.
-func appendEntry(log *qt.QPlainTextEdit, text string) {
+func appendEntry(log *qtwidgets.QPlainTextEdit, text string) {
 	if log.Document().IsEmpty() {
 		log.SetPlainText(text)
 		return
@@ -18,13 +18,13 @@ func appendEntry(log *qt.QPlainTextEdit, text string) {
 }
 
 // atEnd reports if the end of a log, where the newest entry is, is in view.
-func atEnd(log *qt.QPlainTextEdit) bool {
+func atEnd(log *qtwidgets.QPlainTextEdit) bool {
 	bar := log.VerticalScrollBar()
 	return bar.Value() == bar.Maximum()
 }
 
 // scrollToEnd brings the end of a log, where the newest entry is, into view.
-func scrollToEnd(log *qt.QPlainTextEdit) {
+func scrollToEnd(log *qtwidgets.QPlainTextEdit) {
 	bar := log.VerticalScrollBar()
 	bar.SetValue(bar.Maximum())
 }

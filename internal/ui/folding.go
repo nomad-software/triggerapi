@@ -1,10 +1,12 @@
 package ui
 
 import (
-	"maps"
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
 
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
+	"maps"
 )
 
 // gutterWidth is the width of the margin the fold markers are drawn in.
@@ -15,9 +17,9 @@ const gutterWidth = 14
 // on a later line. Clicking it hides the lines in between, and clicking it
 // again shows them.
 type folder struct {
-	edit   *qt.QPlainTextEdit
-	gutter *qt.QWidget
-	marker *qt.QBrush
+	edit   *qtwidgets.QPlainTextEdit
+	gutter *qtwidgets.QWidget
+	marker *qtgui.QBrush
 
 	// enabled reports if the editor holds JSON at the moment.
 	enabled func() bool
@@ -35,44 +37,45 @@ type folder struct {
 	pending bool
 }
 
-func newFolder(edit *qt.QPlainTextEdit, enabled func() bool) *folder {
+func newFolder(edit *qtwidgets.QPlainTextEdit, enabled func() bool) *folder {
 	f := &folder{
 		edit:    edit,
-		gutter:  qt.NewQWidget(edit.QWidget),
-		marker:  qt.NewQBrush3(qt.NewQColor6("#888888")),
+		gutter:  qtwidgets.NewQWidget(nil),
+		marker:  qtgui.NewQBrushWithColor(qcolour("#888888")),
 		enabled: enabled,
 		folded:  map[int]int{},
 	}
 
-	edit.SetViewportMargins(gutterWidth, 0, 0, 0)
-	edit.OnResizeEvent(func(super func(*qt.QResizeEvent), event *qt.QResizeEvent) {
+	f.gutter.SetParent(edit)
+	edit.Protected().SetViewportMargins(qtcore.QMargins{Left: gutterWidth})
+	edit.OverrideResizeEvent(func(super func(*qtgui.QResizeEvent), event *qtgui.QResizeEvent) {
 		super(event)
 		f.place()
 	})
 	f.place()
 
 	// The markers move with the text as it scrolls.
-	edit.OnUpdateRequest(func(*qt.QRect, int) { f.gutter.Update() })
+	edit.OnUpdateRequest(func(qtcore.QRect, int) { f.gutter.Update() })
 
 	// The text is looked at once the change has been made, as the lines must
 	// not be hidden or shown while the document is in the middle of it.
 	edit.Document().OnContentsChange(func(int, int, int) {
 		if !f.pending {
 			f.pending = true
-			mainthread.Start(func() {
+			qute.Post(func() {
 				f.pending = false
 				f.sync()
 			})
 		}
 	})
 
-	f.gutter.SetCursor(qt.NewQCursor2(qt.PointingHandCursor))
-	f.gutter.OnPaintEvent(func(super func(*qt.QPaintEvent), event *qt.QPaintEvent) {
+	f.gutter.SetCursor(qtgui.NewQCursorWithCursorShape(qtcore.PointingHandCursor))
+	f.gutter.OverridePaintEvent(func(super func(*qtgui.QPaintEvent), event *qtgui.QPaintEvent) {
 		super(event)
 		f.paint()
 	})
-	f.gutter.OnMousePressEvent(func(_ func(*qt.QMouseEvent), event *qt.QMouseEvent) {
-		if line, ok := f.lineAt(event.Pos().Y()); ok {
+	f.gutter.OverrideMousePressEvent(func(_ func(*qtgui.QMouseEvent), event *qtgui.QMouseEvent) {
+		if line, ok := f.lineAt(event.Pos().Y); ok {
 			f.toggle(line)
 		}
 	})
@@ -83,7 +86,7 @@ func newFolder(edit *qt.QPlainTextEdit, enabled func() bool) *folder {
 // place puts the margin at the left edge of the editor.
 func (f *folder) place() {
 	area := f.edit.ContentsRect()
-	f.gutter.SetGeometry(area.Left(), area.Top(), gutterWidth, area.Height())
+	f.gutter.SetGeometryRect(qtcore.QRect{X: area.Left(), Y: area.Top(), Width: gutterWidth, Height: area.Height})
 }
 
 // reset unfolds everything, for when the editor has been given other text or
@@ -182,7 +185,7 @@ func (f *folder) apply() {
 
 	// The text cursor must not be left on a line that cannot be seen.
 	cursor := f.edit.TextCursor()
-	defer release(cursor)
+	defer cursor.Delete()
 	if cursor.BlockNumber() < len(hide) && hide[cursor.BlockNumber()] {
 		line := cursor.BlockNumber()
 		for line > 0 && hide[line] {
@@ -200,11 +203,10 @@ func (f *folder) apply() {
 // visibleLines calls each for the lines in view, with the position of their
 // top edge in the margin and their height, until it returns false.
 func (f *folder) visibleLines(each func(line, top, height int) bool) {
-	origin := qt.NewQPoint2(0, 0)
-	defer origin.Delete()
+	origin := qtcore.QPoint{X: 0, Y: 0}
 
 	first := f.edit.CursorForPosition(origin)
-	defer release(first)
+	defer first.Delete()
 
 	height := f.gutter.Height()
 	for block := first.Block(); block.IsValid(); block = block.Next() {
@@ -212,11 +214,11 @@ func (f *folder) visibleLines(each func(line, top, height int) bool) {
 			continue
 		}
 
-		cursor := qt.NewQTextCursor4(block)
-		rect := f.edit.CursorRect(cursor)
+		cursor := qtgui.NewQTextCursorWithTextBlock(block)
+		rect := f.edit.CursorRectWithTextCursor(cursor)
 		cursor.Delete()
 
-		if rect.Top() > height || !each(block.BlockNumber(), rect.Top(), rect.Height()) {
+		if rect.Top() > height || !each(block.BlockNumber(), rect.Top(), rect.Height) {
 			return
 		}
 	}
@@ -241,10 +243,10 @@ func (f *folder) paint() {
 		return
 	}
 
-	painter := qt.NewQPainter2(f.gutter.QPaintDevice)
+	painter := qtgui.NewQPainterOn(f.gutter.AsQPaintDevice())
 	defer painter.Delete()
 	defer painter.End()
-	painter.SetRenderHint(qt.QPainter__Antialiasing)
+	painter.SetRenderHint(qtgui.QPainterAntialiasing)
 
 	f.visibleLines(func(line, top, height int) bool {
 		if !f.foldable(line) {
@@ -253,17 +255,17 @@ func (f *folder) paint() {
 
 		// The triangle is drawn about the middle of the line.
 		x, y := float64(gutterWidth)/2, float64(top)+float64(height)/2
-		path := qt.NewQPainterPath()
+		path := qtgui.NewQPainterPath()
 		defer path.Delete()
 
 		if _, folded := f.folded[line]; folded {
-			path.MoveTo2(x-2, y-4)
-			path.LineTo2(x+3, y)
-			path.LineTo2(x-2, y+4)
+			path.MoveTo(qtcore.QPointF{X: x - 2, Y: y - 4})
+			path.LineTo(qtcore.QPointF{X: x + 3, Y: y})
+			path.LineTo(qtcore.QPointF{X: x - 2, Y: y + 4})
 		} else {
-			path.MoveTo2(x-4, y-2)
-			path.LineTo2(x+4, y-2)
-			path.LineTo2(x, y+3)
+			path.MoveTo(qtcore.QPointF{X: x - 4, Y: y - 2})
+			path.LineTo(qtcore.QPointF{X: x + 4, Y: y - 2})
+			path.LineTo(qtcore.QPointF{X: x, Y: y + 3})
 		}
 		path.CloseSubpath()
 		painter.FillPath(path, f.marker)

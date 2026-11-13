@@ -1,14 +1,14 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"context"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/history"
@@ -73,7 +73,7 @@ func (w *Window) toggleWS() {
 			stop()
 		}
 		err = network.Explain(err)
-		mainthread.Start(func() {
+		qute.Post(func() {
 			if w.socket != s {
 				// It was closed, or another request shown, meanwhile.
 				if conn != nil {
@@ -124,7 +124,7 @@ func (w *Window) connectAndSendWS() {
 func (w *Window) readWS(s *wsSession) {
 	for {
 		m, err := s.conn.Receive(s.ctx)
-		mainthread.Start(func() {
+		qute.Post(func() {
 			if w.socket != s {
 				return
 			}
@@ -153,7 +153,7 @@ func (w *Window) sendWS() {
 	text := w.expander()(w.ws.message.ToPlainText())
 	go func() {
 		m, err := s.conn.Send(s.ctx, text)
-		mainthread.Start(func() {
+		qute.Post(func() {
 			if w.socket != s {
 				return
 			}

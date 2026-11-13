@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,9 +12,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/env"
@@ -24,11 +24,11 @@ import (
 
 // entryCount returns how many requests the history of the window holds.
 func entryCount(w *Window) int {
-	return mainthread.Wait2(func() int { return len(w.history.store.Entries) })
+	return onGUI(func() int { return len(w.history.store.Entries) })
 }
 
 // firstEntryItem returns the item of the newest entry listed in the history.
-func firstEntryItem(w *Window) *qt.QTreeWidgetItem {
+func firstEntryItem(w *Window) *qtwidgets.QTreeWidgetItem {
 	return w.history.tree.TopLevelItem(0).Child(0)
 }
 
@@ -50,7 +50,7 @@ func TestHistoryRecordsREST(t *testing.T) {
 	}
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.requests.addRequest()
@@ -62,7 +62,7 @@ func TestHistoryRecordsREST(t *testing.T) {
 	waitFor(t, "the entry", func() bool { return entryCount(w) == 1 })
 
 	var e *history.Entry
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		e = w.history.store.Entries[0]
 		// The request is kept with its placeholders, and only where it went
 		// with them replaced.
@@ -84,7 +84,7 @@ func TestHistoryRecordsREST(t *testing.T) {
 		}
 	})
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// Changing the saved request leaves the entry as it was sent.
 		w.request.url.SetText("http://changed.test")
 		w.request.url.commit()
@@ -95,7 +95,7 @@ func TestHistoryRecordsREST(t *testing.T) {
 		if w.open != nil || w.stack.CurrentIndex() != pageRequest || w.request.url.Text() != "http://{{host}}/rooms?page=2" {
 			t.Errorf("opened %+v, URL %q", w.open, w.request.url.Text())
 		}
-		if !w.request.saveButton().IsVisibleTo(w.QWidget) || fieldValue(w.response, fieldCode) != "201 Created" || !strings.Contains(w.response.body.ToPlainText(), `"id": 1`) {
+		if !w.request.saveButton().IsVisibleTo(w.AsQWidget()) || fieldValue(w.response, fieldCode) != "201 Created" || !strings.Contains(w.response.body.ToPlainText(), `"id": 1`) {
 			t.Errorf("status %q, body %q", fieldValue(w.response, fieldCode), w.response.body.ToPlainText())
 		}
 
@@ -132,7 +132,7 @@ func TestHistoryRecordsREST(t *testing.T) {
 func TestHistoryFailuresAndSettings(t *testing.T) {
 	files := testFiles(t)
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		// A request that is not saved, which cannot be sent.
@@ -140,7 +140,7 @@ func TestHistoryFailuresAndSettings(t *testing.T) {
 		w.request.send.Click()
 	})
 	waitFor(t, "the failure", func() bool { return entryCount(w) == 1 })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		e := w.history.store.Entries[0]
 		if e.Error == "" || e.Path != nil || e.Title() != "GET http://127.0.0.1:1/none" {
 			t.Errorf("entry %q, %q, at %q", e.Title(), e.Error, e.Path)
@@ -160,7 +160,7 @@ func TestHistoryFailuresAndSettings(t *testing.T) {
 	})
 	waitFor(t, "the second failure", func() bool { return entryCount(w) == 2 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// Keeping fewer drops the oldest at once.
 		s := w.config
 		s.HistoryLimit = 1
@@ -179,12 +179,12 @@ func TestHistoryFailuresAndSettings(t *testing.T) {
 		w.request.send.Click()
 	})
 	waitFor(t, "the response", func() bool {
-		return mainthread.Wait2(func() bool { return w.cancel == nil && fieldValue(w.response, fieldError) != "" })
+		return onGUI(func() bool { return w.cancel == nil && fieldValue(w.response, fieldError) != "" })
 	})
 	if n := entryCount(w); n != 1 {
 		t.Errorf("%d entries with no history kept", n)
 	}
-	mainthread.Wait(func() { w.Close() })
+	qute.PostSync(func() { w.Close() })
 }
 
 func TestHistoryRecordsGRPC(t *testing.T) {
@@ -192,7 +192,7 @@ func TestHistoryRecordsGRPC(t *testing.T) {
 	defer srv.Close()
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		addGRPCRequest(w)
@@ -200,13 +200,13 @@ func TestHistoryRecordsGRPC(t *testing.T) {
 		w.grpc.targetChanged()
 	})
 	waitFor(t, "the methods", func() bool { return w.grpc.method.count() == 4 })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.grpc.method.selectMethod("test.v1.Echo/Say")
 		w.grpc.message.SetPlainText(`{"text": "hello"}`)
 		w.grpc.invoke.Click()
 	})
 	waitFor(t, "the entry", func() bool { return entryCount(w) == 1 })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		e := w.history.store.Entries[0]
 		if e.GRPC == nil || !e.GRPC.OK() || len(e.GRPC.Messages) != 1 || e.Request.GRPC.Method != "test.v1.Echo/Say" || e.URL != srv.URL {
 			t.Errorf("entry %+v of %+v", e.GRPC, e.Request.GRPC)
@@ -230,7 +230,7 @@ func TestHistoryRecordsGraphQLAndMCP(t *testing.T) {
 	tools := mcptest.NewServer(t)
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		defer func(prev collection.Type) { testRequestType = prev }(testRequestType)
@@ -241,7 +241,7 @@ func TestHistoryRecordsGraphQLAndMCP(t *testing.T) {
 		w.graphql.send.Click()
 	})
 	waitFor(t, "the GraphQL entry", func() bool { return entryCount(w) == 1 })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		e := w.history.store.Entries[0]
 		if e.HTTP == nil || e.Request.Type != collection.TypeGraphQL || e.URL != graph.URL+"/graphql" {
 			t.Errorf("entry %+v", e)
@@ -261,13 +261,13 @@ func TestHistoryRecordsGraphQLAndMCP(t *testing.T) {
 		w.mcp.url.SetText(tools.URL + "/mcp")
 		w.mcp.reload.Click()
 	})
-	waitFor(t, "the capabilities", func() bool { return mainthread.Wait2(w.mcp.endpoint.count) == 7 })
-	mainthread.Wait(func() {
+	waitFor(t, "the capabilities", func() bool { return onGUI(w.mcp.endpoint.count) == 7 })
+	qute.PostSync(func() {
 		w.mcp.arguments.SetPlainText(`{"text": "hi", "times": 2}`)
 		w.mcp.call.Click()
 	})
 	waitFor(t, "the MCP entry", func() bool { return entryCount(w) == 2 })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		e := w.history.store.Entries[0]
 		if e.MCP == nil || !e.MCP.OK() || !strings.Contains(string(e.MCP.Result), "hihi") || e.Title() != tools.URL+"/mcp echo" {
 			t.Errorf("entry %q: %+v", e.Title(), e.MCP)
@@ -284,9 +284,9 @@ func TestHistoryRecordsGraphQLAndMCP(t *testing.T) {
 func TestHistoryRecordsWebSocket(t *testing.T) {
 	srv := wsEchoServer(t)
 	var w *Window
-	log := func() string { return mainthread.Wait2(func() string { return w.wsResponse.body.ToPlainText() }) }
+	log := func() string { return onGUI(func() string { return w.wsResponse.body.ToPlainText() }) }
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(testFiles(t).Files)
 		w.Show()
 		defer func(prev collection.Type) { testRequestType = prev }(testRequestType)
@@ -297,14 +297,14 @@ func TestHistoryRecordsWebSocket(t *testing.T) {
 		w.ws.connect.Click()
 	})
 	waitFor(t, "the connection", func() bool { return strings.Contains(log(), "hello") })
-	mainthread.Wait(w.ws.send.Click)
+	qute.PostSync(w.ws.send.Click)
 	waitFor(t, "the echo", func() bool { return strings.Count(log(), "ping") == 2 })
 	// Nothing is kept until the connection is closed.
 	if n := entryCount(w); n != 0 {
 		t.Errorf("%d entries while connected", n)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.ws.connect.Click()
 		if len(w.history.store.Entries) != 1 {
 			t.Fatalf("%d entries", len(w.history.store.Entries))
@@ -329,7 +329,7 @@ func TestHistoryRecordsWebSocket(t *testing.T) {
 		w.ws.connect.Click()
 	})
 	waitFor(t, "the failed connection", func() bool { return entryCount(w) == 2 })
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if e := w.history.store.Entries[0]; e.Error == "" || e.WebSocket != nil {
 			t.Errorf("entry %+v", e)
 		}
@@ -353,7 +353,7 @@ func TestHistoryOfEachWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		if len(w.history.store.Entries) != 0 {
@@ -403,7 +403,7 @@ func TestSaveEntryResponse(t *testing.T) {
 		Request: collection.New(collection.TypeREST, "Book room"),
 		HTTP:    &rest.Response{Status: "200 OK", StatusCode: 200, Headers: http.Header{"Content-Type": {"application/json"}}, Body: []byte(`{"id": 1}`)},
 	}
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		var offered string
 		w.response.chooseSave = func(name string) (string, bool) { offered = name; return "", false }

@@ -1,10 +1,10 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"fmt"
 	"strings"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/mcp"
 )
@@ -13,7 +13,7 @@ import (
 // its Capture tab: what the server sent, and asked and was answered, while a
 // call was under way, oldest first.
 type eventsTab struct {
-	log   *qt.QPlainTextEdit
+	log   *qtwidgets.QPlainTextEdit
 	index int
 	// shown are the events on show.
 	shown []mcp.Event
@@ -21,11 +21,11 @@ type eventsTab struct {
 
 // addEventsTab adds the Events tab.
 func (p *responsePanel) addEventsTab() {
-	log := qt.NewQPlainTextEdit2()
+	log := qtwidgets.NewQPlainTextEdit(nil)
 	log.SetReadOnly(true)
 	log.SetFont(p.body.Font())
 	p.events = &eventsTab{log: log}
-	p.events.index = p.tabs.AddTab(log.QWidget, "Events")
+	p.events.index = p.tabs.AddTab(log.AsQWidget(), "Events")
 }
 
 // showEvents shows the events of a call in the Events tab, if the panel has
@@ -57,7 +57,7 @@ func (p *responsePanel) noteEvent(e mcp.Event) {
 }
 
 // recount names the tab with how many events it has.
-func (t *eventsTab) recount(tabs *qt.QTabWidget) {
+func (t *eventsTab) recount(tabs *qtwidgets.QTabWidget) {
 	name := "Events"
 	if len(t.shown) > 0 {
 		name = fmt.Sprintf("Events (%d)", len(t.shown))

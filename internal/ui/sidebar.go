@@ -1,12 +1,13 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"fmt"
 	"os"
 	"path/filepath"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/crypt"
 	"github.com/nomad-software/triggerapi/internal/jsonfile"
@@ -19,13 +20,13 @@ type importKind[T any] struct {
 	filter string
 	// colour and glyph make the icon it is offered with. See drawIcon.
 	colour string
-	glyph  func(*qt.QPainter)
+	glyph  func(*qtgui.QPainter)
 	read   func([]byte) (T, error)
 }
 
 // newSourceDialog returns a dialog which asks which of the kinds of file, in
 // the order given, to import from.
-func newSourceDialog[K comparable, T any](parent *qt.QWidget, prompt string, order []K, kinds map[K]importKind[T]) *choiceDialog[K] {
+func newSourceDialog[K comparable, T any](parent *qtwidgets.QWidget, prompt string, order []K, kinds map[K]importKind[T]) *choiceDialog[K] {
 	choices := make([]choice[K], len(order))
 	for i, source := range order {
 		kind := kinds[source]
@@ -36,8 +37,8 @@ func newSourceDialog[K comparable, T any](parent *qt.QWidget, prompt string, ord
 
 // chooseImportFile asks the user for a file of a kind to import. It reports
 // false if they decide against choosing one.
-func chooseImportFile[T any](parent *qt.QWidget, kind importKind[T]) (string, bool) {
-	path := qt.QFileDialog_GetOpenFileName4(parent, "Import "+kind.label, "", kind.filter+";;All files (*)")
+func chooseImportFile[T any](parent *qtwidgets.QWidget, kind importKind[T]) (string, bool) {
+	path := askOpenFile(parent, "Import "+kind.label, "", kind.filter+";;All files (*)")
 	return path, path != ""
 }
 
@@ -86,7 +87,7 @@ func saveStore(path string, keys func() *crypt.Keys, store any, onError func(err
 	}
 	report := func(err error) {
 		if err != nil && onError != nil {
-			mainthread.Start(func() { onError(err) })
+			qute.Post(func() { onError(err) })
 		}
 	}
 	if err := writer.Save(path, store, with, report); err != nil && onError != nil {

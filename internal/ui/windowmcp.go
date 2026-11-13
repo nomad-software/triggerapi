@@ -1,10 +1,10 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+
 	"context"
 	"strings"
-
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/history"
@@ -85,7 +85,7 @@ func (w *Window) mcpListener(server string) *mcp.Listener {
 	shown := w.shown
 	return &mcp.Listener{
 		Event: func(e mcp.Event) {
-			mainthread.Start(func() {
+			qute.Post(func() {
 				if shown == w.shown {
 					w.mcpResponse.noteEvent(e)
 				}
@@ -93,7 +93,7 @@ func (w *Window) mcpListener(server string) *mcp.Listener {
 		},
 		Elicit: func(ctx context.Context, e *mcp.Elicitation) (*mcp.ElicitAnswer, error) {
 			answer, ok := askUser(ctx, func(done func(*mcp.ElicitAnswer)) func() {
-				return askElicitation(w.QWidget, server, e, done)
+				return askElicitation(w.AsQWidget(), server, e, done)
 			})
 			if !ok {
 				return &mcp.ElicitAnswer{Action: mcp.ActionCancel}, nil
@@ -102,7 +102,7 @@ func (w *Window) mcpListener(server string) *mcp.Listener {
 		},
 		Sample: func(ctx context.Context, s *mcp.Sampling) (*mcp.SampleAnswer, error) {
 			answer, ok := askUser(ctx, func(done func(*mcp.SampleAnswer)) func() {
-				return askSampling(w.QWidget, server, s, done)
+				return askSampling(w.AsQWidget(), server, s, done)
 			})
 			switch {
 			case !ok:
@@ -121,7 +121,7 @@ func (w *Window) mcpListener(server string) *mcp.Listener {
 func askUser[T any](ctx context.Context, open func(done func(T)) (close func())) (T, bool) {
 	answers := make(chan T, 1)
 	var shut func()
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		shut = open(func(answer T) {
 			select {
 			case answers <- answer:
@@ -133,7 +133,7 @@ func askUser[T any](ctx context.Context, open func(done func(T)) (close func()))
 	case answer := <-answers:
 		return answer, true
 	case <-ctx.Done():
-		mainthread.Start(shut)
+		qute.Post(shut)
 		var none T
 		return none, false
 	}

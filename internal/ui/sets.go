@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"fmt"
 	"slices"
 	"strings"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 )
@@ -19,8 +21,8 @@ import (
 // order, ignoring case, in the same order as the store, so an item is mapped
 // to its set by its row.
 type setList struct {
-	root *qt.QWidget
-	list *qt.QListWidget
+	root *qtwidgets.QWidget
+	list *qtwidgets.QListWidget
 	// owner is the request tree, whose store holds the sets and which
 	// saves them.
 	owner *requestTree
@@ -43,29 +45,29 @@ type setList struct {
 }
 
 func newSetList(owner *requestTree) *setList {
-	l := &setList{root: qt.NewQWidget2(), list: qt.NewQListWidget2(), owner: owner}
+	l := &setList{root: qtwidgets.NewQWidget(nil), list: qtwidgets.NewQListWidget(nil), owner: owner}
 
 	// Names are only edited through the Rename button, or F2.
-	l.list.SetEditTriggers(qt.QAbstractItemView__NoEditTriggers)
+	l.list.SetEditTriggers(qtwidgets.QAbstractItemViewNoEditTriggers)
 
 	// The buttons are the colour of the sets, but for the one which
 	// removes.
 	add := newIconButton(colourSets, drawPlus, "Add a set holding the pinned tabs")
-	add.OnClicked(l.add)
+	add.OnClicked(func(_ bool) { l.add() })
 	duplicate := newIconButton(colourSets, drawCopy, "Duplicate the selected set")
-	duplicate.OnClicked(l.duplicate)
+	duplicate.OnClicked(func(_ bool) { l.duplicate() })
 	rename := newIconButton(colourSets, drawLetters, "Rename the selected set")
-	rename.OnClicked(l.rename)
+	rename.OnClicked(func(_ bool) { l.rename() })
 	remove := newIconButton(colourRemove, drawBin, "Remove the selected set")
-	remove.OnClicked(l.remove)
+	remove.OnClicked(func(_ bool) { l.remove() })
 
-	layout := qt.NewQVBoxLayout(l.root)
-	layout.SetContentsMargins(0, 0, 0, 0)
-	layout.AddWidget2(l.list.QWidget, 1)
-	layout.AddLayout(newButtonRow(add, duplicate, rename, remove).QLayout)
+	layout := qtwidgets.NewQVBoxLayout(l.root)
+	layout.SetContentsMargins(qtcore.QMargins{Left: 0, Top: 0, Right: 0, Bottom: 0})
+	layout.AddWidgetFull(l.list.AsQWidget(), 1, 0)
+	layout.AddLayout(newButtonRow(add, duplicate, rename, remove).AsQLayout())
 
 	// Clicking where there is no set chooses none.
-	l.list.OnMousePressEvent(func(super func(*qt.QMouseEvent), event *qt.QMouseEvent) {
+	l.list.OverrideMousePressEvent(func(super func(*qtgui.QMouseEvent), event *qtgui.QMouseEvent) {
 		if l.list.ItemAt(event.Pos()) == nil {
 			l.deselect()
 			l.choose(nil)
@@ -85,11 +87,11 @@ func newSetList(owner *requestTree) *setList {
 
 	// The keyboard moves through the sets without choosing them, and
 	// Return chooses the one it has got to.
-	l.list.OnKeyPressEvent(func(super func(*qt.QKeyEvent), event *qt.QKeyEvent) {
+	l.list.OverrideKeyPressEvent(func(super func(*qtgui.QKeyEvent), event *qtgui.QKeyEvent) {
 		switch event.Key() {
-		case int(qt.Key_Return), int(qt.Key_Enter):
+		case int(qtcore.Key_Return), int(qtcore.Key_Enter):
 			l.choose(l.selected())
-		case int(qt.Key_F2):
+		case int(qtcore.Key_F2):
 			l.rename()
 		default:
 			defer func(prev bool) { l.browsing = prev }(l.browsing)
@@ -98,7 +100,7 @@ func newSetList(owner *requestTree) *setList {
 		}
 	})
 
-	l.list.OnItemChanged(func(item *qt.QListWidgetItem) {
+	l.list.OnItemChanged(func(item *qtwidgets.QListWidgetItem) {
 		if l.updating {
 			return
 		}
@@ -116,7 +118,7 @@ func newSetList(owner *requestTree) *setList {
 		l.owner.save()
 		// The new name may belong elsewhere in the order. The items must
 		// not be replaced while one of them is reporting its change.
-		mainthread.Start(func() {
+		qute.Post(func() {
 			l.owner.store.SortSets()
 			l.draw(l.selected())
 		})
@@ -139,9 +141,9 @@ func (l *setList) draw(selected *collection.Set) {
 		l.list.Clear()
 		icon := setIcon()
 		for _, set := range l.owner.store.Sets {
-			item := qt.NewQListWidgetItem7(set.Name, l.list)
+			item := qtwidgets.NewQListWidgetItemWithText(set.Name, l.list)
 			item.SetIcon(icon)
-			item.SetFlags(item.Flags() | qt.ItemIsEditable)
+			item.SetFlags(item.Flags() | qtcore.ItemIsEditable)
 			if set == selected {
 				l.list.SetCurrentItem(item)
 			}
@@ -183,7 +185,7 @@ func (l *setList) load(active *collection.Set) {
 }
 
 // setOf returns the set of an item, or nil.
-func (l *setList) setOf(item *qt.QListWidgetItem) *collection.Set {
+func (l *setList) setOf(item *qtwidgets.QListWidgetItem) *collection.Set {
 	if item == nil {
 		return nil
 	}

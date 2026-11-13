@@ -1,13 +1,13 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"os"
 	"reflect"
 	"strings"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/crypt"
@@ -28,7 +28,7 @@ func TestEncryption(t *testing.T) {
 	// The passphrase is given rather than asked for in a dialog.
 	asked := 0
 	previous := askPassphrase
-	askPassphrase = func(*qt.QWidget, string) ([]byte, error) {
+	askPassphrase = func(*qtwidgets.QWidget, string) ([]byte, error) {
 		asked++
 		return []byte("hunter2"), nil
 	}
@@ -104,7 +104,7 @@ func TestEncryption(t *testing.T) {
 	before := contents()
 	advised = 0
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		if !empty(w) {
@@ -117,7 +117,7 @@ func TestEncryption(t *testing.T) {
 		t.Error("files were written without keys")
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// Naming the keys in the settings encrypts the files of every
 		// workspace and shows the one in use.
 		s := w.config
@@ -157,7 +157,7 @@ func TestEncryption(t *testing.T) {
 
 	// The next run asks for the passphrase and reads the files.
 	asked, advised = 0, 0
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		if asked != 1 {

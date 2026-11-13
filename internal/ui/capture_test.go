@@ -1,6 +1,10 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"io"
 	"maps"
 	"net/http"
@@ -9,9 +13,6 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf16"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/capture"
 	"github.com/nomad-software/triggerapi/internal/collection"
@@ -25,7 +26,7 @@ import (
 // panel: "tick", "cross" or "" for the tab, and the same for each row of the
 // table by its key, with the tooltips of the rows.
 func captureMarks(p *responsePanel) (tab string, rows, tips map[string]string) {
-	name := func(icon *qt.QIcon) string {
+	name := func(icon *qtgui.QIcon) string {
 		switch {
 		case icon.IsNull():
 			return ""
@@ -66,7 +67,7 @@ func TestCapture(t *testing.T) {
 
 	var w *Window
 	var request *collection.Request
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.requests.addFolder()
@@ -75,12 +76,12 @@ func TestCapture(t *testing.T) {
 
 		// The captures are set on a tab of the response, which the Timing
 		// tab of a REST response comes after.
-		for name, tabs := range map[string]*qt.QTabWidget{"REST": w.response.tabs, "gRPC": w.grpcResponse.tabs} {
+		for name, tabs := range map[string]*qtwidgets.QTabWidget{"REST": w.response.tabs, "gRPC": w.grpcResponse.tabs} {
 			if tabs.TabText(tabCapture) != "Capture" {
 				t.Errorf("%s response has %q where the Capture tab should be", name, tabs.TabText(tabCapture))
 			}
 		}
-		if w.response.tabs.Widget(tabCapture).IsAncestorOf(w.request.captures.table.QWidget) == false {
+		if w.response.tabs.Widget(tabCapture).IsAncestorOf(w.request.captures.table.AsQWidget()) == false {
 			t.Error("the captures are not on the tab")
 		}
 
@@ -127,7 +128,7 @@ func TestCapture(t *testing.T) {
 	})
 	waitFor(t, "the response", func() bool { return strings.Contains(w.response.result.Text(), "200 OK") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// The variables are set in the active environment: one that was
 		// there is given the value and enabled, and the others are added.
 		got := variables(w)
@@ -177,7 +178,7 @@ func TestCapture(t *testing.T) {
 	})
 	waitFor(t, "the marks", func() bool { tab, _, _ := captureMarks(w.response); return tab != "" })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// With every value captured the tab has a tick.
 		if tab, rows, _ := captureMarks(w.response); tab != "tick" || rows["token"] != "tick" || rows["last"] != "tick" {
 			t.Errorf("tab %q, rows %v", tab, rows)
@@ -190,7 +191,7 @@ func TestCapture(t *testing.T) {
 	})
 	waitFor(t, "the failure", func() bool { return strings.Contains(w.response.result.Text(), "401") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if got := variables(w); got["token"] != "kept" {
 			t.Errorf("variables = %v", got)
 		}
@@ -207,7 +208,7 @@ func TestCapture(t *testing.T) {
 	})
 	waitFor(t, "the response", func() bool { return strings.Contains(w.response.result.Text(), "200 OK") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		tab, rows, tips := captureMarks(w.response)
 		if tab != "cross" || rows["token"] != "cross" || tips["token"] != "Not captured: no environment is selected to keep it in" {
 			t.Errorf("tab %q, rows %v, tips %v", tab, rows, tips)
@@ -227,7 +228,7 @@ func TestCaptureGRPC(t *testing.T) {
 
 	var w *Window
 	var request *collection.Request
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 		w.requests.addFolder()
@@ -238,7 +239,7 @@ func TestCaptureGRPC(t *testing.T) {
 	})
 	waitFor(t, "the methods", func() bool { return w.grpc.method.count() == 4 })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w.grpc.method.selectMethod("test.v1.Echo/Repeat")
 		w.grpc.message.SetPlainText(`{"text": "hello", "count": 3}`)
 		w.grpc.captures.add("said", "text")
@@ -251,7 +252,7 @@ func TestCaptureGRPC(t *testing.T) {
 	})
 	waitFor(t, "the response", func() bool { return strings.Contains(w.grpcResponse.result.Text(), "0 OK") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// The values are those of the last message.
 		if got := variables(w); got["said"] != "hello" || got["index"] != "2" {
 			t.Errorf("variables = %v", got)
@@ -267,7 +268,7 @@ func TestCaptureGRPC(t *testing.T) {
 	})
 	waitFor(t, "the failure", func() bool { return strings.Contains(w.grpcResponse.result.Text(), "NOT_FOUND") })
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		if got := variables(w); got["said"] != "kept" {
 			t.Errorf("variables = %v", got)
 		}
@@ -280,13 +281,13 @@ func TestCaptureGRPC(t *testing.T) {
 // The menu of the body of a response offers to capture the value it is
 // opened on, which adds a rule with the path of the value.
 func TestClickToCapture(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		w.Show()
 
 		// offers returns what the menu at some text in the body offers to
 		// capture, and the action which does it.
-		offers := func(p *responsePanel, text string, nth int) (string, *qt.QAction) {
+		offers := func(p *responsePanel, text string, nth int) (string, *qtgui.QAction) {
 			body := p.body.ToPlainText()
 			offset := -1
 			for range nth {

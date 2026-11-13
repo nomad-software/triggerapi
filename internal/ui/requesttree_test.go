@@ -1,14 +1,16 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute"
+	"github.com/nomad-software/qute/qtcore"
+	"github.com/nomad-software/qute/qtgui"
+	"github.com/nomad-software/qute/qtwidgets"
+
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
-
-	qt "github.com/mappu/miqt/qt6"
-	"github.com/mappu/miqt/qt6/mainthread"
 
 	"github.com/nomad-software/triggerapi/internal/collection"
 	"github.com/nomad-software/triggerapi/internal/env"
@@ -27,7 +29,7 @@ func renameCurrent(rt *requestTree, name string) {
 
 // headingGroup reports which heading an item of the top level is, by its
 // name, if it is one.
-func headingGroup(item *qt.QTreeWidgetItem) (collection.Type, bool) {
+func headingGroup(item *qtwidgets.QTreeWidgetItem) (collection.Type, bool) {
 	if item.Parent() != nil || !item.Font(colName).Bold() {
 		return "", false
 	}
@@ -42,7 +44,7 @@ func headingGroup(item *qt.QTreeWidgetItem) (collection.Type, bool) {
 func TestRequests(t *testing.T) {
 	files := testFiles(t)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree
@@ -138,7 +140,7 @@ func TestRequests(t *testing.T) {
 	}
 
 	// A new window restores the tree, and a request loads back unchanged.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		tree := w.requests.tree
 
@@ -204,7 +206,7 @@ func TestRequestsUnreadableFile(t *testing.T) {
 	files := testFiles(t)
 	os.WriteFile(files.Requests, []byte("{oops"), 0o644)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		if !strings.Contains(w.StatusBar().CurrentMessage(), "could not be loaded") {
 			t.Error("no error shown")
@@ -223,7 +225,7 @@ func TestRequestsUnreadableFile(t *testing.T) {
 }
 
 func TestRequestReopened(t *testing.T) {
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(testFiles(t).Files)
 		w.Show()
 
@@ -246,7 +248,7 @@ func TestRequestReopened(t *testing.T) {
 func TestNestedFolders(t *testing.T) {
 	files := testFiles(t)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
@@ -331,7 +333,7 @@ func TestNestedFolders(t *testing.T) {
 	}
 
 	// A new window restores the whole tree.
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
@@ -376,7 +378,7 @@ func TestSidebarOrder(t *testing.T) {
 	files := testFiles(t)
 
 	var w *Window
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w = NewWindow(files.Files)
 		w.Show()
 
@@ -437,7 +439,7 @@ func TestSidebarOrder(t *testing.T) {
 		return reflect.DeepEqual(treeNames(treeItem(w.requests.tree, "Apple")), []string{"inner/", "list", "update", "wipe"})
 	})
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		// The renamed request is still the selected and open one.
 		if w.requests.tree.CurrentItem().Text(colName) != "wipe" || w.open == nil || w.open.Name != "wipe" {
 			t.Errorf("selected %q, open %+v", w.requests.tree.CurrentItem().Text(colName), w.open)
@@ -465,7 +467,7 @@ func TestFoldersStartClosed(t *testing.T) {
 	}
 
 	for run := range 2 {
-		mainthread.Wait(func() {
+		qute.PostSync(func() {
 			w := NewWindow(files.Files)
 			w.Show()
 			tree := w.requests.tree
@@ -510,7 +512,7 @@ func TestOpenedForTab(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree
@@ -546,7 +548,7 @@ func TestRequestHeadings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
@@ -576,7 +578,7 @@ func TestRequestHeadings(t *testing.T) {
 
 		// The headings have the icons of their types, and Mixed that of a
 		// folder.
-		for i, icon := range []*qt.QIcon{requestTypeIcon(collection.TypeGRPC), requestTypeIcon(collection.TypeREST), folderIcon()} {
+		for i, icon := range []*qtgui.QIcon{requestTypeIcon(collection.TypeGRPC), requestTypeIcon(collection.TypeREST), folderIcon()} {
 			if got := tree.TopLevelItem(i).Icon(colName); got.CacheKey() != icon.CacheKey() {
 				t.Errorf("heading %d has the wrong icon", i)
 			}
@@ -603,16 +605,16 @@ func TestRequestHeadings(t *testing.T) {
 		// under gRPC goes to the first folder under REST, and up back.
 		tree.SetFocus()
 		tree.SetCurrentItem(treeItem(tree, "Service", "Get"))
-		keyTree := func(key qt.Key) {
-			event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(key), qt.NoModifier)
+		keyTree := func(key qtcore.Key) {
+			event := qtgui.NewQKeyEvent(qtcore.QEventKeyPress, int(key), qtcore.NoModifier)
 			defer event.Delete()
-			qt.QCoreApplication_SendEvent(tree.QObject, event.QEvent)
+			qtcore.QCoreApplicationSendEvent(tree.AsQObject(), event.AsQEvent())
 		}
-		keyTree(qt.Key_Down)
+		keyTree(qtcore.Key_Down)
 		if item := tree.CurrentItem(); item == nil || item.Text(colName) != "Users" {
 			t.Errorf("down went to %q", item.Text(colName))
 		}
-		keyTree(qt.Key_Up)
+		keyTree(qtcore.Key_Up)
 		if item := tree.CurrentItem(); item == nil || item.Text(colName) != "Get" {
 			t.Errorf("up went to %q", item.Text(colName))
 		}
@@ -668,7 +670,7 @@ func TestAddRequestWithNothingSelected(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		rt := w.requests
@@ -698,7 +700,7 @@ func TestDuplicate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		tree := w.requests.tree
@@ -781,7 +783,7 @@ func TestDuplicate(t *testing.T) {
 func TestNamesCannotBeEmpty(t *testing.T) {
 	files := testFiles(t)
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 
@@ -829,7 +831,7 @@ func TestNamesCannotBeEmpty(t *testing.T) {
 			t.Errorf("edited while empty: %+v", e)
 		}
 		w.editor.name.SetText("  ")
-		w.editor.name.EditingFinished()
+		w.editor.name.EmitEditingFinished()
 		if got := w.editor.name.Text(); got != "Local" || w.environments.store.Environments[0].Name != "Local" {
 			t.Errorf("left empty: the field has %q", got)
 		}
@@ -845,27 +847,27 @@ func TestNamesCannotBeEmpty(t *testing.T) {
 
 func TestF2Renames(t *testing.T) {
 	files := testFiles(t)
-	f2 := func(widget *qt.QWidget) {
-		event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(qt.Key_F2), qt.NoModifier)
+	f2 := func(widget *qtwidgets.QWidget) {
+		event := qtgui.NewQKeyEvent(qtcore.QEventKeyPress, int(qtcore.Key_F2), qtcore.NoModifier)
 		defer event.Delete()
-		qt.QCoreApplication_SendEvent(widget.QObject, event.QEvent)
+		qtcore.QCoreApplicationSendEvent(widget.AsQObject(), event.AsQEvent())
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 
 		// A workspace and a folder have their names opened for editing.
 		w.sidebar.SetCurrentIndex(tabWorkspaces)
-		f2(w.workspaces.list.QWidget)
-		if w.workspaces.list.State() != qt.QAbstractItemView__EditingState {
+		f2(w.workspaces.list.AsQWidget())
+		if w.workspaces.list.Protected().State() != qtwidgets.QAbstractItemViewEditingState {
 			t.Error("F2 did not start renaming the workspace")
 		}
 
 		w.requests.addFolder()
 		w.requests.tree.SetFocus()
-		f2(w.requests.tree.QWidget)
-		if w.requests.tree.State() != qt.QAbstractItemView__EditingState {
+		f2(w.requests.tree.AsQWidget())
+		if w.requests.tree.Protected().State() != qtwidgets.QAbstractItemViewEditingState {
 			t.Error("F2 did not start renaming the folder")
 		}
 
@@ -875,14 +877,14 @@ func TestF2Renames(t *testing.T) {
 		w.closeEditor()
 		w.sidebar.SetCurrentIndex(tabEnvironments)
 		w.environments.list.SetFocus()
-		f2(w.environments.list.QWidget)
+		f2(w.environments.list.AsQWidget())
 		if w.stack.CurrentIndex() != pageEditor {
 			t.Error("F2 did not open the environment editor")
 		}
 		// A window that is not on a screen is not the active one, so it is
 		// asked which of its widgets the keyboard goes to.
 		focused := w.FocusWidget()
-		if focused == nil || focused.UnsafePointer() != w.editor.name.QWidget.UnsafePointer() {
+		if focused == nil || focused.Ptr() != w.editor.name.Ptr() {
 			t.Error("the name does not have the keyboard")
 		}
 		if w.editor.name.SelectedText() != w.editor.name.Text() || w.editor.name.Text() == "" {
@@ -906,30 +908,30 @@ func TestCopyPasteAcrossWorkspaces(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mainthread.Wait(func() {
+	qute.PostSync(func() {
 		w := NewWindow(files.Files)
 		w.Show()
 		rt, el := w.requests, w.environments
 		tree := rt.tree
-		key := func(widget *qt.QWidget, k qt.Key) {
-			event := qt.NewQKeyEvent(qt.QEvent__KeyPress, int(k), qt.ControlModifier)
+		key := func(widget *qtwidgets.QWidget, k qtcore.Key) {
+			event := qtgui.NewQKeyEvent(qtcore.QEventKeyPress, int(k), qtcore.ControlModifier)
 			defer event.Delete()
-			qt.QCoreApplication_SendEvent(widget.QObject, event.QEvent)
+			qtcore.QCoreApplicationSendEvent(widget.AsQObject(), event.AsQEvent())
 		}
-		clipboard := qt.QGuiApplication_Clipboard().Text()
+		clipboard := qtgui.QGuiApplicationClipboard().Text()
 
 		// Copy a request, a folder and an environment in one workspace.
 		tree.SetCurrentItem(treeItem(tree, "Hotel", "Book"))
-		key(tree.QWidget, qt.Key_C)
+		key(tree.AsQWidget(), qtcore.Key_C)
 		book := rt.copied
 		tree.SetCurrentItem(treeItem(tree, "Hotel", "Inner"))
-		key(tree.QWidget, qt.Key_C)
+		key(tree.AsQWidget(), qtcore.Key_C)
 		el.list.SetCurrentRow(0)
-		key(el.list.QWidget, qt.Key_C)
+		key(el.list.AsQWidget(), qtcore.Key_C)
 		if _, ok := rt.copied.(*collection.Folder); !ok || book == nil || el.copied == nil || el.copied.Name != "Local" {
 			t.Fatalf("copied %+v and %+v", rt.copied, el.copied)
 		}
-		if qt.QGuiApplication_Clipboard().Text() != clipboard {
+		if qtgui.QGuiApplicationClipboard().Text() != clipboard {
 			t.Error("the system clipboard was used")
 		}
 
@@ -939,19 +941,19 @@ func TestCopyPasteAcrossWorkspaces(t *testing.T) {
 		if topCount(tree) != 0 || el.list.Count() != 0 {
 			t.Fatalf("the new workspace is not empty")
 		}
-		key(tree.QWidget, qt.Key_V)
+		key(tree.AsQWidget(), qtcore.Key_V)
 		if topCount(tree) != 1 || treeItem(tree, "Inner", "Call") == nil {
 			t.Errorf("folder not pasted at the top level")
 		}
 		rt.copied = book
 		tree.SetCurrentItem(treeItem(tree, "Inner"))
-		key(tree.QWidget, qt.Key_V)
-		key(tree.QWidget, qt.Key_V)
+		key(tree.AsQWidget(), qtcore.Key_V)
+		key(tree.AsQWidget(), qtcore.Key_V)
 		if treeItem(tree, "Inner", "Book") == nil || treeItem(tree, "Inner", "Book copy") == nil || w.open == nil || w.open.Name != "Book copy" {
 			t.Errorf("requests not pasted into the folder; open %+v", w.open)
 		}
-		key(el.list.QWidget, qt.Key_V)
-		key(el.list.QWidget, qt.Key_V)
+		key(el.list.AsQWidget(), qtcore.Key_V)
+		key(el.list.AsQWidget(), qtcore.Key_V)
 		if el.list.Count() != 2 || el.list.Item(0).Text() != "Local" || el.list.Item(1).Text() != "Local copy" || w.expand("{{token}}") != "secret" {
 			t.Errorf("environments %d, token %q", el.list.Count(), w.expand("{{token}}"))
 		}

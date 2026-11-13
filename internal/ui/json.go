@@ -1,10 +1,10 @@
 package ui
 
 import (
+	"github.com/nomad-software/qute/qtgui"
+
 	"maps"
 	"unicode/utf16"
-
-	qt "github.com/mappu/miqt/qt6"
 
 	"github.com/nomad-software/triggerapi/internal/settings"
 )
@@ -63,7 +63,7 @@ var tokenKinds = []struct {
 // defaultJSONColours returns the colours of the tokens for the background
 // text is shown on: the dark set if it is dark and the light set if not.
 func defaultJSONColours() map[tokenKind]string {
-	if qt.QGuiApplication_Palette().ColorWithCr(qt.QPalette__Base).Lightness() < 128 {
+	if qtgui.QGuiApplicationPalette().Color(qtgui.QPaletteBase).Lightness() < 128 {
 		return jsonDark
 	}
 	return jsonLight
@@ -233,13 +233,13 @@ func foldRegions(text string) map[int]int {
 }
 
 // jsonFormats are the text formats of the JSON tokens.
-type jsonFormats map[tokenKind]*qt.QTextCharFormat
+type jsonFormats map[tokenKind]*qtgui.QTextCharFormat
 
 // newJSONFormats returns formats in the default colours.
 func newJSONFormats() jsonFormats {
 	formats := jsonFormats{}
 	for _, t := range tokenKinds {
-		formats[t.kind] = qt.NewQTextCharFormat()
+		formats[t.kind] = qtgui.NewQTextCharFormat()
 	}
 	formats.setColours(defaultJSONColours())
 	return formats
@@ -249,12 +249,12 @@ func newJSONFormats() jsonFormats {
 // highlighted keeps its colours until it is highlighted again.
 func (f jsonFormats) setColours(colours map[tokenKind]string) {
 	for kind, format := range f {
-		format.SetForeground(qt.NewQBrush3(qt.NewQColor6(colours[kind])))
+		format.SetForeground(qtgui.NewQBrushWithColor(qcolour(colours[kind])))
 	}
 }
 
 // apply colours the tokens of a block of text being highlighted.
-func (f jsonFormats) apply(highlighter *qt.QSyntaxHighlighter, tokens []jsonToken) {
+func (f jsonFormats) apply(highlighter *highlighter, tokens []jsonToken) {
 	for _, token := range tokens {
 		highlighter.SetFormat(token.start, token.length, f[token.kind])
 	}
