@@ -57,7 +57,7 @@ func newWorkspaceList(dir func() string) *workspaceList {
 
 	// F2 does what the rename button does.
 	s.list.OverrideKeyPressEvent(func(super func(*qtgui.QKeyEvent), event *qtgui.QKeyEvent) {
-		if event.Key() == int(qtcore.Key_F2) {
+		if event.Key() == qtcore.Key_F2 {
 			s.rename()
 			return
 		}

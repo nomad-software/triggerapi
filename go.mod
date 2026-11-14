@@ -9,7 +9,7 @@ require (
 	github.com/coder/websocket v1.8.15
 	github.com/google/jsonschema-go v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.8.0
-	github.com/nomad-software/qute v1.0.18
+	github.com/nomad-software/qute v1.0.23
 	golang.org/x/crypto v0.55.0
 	golang.org/x/oauth2 v0.35.0
 	google.golang.org/protobuf v1.36.11

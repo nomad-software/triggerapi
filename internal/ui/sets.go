@@ -89,9 +89,9 @@ func newSetList(owner *requestTree) *setList {
 	// Return chooses the one it has got to.
 	l.list.OverrideKeyPressEvent(func(super func(*qtgui.QKeyEvent), event *qtgui.QKeyEvent) {
 		switch event.Key() {
-		case int(qtcore.Key_Return), int(qtcore.Key_Enter):
+		case qtcore.Key_Return, qtcore.Key_Enter:
 			l.choose(l.selected())
-		case int(qtcore.Key_F2):
+		case qtcore.Key_F2:
 			l.rename()
 		default:
 			defer func(prev bool) { l.browsing = prev }(l.browsing)

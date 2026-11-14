@@ -125,13 +125,13 @@ func newFindBar(edit *qtwidgets.QPlainTextEdit, highlighter *highlighter, fold *
 	f.field.OnTextChanged(func(string) { f.search() })
 	f.field.OverrideKeyPressEvent(func(super func(*qtgui.QKeyEvent), event *qtgui.QKeyEvent) {
 		switch event.Key() {
-		case int(qtcore.Key_Return), int(qtcore.Key_Enter):
+		case qtcore.Key_Return, qtcore.Key_Enter:
 			if event.Modifiers()&qtcore.ShiftModifier != 0 {
 				f.step(-1)
 			} else {
 				f.step(1)
 			}
-		case int(qtcore.Key_Escape):
+		case qtcore.Key_Escape:
 			f.close()
 		default:
 			super(event)

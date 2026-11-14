@@ -89,7 +89,7 @@ func (e *wrapEdit) ResizeEvent(event *qtgui.QResizeEvent) {
 // one line, and has what other keys change wait for commit.
 func (e *wrapEdit) KeyPressEvent(event *qtgui.QKeyEvent) {
 	switch event.Key() {
-	case int(qtcore.Key_Return), int(qtcore.Key_Enter):
+	case qtcore.Key_Return, qtcore.Key_Enter:
 		// There is only the one line.
 		e.commit()
 		if e.onReturn != nil && !e.IsReadOnly() {

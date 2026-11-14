@@ -282,9 +282,9 @@ func newRequestTree(store *collection.Store, path string) *requestTree {
 	// request it has got to.
 	t.tree.OverrideKeyPressEvent(func(super func(*qtgui.QKeyEvent), event *qtgui.QKeyEvent) {
 		switch event.Key() {
-		case int(qtcore.Key_Return), int(qtcore.Key_Enter):
+		case qtcore.Key_Return, qtcore.Key_Enter:
 			t.activate()
-		case int(qtcore.Key_F2):
+		case qtcore.Key_F2:
 			// As the rename button does.
 			t.rename()
 		default:

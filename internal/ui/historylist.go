@@ -246,17 +246,17 @@ func newHistoryList(store *history.Store, path string) *historyList {
 	// Left and Right close and open its day.
 	h.tree.OverrideKeyPressEvent(func(super func(*qtgui.QKeyEvent), event *qtgui.QKeyEvent) {
 		switch event.Key() {
-		case int(qtcore.Key_Left), int(qtcore.Key_Right):
+		case qtcore.Key_Left, qtcore.Key_Right:
 			if item := h.tree.CurrentItem(); item != nil && item.Parent() != nil {
-				item.Parent().SetExpanded(event.Key() == int(qtcore.Key_Right))
+				item.Parent().SetExpanded(event.Key() == qtcore.Key_Right)
 			}
-		case int(qtcore.Key_Return), int(qtcore.Key_Enter):
+		case qtcore.Key_Return, qtcore.Key_Enter:
 			h.open()
-		case int(qtcore.Key_Space):
+		case qtcore.Key_Space:
 			if item := h.tree.CurrentItem(); item != nil {
 				h.toggle(item)
 			}
-		case int(qtcore.Key_Delete):
+		case qtcore.Key_Delete:
 			h.remove()
 		default:
 			defer func(prev bool) { h.browsing = prev }(h.browsing)

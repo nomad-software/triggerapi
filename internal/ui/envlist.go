@@ -108,7 +108,7 @@ func newEnvList(store *env.Store, path string) *envList {
 	// renamed.
 	s.list.OverrideKeyPressEvent(func(super func(*qtgui.QKeyEvent), event *qtgui.QKeyEvent) {
 		switch {
-		case event.Key() == int(qtcore.Key_F2):
+		case event.Key() == qtcore.Key_F2:
 			s.edit()
 		case event.Matches(qtgui.QKeySequenceCopy):
 			s.copy()

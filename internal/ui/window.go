@@ -816,7 +816,7 @@ func (w *Window) ShowEvent(event *qtgui.QShowEvent) {
 // keyboard has no use for it, so it still cancels the editing of a name or
 // a cell.
 func (w *Window) KeyPressEvent(event *qtgui.QKeyEvent) {
-	if event.Key() == int(qtcore.Key_Escape) {
+	if event.Key() == qtcore.Key_Escape {
 		w.escape()
 		return
 	}
