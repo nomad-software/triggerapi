@@ -34,8 +34,8 @@ type workspaceList struct {
 	// onOpen is called with the name of a workspace when it becomes the
 	// one in use.
 	onOpen func(name string)
-	// onRename is called after the workspace in use is given another name.
-	onRename func(name string)
+	// onRename is called after a workspace is given another name.
+	onRename func(from, to string)
 	// onList is called after the workspaces have been listed again.
 	onList func()
 }
@@ -218,14 +218,16 @@ func (s *workspaceList) renamed(row int, name string) {
 	} else if name != previous {
 		s.names[row] = name
 		if s.onRename != nil {
-			s.onRename(name)
+			s.onRename(previous, name)
 		}
 	}
 
 	// The items must not be replaced while one of them is reporting its
-	// change. The name may belong somewhere else in the order.
+	// change. The name may belong somewhere else in the order. What is
+	// selected is what is by then: a rename finished by selecting another
+	// workspace has opened that one.
 	qute.Post(func() {
-		if _, listErr := s.load(name); listErr != nil {
+		if _, listErr := s.load(s.current()); listErr != nil {
 			s.warn(fmt.Sprintf("The workspaces could not be listed: %v.", listErr))
 		}
 		if err != nil {

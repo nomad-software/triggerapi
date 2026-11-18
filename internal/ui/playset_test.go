@@ -148,3 +148,22 @@ func TestPlaySet(t *testing.T) {
 		}
 	})
 }
+
+// An HTTP response is a failure for its status, or for a stream of events
+// broken off by an error, but not for one that was stopped.
+func TestHTTPFailure(t *testing.T) {
+	for _, tt := range []struct {
+		res    *rest.Response
+		failed bool
+	}{
+		{nil, false},
+		{&rest.Response{StatusCode: 200, Status: "200 OK"}, false},
+		{&rest.Response{StatusCode: 404, Status: "404 Not Found"}, true},
+		{&rest.Response{StatusCode: 200, Interrupted: rest.StreamStopped}, false},
+		{&rest.Response{StatusCode: 200, Interrupted: "unexpected EOF"}, true},
+	} {
+		if got := httpFailure(tt.res) != ""; got != tt.failed {
+			t.Errorf("%+v: failed %v", tt.res, got)
+		}
+	}
+}

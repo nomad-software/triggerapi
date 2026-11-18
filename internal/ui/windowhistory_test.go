@@ -371,7 +371,7 @@ func TestHistoryOfEachWorkspace(t *testing.T) {
 		}
 
 		// Renaming the workspace keeps saving the history in its folder.
-		w.renamedWorkspace("Renamed")
+		w.renamedWorkspace(w.config.Workspace, "Renamed")
 		if w.history.path != workspace.History(files.Workspaces, "Renamed") {
 			t.Errorf("history saved to %q", w.history.path)
 		}

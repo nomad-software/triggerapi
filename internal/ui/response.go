@@ -82,6 +82,9 @@ type responsePanel struct {
 	// showStream).
 	streamed  int
 	streaming bool
+	// logged is how many messages of a WebSocket connection are on show
+	// (see Window.showWSMessages).
+	logged int
 	// chooseSave asks the user where to save a file, offering a name. It
 	// reports false if they decide against saving.
 	chooseSave func(name string) (string, bool)
@@ -329,7 +332,7 @@ func (p *responsePanel) clear() {
 	p.showAsserted(nil)
 	p.showTiming(nil, 0)
 	p.entry = nil
-	p.streamed, p.streaming = 0, false
+	p.streamed, p.streaming, p.logged = 0, false, 0
 	p.showEvents(nil)
 }
 

@@ -26,6 +26,8 @@ type envEditor struct {
 
 	// onChange is called with the edited values after every change.
 	onChange func(name string, variables []env.Variable)
+	// onRenamed is called when the editing of the name is finished.
+	onRenamed func()
 	// onSort is called with how the variables are shown sorted after the
 	// user sorts them by the headings, which is nil for not at all.
 	onSort func([]env.SortKey)
@@ -97,6 +99,9 @@ func newEnvEditor() *envEditor {
 	e.name.OnEditingFinished(func() {
 		if strings.TrimSpace(e.name.Text()) == "" {
 			e.name.SetText(e.named)
+		}
+		if e.onRenamed != nil {
+			e.onRenamed()
 		}
 	})
 	e.variables.onChange = e.changed

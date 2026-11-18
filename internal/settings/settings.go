@@ -4,6 +4,7 @@ package settings
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -175,7 +176,10 @@ func (c *Colours) UnmarshalJSON(data []byte) error {
 		Captured    string `json:"captured"`
 		NotCaptured string `json:"notCaptured"`
 	}
-	if err := json.Unmarshal(data, &read); err != nil {
+	// What is of the wrong type is left out, and the rest kept.
+	err := json.Unmarshal(data, &read)
+	var wrongType *json.UnmarshalTypeError
+	if err != nil && !errors.As(err, &wrongType) {
 		return err
 	}
 	*c = Colours(read.plain)
@@ -185,7 +189,7 @@ func (c *Colours) UnmarshalJSON(data []byte) error {
 	if c.Failed == "" {
 		c.Failed = read.NotCaptured
 	}
-	return nil
+	return err
 }
 
 // valid returns the colours with any that are not of the form #rrggbb
@@ -227,10 +231,14 @@ func Prepare(path string) error {
 }
 
 // Load reads the settings from the JSON file at path. Defaults are used if
-// the file is missing or unreadable, and for any value that is unusable.
+// the file is missing or unreadable, and for any value that is unusable. A
+// value of the wrong type is unusable, but leaves the rest as they were
+// read, as the rest of them, the keys among them, would otherwise be lost
+// when the settings are next saved.
 func Load(path string) Settings {
 	var s Settings
-	if err := jsonfile.Load(path, &s); err != nil {
+	var wrongType *json.UnmarshalTypeError
+	if err := jsonfile.Load(path, &s); err != nil && !errors.As(err, &wrongType) {
 		s = Settings{}
 	}
 	if s.Width < minSize || s.Height < minSize {

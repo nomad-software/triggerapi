@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -258,6 +259,28 @@ func TestExportAndImportWorkspaces(t *testing.T) {
 		w.workspaces.open("Default 2")
 		if w.environments.list.Count() != 1 || topCount(w.requests.tree) != 1 || w.StatusBar().CurrentMessage() != "" {
 			t.Errorf("the imported workspace was not loaded: status %q", w.StatusBar().CurrentMessage())
+		}
+	})
+}
+
+// A rename finished by selecting another workspace leaves that one selected
+// and in use, and the files of the one in use where they are.
+func TestRenameThenSelectAnother(t *testing.T) {
+	files := testFiles(t)
+	var w *Window
+	qute.PostSync(func() {
+		w = NewWindow(files.Files)
+		w.workspaces.add()
+		ws := w.workspaces
+		ws.list.CurrentItem().SetText("Beta")
+		ws.list.SetCurrentRow(slices.Index(ws.names, workspace.Default))
+	})
+	waitFor(t, "the workspace to be renamed", func() bool {
+		return reflect.DeepEqual(w.workspaces.names, []string{"Beta", workspace.Default})
+	})
+	qute.PostSync(func() {
+		if got := w.workspaces.current(); got != workspace.Default || w.config.Workspace != workspace.Default || w.environments.path != files.Environments {
+			t.Errorf("selected %q, in use %q, environments saved to %q", got, w.config.Workspace, w.environments.path)
 		}
 	})
 }

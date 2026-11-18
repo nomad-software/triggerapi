@@ -36,6 +36,11 @@ func TestParseCurl(t *testing.T) {
 			},
 		},
 		{
+			"options with values before the address",
+			"curl --noproxy '*' --proto =https --tls-max 1.3 https://api.test/a",
+			Request{Method: "GET", URL: "https://api.test/a"},
+		},
+		{
 			"short options run together",
 			"curl -sSLXPUT -ume:secret -H'X-A: 1' -d a=1 -d b=x%20y api.test",
 			Request{

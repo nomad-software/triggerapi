@@ -46,8 +46,12 @@ type envList struct {
 	onSelect func()
 	// onChange is called after the environments or the selection change.
 	onChange func()
-	// onRename is called after an environment is renamed.
+	// onRename is called after an environment is renamed, once the editing
+	// of its name is finished.
 	onRename func(from, to string)
+	// renaming is the name the environment being edited had before its name
+	// was changed, until the change is reported, or "".
+	renaming string
 	onError  func(error)
 	// keys returns the keys the file is encrypted with, which are nil if
 	// it is not to be.
@@ -132,6 +136,7 @@ func (s *envList) load(store *env.Store, path string) {
 
 	s.store = store
 	s.path = path
+	s.renaming = ""
 
 	s.list.Clear()
 	for _, e := range store.Environments {
@@ -282,19 +287,38 @@ func (s *envList) update(name string, variables []env.Variable) {
 	if !ok {
 		return
 	}
-	from := e.Name
-	e.Name = name
-	e.Variables = variables
-	if from != name {
-		// What remembers an environment by a name that another still
-		// has is left to that one.
-		shared := slices.ContainsFunc(s.store.Environments, func(e env.Environment) bool { return e.Name == from })
-		s.sort()
-		if s.onRename != nil && !shared {
-			s.onRename(from, name)
+	if e.Name != name {
+		// The name is typed a key at a time, so the rename is reported
+		// once, from the name it had, when the editing is finished.
+		from := s.renaming
+		if from == "" {
+			from = e.Name
 		}
+		e.Name = name
+		e.Variables = variables
+		// Sorting lists them again, which forgets the rename.
+		s.sort()
+		s.renaming = from
+	} else {
+		e.Variables = variables
 	}
 	s.save()
+}
+
+// renamed reports the rename of the environment being edited, from the name
+// it had before the editing began, once the editing of its name is
+// finished. What remembers an environment by a name that another still has
+// is left to that one.
+func (s *envList) renamed() {
+	from := s.renaming
+	s.renaming = ""
+	to := s.activeName()
+	if from == "" || from == to || s.onRename == nil {
+		return
+	}
+	if !slices.ContainsFunc(s.store.Environments, func(other env.Environment) bool { return other.Name == from }) {
+		s.onRename(from, to)
+	}
 }
 
 // selectName makes the first environment with a name the active one, as

@@ -80,9 +80,16 @@ func (w *Window) backgroundAuthorizer() func(context.Context, *rest.Auth) error 
 // case it could not be opened.
 func (w *Window) signIn(ui *requestUI) oauth.SignIn {
 	editor := ui.editor.authorization()
+	shown := w.shown
 	return func(page, code string) error {
 		opened := openBrowser(page)
-		qute.Post(func() { editor.showToken(signInText(page, code, opened), false) })
+		qute.Post(func() {
+			// The tab is that of the request the token is for, which may
+			// no longer be on show.
+			if shown == w.shown {
+				editor.showToken(signInText(page, code, opened), false)
+			}
+		})
 		return nil
 	}
 }
@@ -182,6 +189,7 @@ func (w *Window) getToken(ui *requestUI) {
 	editor.fetching(cancel)
 	editor.problem.set("")
 	client, signIn := w.tokenClient(), w.signIn(ui)
+	shown := w.shown
 	go func() {
 		_, err := w.tokens.Fetch(ctx, client, o, signIn)
 		err = network.Explain(err)
@@ -189,7 +197,8 @@ func (w *Window) getToken(ui *requestUI) {
 			cancel()
 			editor.fetching(nil)
 			w.showToken(ui)
-			if err != nil && !errors.Is(err, context.Canceled) {
+			// What went wrong is said only on the request it was for.
+			if err != nil && !errors.Is(err, context.Canceled) && shown == w.shown {
 				editor.problem.set(err.Error())
 			}
 		})

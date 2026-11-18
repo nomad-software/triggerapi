@@ -276,7 +276,10 @@ func (h *headers) RoundTrip(req *http.Request) (*http.Response, error) {
 		base = http.DefaultTransport
 	}
 	res, err := base.RoundTrip(req)
-	if err == nil && req.Method == http.MethodPost {
+	// The answer to a call is the one with its result. What the client
+	// sends that has none, such as its reply to what an older server asks
+	// in the course of the call, is accepted with 202 and is not it.
+	if err == nil && req.Method == http.MethodPost && res.StatusCode != http.StatusAccepted {
 		if answer, ok := req.Context().Value(answerKey{}).(*answer); ok {
 			answer.set(res.Status, res.Header.Clone())
 		}

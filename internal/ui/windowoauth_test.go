@@ -143,6 +143,28 @@ func TestGetToken(t *testing.T) {
 	waitFor(t, "another token", func() bool { return s.Issued() == 2 && onGUI(func() bool { return a().cancel == nil }) })
 }
 
+// What comes of Get Token is not shown on another request shown meanwhile.
+func TestGetTokenThenShowAnother(t *testing.T) {
+	s := oauthtest.New(t)
+	var w *Window
+	a := func() *authEditor { return w.request.auth }
+	qute.PostSync(func() {
+		w = NewWindow(testFiles(t).Files)
+		auth := oauthAuth(s, "")
+		auth.OAuth.ClientSecret = "wrong"
+		auth.OAuth.ClientAuth = rest.ClientAuthBody
+		a().load(auth)
+		a().getToken.Click()
+		w.show(nil)
+	})
+	waitFor(t, "the fetch to end", func() bool { return onGUI(func() bool { return a().cancel == nil }) })
+	qute.PostSync(func() {
+		if a().getToken.Text() != "Get Token" || a().problem.Text() != "" {
+			t.Errorf("button %q, problem %q", a().getToken.Text(), a().problem.Text())
+		}
+	})
+}
+
 func TestOAuthCurl(t *testing.T) {
 	s := oauthtest.New(t)
 	var w *Window

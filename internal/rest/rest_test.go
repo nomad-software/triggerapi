@@ -34,6 +34,8 @@ func TestBuildURL(t *testing.T) {
 			}},
 			want: "http://example.com?z=1&b=x+y&a=%26",
 		},
+		{name: "scheme later in the path", req: Request{URL: "localhost:8080/proxy/https://example.com"}, want: "http://localhost:8080/proxy/https://example.com"},
+		{name: "scheme in the query", req: Request{URL: "example.com/go?to=https://x"}, want: "http://example.com/go?to=https://x"},
 		{name: "empty", req: Request{URL: "  "}, wantErr: true},
 		{name: "bad scheme", req: Request{URL: "ftp://example.com"}, wantErr: true},
 		{name: "no host", req: Request{URL: "http://"}, wantErr: true},

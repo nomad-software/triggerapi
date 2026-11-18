@@ -325,6 +325,7 @@ func NewWindow(files Files) *Window {
 
 	w.editor.onChange = w.environments.update
 	w.editor.onSort = w.environments.setSort
+	w.editor.onRenamed = w.environments.renamed
 	w.editor.close.OnClicked(func(_ bool) { w.closeEditor() })
 
 	w.workspaces.onOpen = w.openWorkspace
@@ -707,8 +708,14 @@ func (w *Window) show(r *collection.Request) {
 	if w.cancel != nil {
 		w.cancel()
 	}
-	// A connection is to the request it was opened for.
+	// A connection is to the request it was opened for, and so is a token
+	// being got with Get Token.
 	w.disconnectWS()
+	for _, ui := range w.uis {
+		if editor := ui.editor.authorization(); editor.cancel != nil {
+			editor.cancel()
+		}
+	}
 	w.shown++
 
 	w.open = r

@@ -121,9 +121,15 @@ func populate(message protoreflect.Message, within map[protoreflect.FullName]boo
 }
 
 // isWellKnown reports if the message is one of protobuf's own types, which
-// have special JSON forms that an empty value does not always suit.
+// have special JSON forms that an empty value does not always suit. A
+// message whose file the server could not give is a placeholder, which has
+// no file and nothing to offer either, so it is taken for one too.
 func isWellKnown(message protoreflect.MessageDescriptor) bool {
-	return message.ParentFile().Package() == "google.protobuf"
+	if message.IsPlaceholder() {
+		return true
+	}
+	file := message.ParentFile()
+	return file != nil && file.Package() == "google.protobuf"
 }
 
 // Reflect asks the server of the request to describe its services.

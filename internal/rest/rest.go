@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -307,6 +308,10 @@ func (r Request) content() string {
 	return ""
 }
 
+// hasScheme matches a URL that starts with a scheme, which one with "://"
+// further on, as in its path or query, does not.
+var hasScheme = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://`)
+
 // buildURL adds a default scheme and appends the enabled params to the query,
 // preserving the order in which they were entered.
 func (r Request) buildURL() (string, error) {
@@ -314,7 +319,7 @@ func (r Request) buildURL() (string, error) {
 	if raw == "" {
 		return "", errors.New("URL is empty")
 	}
-	if !strings.Contains(raw, "://") {
+	if !hasScheme.MatchString(raw) {
 		raw = "http://" + raw
 	}
 

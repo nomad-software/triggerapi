@@ -244,7 +244,11 @@ func (w *Window) writeFiles() error {
 
 // renamedWorkspace follows the workspace in use to its new name, which is
 // also the name of the folder its files are in.
-func (w *Window) renamedWorkspace(name string) {
+func (w *Window) renamedWorkspace(from, name string) {
+	// Only the files of the workspace in use are pointed at.
+	if from != w.config.Workspace {
+		return
+	}
 	w.config.Workspace = name
 	if w.environments.path != "" {
 		w.environments.path = workspace.Environments(w.workspacesDir(), name)

@@ -73,19 +73,27 @@ func (w *Window) showTab(tab *requestTab, sync bool) {
 // the active one, as the tab is being shown. A tab with none, or whose
 // environment has gone, takes the one in use instead.
 func (w *Window) followEnvironment(tab *requestTab) {
-	if tab.pinned && tab.environment != "" && w.environments.selectName(tab.environment) {
-		return
-	}
-	w.rememberEnvironment()
-}
-
-// rememberEnvironment has the tab shown, if it is pinned, remember the
-// active environment, and keeps the pinned tabs, with their environments,
-// as those of the set chosen.
-func (w *Window) rememberEnvironment() {
-	if tab := w.tabs.current(); tab.pinned {
+	if tab.pinned && (tab.environment == "" || !w.environments.selectName(tab.environment)) {
 		tab.environment = w.environments.activeName()
 	}
+	w.keepTabs()
+}
+
+// rememberEnvironment has the pinned tab whose request is on show remember
+// the active environment, as it has been chosen or the tab pinned, and keeps
+// the pinned tabs. A tab that has become the current one without being shown
+// yet, as when the tab before it was closed, is left alone: it is about to
+// be shown, with its own environment.
+func (w *Window) rememberEnvironment() {
+	if tab := w.tabs.current(); tab.pinned && tab.request == w.open {
+		tab.environment = w.environments.activeName()
+	}
+	w.keepTabs()
+}
+
+// keepTabs keeps the pinned tabs, with their environments, as those of the
+// set chosen, and has the play button follow them.
+func (w *Window) keepTabs() {
 	w.requests.sets.keep(w.tabs.pinned())
 	w.updatePlay()
 }

@@ -18,6 +18,9 @@ type serverCache[T any] struct {
 	// asked counts the loads, so that an answer can be told from that of
 	// a later one.
 	asked int
+	// cleared counts the times what is known has been forgotten, so that
+	// the answer of a load made before is not kept.
+	cleared int
 }
 
 // get returns what is known about a server, if it has been loaded.
@@ -38,6 +41,7 @@ func (c *serverCache[T]) drop() {
 func (c *serverCache[T]) clear() {
 	c.known = nil
 	c.asked++
+	c.cleared++
 }
 
 // load gives done what is known about a server: at once if it has been
@@ -46,7 +50,7 @@ func (c *serverCache[T]) clear() {
 // main thread, unless a later load has been asked for meanwhile.
 func (c *serverCache[T]) load(server string, force bool, fetch func(context.Context) (T, error), done func(T, error)) {
 	c.asked++
-	asked := c.asked
+	asked, cleared := c.asked, c.cleared
 
 	if value, ok := c.known[server]; ok && !force {
 		done(value, nil)
@@ -61,7 +65,9 @@ func (c *serverCache[T]) load(server string, force bool, fetch func(context.Cont
 		err = network.Explain(err)
 
 		qute.Post(func() {
-			if err == nil {
+			// An answer got with what has since been forgotten, such as
+			// the network settings before, is not kept.
+			if err == nil && cleared == c.cleared {
 				if c.known == nil {
 					c.known = map[string]T{}
 				}

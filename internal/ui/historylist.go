@@ -121,8 +121,9 @@ func newHistoryList(store *history.Store, path string) *historyList {
 	h.tree.SetColumnCount(4)
 	h.tree.SetHeaderHidden(true)
 	// The headings are folders, opened and closed by the arrow before
-	// them, with their entries indented beneath them. A double click on
-	// one ticks its day twice, so it is not also opened or closed.
+	// them or a double click on their date, with their entries indented
+	// beneath them. A double click on the box of one ticks its day twice,
+	// so it is not also opened or closed.
 	h.tree.SetRootIsDecorated(true)
 	h.tree.SetExpandsOnDoubleClick(false)
 	h.tree.SetEditTriggers(qtwidgets.QAbstractItemViewNoEditTriggers)

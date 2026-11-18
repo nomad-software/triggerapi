@@ -304,12 +304,6 @@ func (s *Store) AddFolder(name string) *Folder {
 	return f
 }
 
-// RemoveFolder deletes the top level folder at index along with everything
-// in it.
-func (s *Store) RemoveFolder(index int) {
-	s.Folders = slices.Delete(s.Folders, index, index+1)
-}
-
 // FoldersIn returns the folders inside parent, or those at the top level if
 // parent is nil.
 func (s *Store) FoldersIn(parent *Folder) []*Folder {
@@ -349,12 +343,6 @@ func (f *Folder) AddFolder(name string) *Folder {
 	sub := &Folder{Name: name}
 	f.Folders = append(f.Folders, sub)
 	return sub
-}
-
-// RemoveFolder deletes the folder at index inside the folder, along with
-// everything in it.
-func (f *Folder) RemoveFolder(index int) {
-	f.Folders = slices.Delete(f.Folders, index, index+1)
 }
 
 // Add appends a request to the folder.

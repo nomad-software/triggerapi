@@ -137,11 +137,17 @@ func runProblem(err error, seconds int, failure string, captured []captureResult
 
 // httpFailure says why an HTTP response is a failure, as its status is 400
 // or more, or is "" if it is not.
+// A stream of events broken off by an error is one too.
 func httpFailure(res *rest.Response) string {
-	if res == nil || res.StatusCode < 400 {
+	switch {
+	case res == nil:
 		return ""
+	case res.StatusCode >= 400:
+		return "status " + res.Status
+	case res.Interrupted != "" && res.Interrupted != rest.StreamStopped:
+		return res.Interrupted
 	}
-	return "status " + res.Status
+	return ""
 }
 
 // rpcFailure says why a gRPC call is a failure, as it did not end with OK,

@@ -33,6 +33,9 @@ var curlValues = map[string]bool{
 	"z": true, "time-cond": true, "C": true, "continue-at": true, "Q": true, "quote": true, "t": true, "telnet-option": true,
 	"oauth2-bearer": true, "aws-sigv4": true, "ciphers": true, "local-port": true, "dns-servers": true, "unix-socket": true,
 	"abstract-unix-socket": true, "trace": true, "trace-ascii": true, "stderr": true, "variable": true, "expand-url": true,
+	"noproxy": true, "proxy-header": true, "proto": true, "proto-redir": true, "proto-default": true, "max-filesize": true,
+	"keepalive-time": true, "tls-max": true, "proxy-cacert": true, "proxy-capath": true, "request-target": true, "output-dir": true,
+	"preproxy": true, "socks5": true, "socks5-hostname": true, "netrc-file": true, "egd-file": true, "random-file": true,
 }
 
 // ParseCurl reads a curl command, as Curl writes one or a browser copies

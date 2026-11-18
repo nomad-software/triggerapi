@@ -203,8 +203,10 @@ func (w *Window) send() {
 	ui := w.requestUI(collection.TypeREST)
 	entry := w.historyEntry(ui, rest.JoinURL(req.URL, req.Params))
 
+	// The client is read here, on the main thread, which changes it.
+	client := w.client
 	w.run(w.request.send, w.response, entry, w.authorizer(ui, &req.Auth), 0, func(ctx context.Context) (outcome, error) {
-		res, err := rest.Send(ctx, w.client, req)
+		res, err := rest.Send(ctx, client, req)
 		return w.restOutcome(res, request.Captures, request.Assertions, w.response, w.response.show), err
 	})
 }
@@ -283,12 +285,19 @@ func (w *Window) sendGraphQL() {
 	ui := w.requestUI(collection.TypeGraphQL)
 	entry := w.historyEntry(ui, expanded.URL)
 
+	client := w.client
 	w.run(w.graphql.send, w.graphqlResponse, entry, w.authorizer(ui, &req.Auth), 0, func(ctx context.Context) (outcome, error) {
 		if err != nil {
 			return outcome{}, err
 		}
-		res, err := rest.Send(ctx, w.client, req)
-		return w.restOutcome(res, request.Captures, request.Assertions, w.graphqlResponse, w.graphqlResponse.showGraphQL), err
+		res, err := rest.Send(ctx, client, req)
+		done := w.restOutcome(res, request.Captures, request.Assertions, w.graphqlResponse, w.graphqlResponse.showGraphQL)
+		// The errors a GraphQL response reports make it a failure, as
+		// its Error field shows, whatever its status.
+		if done.failure == "" && res != nil {
+			done.failure = graphql.Errors(res.Body)
+		}
+		return done, err
 	})
 }
 
@@ -307,11 +316,12 @@ func (w *Window) loadGraphQLSchema(force bool) {
 	}
 
 	authorize := w.backgroundAuthorizer()
+	client := w.client
 	w.graphSchemas.load(target, force, func(ctx context.Context) (*graphql.Schema, error) {
 		if err := authorize(ctx, &req.Auth); err != nil {
 			return nil, err
 		}
-		return graphql.Introspect(ctx, w.client, req)
+		return graphql.Introspect(ctx, client, req)
 	}, func(schema *graphql.Schema, err error) {
 		if err != nil {
 			w.graphql.setSchemaError(err)

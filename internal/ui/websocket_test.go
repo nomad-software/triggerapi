@@ -105,6 +105,10 @@ func TestWebSocketRequest(t *testing.T) {
 		if !strings.Contains(log(), "→ Sent") || field("Messages") != "1 sent, 2 received" {
 			t.Errorf("messages %q, log %q", field("Messages"), log())
 		}
+		// Messages added one at a time read as the whole log does.
+		if want := ws.Log(w.socket.messages); log() != want {
+			t.Errorf("log %q, want %q", log(), want)
+		}
 
 		// The server closing the connection is shown as a failure.
 		w.ws.message.SetPlainText("bye")

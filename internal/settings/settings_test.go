@@ -257,3 +257,25 @@ func TestHistorySettings(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadWrongType(t *testing.T) {
+	// A value of the wrong type is left at its default, and the rest of
+	// the settings, the keys among them, are kept.
+	path := filepath.Join(t.TempDir(), "settings.json")
+	data := `{"timeout":"30","colours":{"rest":5,"grpc":"#123456"},"publicKey":"~/.ssh/id.pub","privateKey":"~/.ssh/id","workspace":"Work"}`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := Load(path)
+	if s.Timeout != 0 || s.PublicKey != "~/.ssh/id.pub" || s.PrivateKey != "~/.ssh/id" || s.Workspace != "Work" || s.Colours.GRPC != "#123456" || s.Colours.REST != "" {
+		t.Errorf("loaded %+v", s)
+	}
+
+	// A file that is not JSON at all is all defaults.
+	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if s := Load(path); s.PublicKey != "" {
+		t.Errorf("loaded from broken JSON: %+v", s)
+	}
+}

@@ -150,6 +150,14 @@ func followColours(button *qtwidgets.QToolButton, paint func()) {
 	button.OnDestroyed(func(_ *qtcore.QObject) { delete(painted, button) })
 }
 
+// repaint has a button that follows the colours draw its icon again, as
+// when what its glyph draws has changed.
+func repaint(button *qtwidgets.QToolButton) {
+	if paint := painted[button]; paint != nil {
+		paint()
+	}
+}
+
 // setColours changes the colours the user has chosen. The icons that are
 // kept once drawn are forgotten, and the buttons are given theirs again;
 // icons of items in lists and tabs have to be set again by their owners,

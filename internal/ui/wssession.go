@@ -59,6 +59,8 @@ func (w *Window) toggleWS() {
 
 	limit := w.timeout()
 	authorize := w.authorizer(ui, &request.Auth)
+	// The client is read here, on the main thread, which changes it.
+	client := w.client
 	go func() {
 		// The handshake is given the time limit once there is a token,
 		// which can take the user signing in.
@@ -69,7 +71,7 @@ func (w *Window) toggleWS() {
 		var conn *ws.Conn
 		if err == nil {
 			dial, stop := withLimit(ctx, limit)
-			conn, err = ws.Dial(dial, w.client, request)
+			conn, err = ws.Dial(dial, client, request)
 			stop()
 		}
 		err = network.Explain(err)
@@ -252,14 +254,25 @@ func (w *Window) showWSLog(s *wsSession) {
 
 // showWSMessages shows messages that have gone over a connection, oldest
 // first, each under a line saying which way it went and when, and keeps them
-// to be saved to a file.
+// to be saved to a file. Only those that are new are added to those on show,
+// as a connection can be long, and the newest is followed if it was in view.
 func (w *Window) showWSMessages(messages []ws.Message) {
-	log := ws.Log(messages)
 	r := w.wsResponse
-	r.setBody(log, false)
-	r.setContent([]byte(log), "messages.txt")
-	// The newest message is the one wanted.
-	scrollToEnd(r.body)
+	following := atEnd(r.body)
+	if r.logged > 0 && r.logged <= len(messages) {
+		for _, m := range messages[r.logged:] {
+			appendEntry(r.body, m.Entry())
+		}
+		r.find.search()
+	} else {
+		r.setBody(ws.Log(messages), false)
+		following = true
+	}
+	r.logged = len(messages)
+	r.setContent([]byte(ws.Log(messages)), "messages.txt")
+	if following {
+		scrollToEnd(r.body)
+	}
 }
 
 // showWSFields fills the bar beneath the messages: the state of the

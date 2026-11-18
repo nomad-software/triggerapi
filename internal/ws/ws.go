@@ -116,13 +116,19 @@ func Log(messages []Message) string {
 		if i > 0 {
 			log.WriteString("\n\n")
 		}
-		way := "← Received"
-		if m.Sent {
-			way = "→ Sent"
-		}
-		fmt.Fprintf(&log, "%s %s\n%s", way, m.At.Format("15:04:05.000"), m.Text)
+		log.WriteString(m.Entry())
 	}
 	return log.String()
+}
+
+// Entry returns the message as Log has it: under a line saying which way it
+// went and when.
+func (m Message) Entry() string {
+	way := "← Received"
+	if m.Sent {
+		way = "→ Sent"
+	}
+	return fmt.Sprintf("%s %s\n%s", way, m.At.Format("15:04:05.000"), m.Text)
 }
 
 // Conn is an open connection.

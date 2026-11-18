@@ -78,7 +78,7 @@ func TestRemove(t *testing.T) {
 		t.Errorf("requests = %+v", a.Requests)
 	}
 
-	s.RemoveFolder(0)
+	s.Delete(s.Folders[0])
 	if len(s.Folders) != 1 || s.Folders[0].Name != "b" {
 		t.Errorf("folders = %+v", s.Folders)
 	}
@@ -174,7 +174,7 @@ func TestNestedFolders(t *testing.T) {
 	}
 
 	// Removing a folder takes everything in it.
-	rpc1.RemoveFolder(0)
+	want.Delete(rpc1.Folders[0])
 	if len(rpc1.Folders) != 0 || len(service.All()) != 2 {
 		t.Errorf("after remove: %d folders, %d requests", len(rpc1.Folders), len(service.All()))
 	}

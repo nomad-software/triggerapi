@@ -237,6 +237,10 @@ func (c *Client) elicit(ctx context.Context, req *sdk.ElicitRequest) (*sdk.Elici
 		if err != nil {
 			return nil, err
 		}
+		// No answer declines, as it does for sampling.
+		if answer == nil {
+			answer = &ElicitAnswer{Action: ActionDecline}
+		}
 	}
 	event.Outcome = answer.Action
 	if answer.Action == ActionAccept && answer.Content != nil {

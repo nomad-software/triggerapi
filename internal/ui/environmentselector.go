@@ -151,7 +151,7 @@ func (s *environmentSelector) setPlaying(playing, playable bool) {
 	s.play.SetEnabled(playing || playable)
 	if s.playing != playing {
 		s.playing = playing
-		s.play.SetIcon(drawIcon(iconButtonSize*2, themeColour(colourSets), s.playGlyph))
+		repaint(s.play)
 	}
 }
 

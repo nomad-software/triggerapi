@@ -93,6 +93,13 @@ func TestEvents(t *testing.T) {
 				t.Errorf("who without a listener: %v %s", err, res.Result)
 			}
 
+			// A listener that gives no answer declines.
+			silent := &Listener{Elicit: func(context.Context, *Elicitation) (*ElicitAnswer, error) { return nil, nil }}
+			res, err = call("who", "", silent)
+			if err != nil || !strings.Contains(string(res.Result), `"action":"decline"`) {
+				t.Errorf("who with no answer: %v %s", err, res.Result)
+			}
+
 			// Sampling, answered by the listener.
 			res, err = call("sample", "", listener)
 			if err != nil || !strings.Contains(string(res.Result), `"text":"Hello!"`) || !strings.Contains(string(res.Result), `"model":"by-hand"`) {
@@ -126,5 +133,25 @@ func TestElicitCancelled(t *testing.T) {
 	}}
 	if _, err := c.Call(ctx, Request{URL: srv.URL + "/mcp", Name: "who"}, listener); err == nil {
 		t.Error("a call given up while asking succeeded")
+	}
+}
+
+// TestAnswerStatus checks that the status of a call is that of the answer
+// with its result, not that of the reply to what the server asked in the
+// course of it, which an older server asks on the connection the first call
+// opened.
+func TestAnswerStatus(t *testing.T) {
+	for _, server := range servers {
+		t.Run(server.name, func(t *testing.T) {
+			srv := server.start(t)
+			c := testClient(t, Request{URL: srv.URL + "/mcp"})
+			listener := &Listener{Elicit: func(context.Context, *Elicitation) (*ElicitAnswer, error) {
+				return &ElicitAnswer{Action: ActionDecline}, nil
+			}}
+			res, err := c.Call(testContext(t), Request{URL: srv.URL + "/mcp", Name: "who"}, listener)
+			if err != nil || !strings.HasPrefix(res.Status, "200") {
+				t.Errorf("status %q, %v", res.Status, err)
+			}
+		})
 	}
 }

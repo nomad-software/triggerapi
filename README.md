@@ -316,7 +316,8 @@ bindings, for Linux.
   its tab (and so its environment) shown while it is played. Playing stops at
   the first request that fails: an error instead of a response, a failed
   status (an HTTP status of 400 or more, a gRPC status other than OK, an MCP
-  error), a value that is not captured or an assertion that fails. Its tab is
+  error, the errors of a GraphQL response, a stream of events broken off by
+  an error), a value that is not captured or an assertion that fails. Its tab is
   left on show. WebSocket requests
   are passed over, as their connections stay open. The button turns into a
   stop button while playing, which cancels the request in flight.
