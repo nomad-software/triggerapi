@@ -461,6 +461,14 @@ A function is only recognised when it is the whole value: `id-random_uuid()`
 is used as it is written. To put a generated value inside other text, do it
 where the variable is used, as in `id-{{request_id}}`.
 
+A function can also be written straight into a request, as a placeholder:
+`X-Request-Id: {{random_uuid()}}`. It works with no environment active, and
+each place it is written gets its own value, so `{{random_uuid()}}` in a
+header and in the body sends two different UUIDs. To send the same value in
+several places, use a variable. A variable named like a call is the variable.
+The text of `base64` or `sha256` written this way cannot hold placeholders
+(`{{base64({{user}})}}` does not work); give it to a variable instead.
+
 ## OAuth 2.0
 
 Choose OAuth 2.0 as the type of authorization, of a request of any kind, and

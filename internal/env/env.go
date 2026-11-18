@@ -63,7 +63,9 @@ var placeholder = regexp.MustCompile(`\{\{\s*([^{}]*?)\s*\}\}`)
 
 // Expand replaces each {{key}} placeholder in s with the value of the enabled
 // variable of that name. If a key is defined more than once the last one wins.
-// Unknown placeholders are left untouched. A value that is a call of a
+// A placeholder that is not a variable but a call of a built-in function,
+// such as {{random_uuid()}}, is given what the function makes, afresh in
+// each place it is. Other unknown placeholders are left untouched. A value that is a call of a
 // built-in function is worked out each time (see Evaluate); use Expander to
 // have it the same in several texts.
 func (e Environment) Expand(s string) string {
@@ -122,10 +124,26 @@ func (e Environment) Expander() func(string) string {
 		resolve(key)
 	}
 
-	return func(s string) string {
+	// What is made from here on only reads the values.
+	variables := func(s string) string {
 		return placeholder.ReplaceAllStringFunc(s, func(match string) string {
 			if value, ok := values[placeholder.FindStringSubmatch(match)[1]]; ok {
 				return value
+			}
+			return match
+		})
+	}
+	return func(s string) string {
+		return placeholder.ReplaceAllStringFunc(s, func(match string) string {
+			key := placeholder.FindStringSubmatch(match)[1]
+			if value, ok := values[key]; ok {
+				return value
+			}
+			// A call of a function written in the text itself, not
+			// as the value of a variable, is made afresh wherever
+			// it is.
+			if made, ok := Evaluate(key, at, variables); ok {
+				return made
 			}
 			return match
 		})
@@ -165,21 +183,24 @@ func (s *Store) Current() (*Environment, bool) {
 	return &s.Environments[s.Active], true
 }
 
-// Expand substitutes the variables of the active environment into text.
+// Expand substitutes the variables of the active environment into text, and
+// calls of the built-in functions written in it, which are made even with no
+// environment active.
 func (s *Store) Expand(text string) string {
 	if e, ok := s.Current(); ok {
 		return e.Expand(text)
 	}
-	return text
+	return Environment{}.Expand(text)
 }
 
 // Expander returns a function which substitutes the variables of the active
-// environment into each text it is given. See Environment.Expander.
+// environment into each text it is given, and calls of the built-in
+// functions written in it. See Environment.Expander.
 func (s *Store) Expander() func(string) string {
 	if e, ok := s.Current(); ok {
 		return e.Expander()
 	}
-	return func(text string) string { return text }
+	return Environment{}.Expander()
 }
 
 // Sort puts the environments in alphabetical order, ignoring case. The

@@ -409,6 +409,38 @@ func TestExpandFunctions(t *testing.T) {
 	}
 }
 
+func TestExpandCallsInText(t *testing.T) {
+	defer func(prev func() time.Time) { now = prev }(now)
+	now = func() time.Time { return time.Date(2026, time.October, 11, 9, 0, 0, 0, time.UTC) }
+
+	e := Environment{Variables: []Variable{
+		{Key: "user", Value: "ada", Enabled: true},
+		// A variable named as a call is the variable.
+		{Key: "iso_date()", Value: "mine", Enabled: true},
+	}}
+
+	// A call written in the text is made in each place it is, even by one
+	// expander.
+	expand := e.Expander()
+	got := strings.Fields(expand("{{random_uuid()}} {{ random_uuid() }}"))
+	if len(got) != 2 || len(got[0]) != 36 || len(got[1]) != 36 || got[0] == got[1] {
+		t.Errorf("two calls: %q", got)
+	}
+	if got, want := expand("{{iso_date(1)}} {{unix_timestamp()}} {{base64(a:b)}} {{iso_date()}} {{user}} {{nope()}} {{missing}}"),
+		"2026-10-12 1791709200 YTpi mine ada {{nope()}} {{missing}}"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+
+	// With no environment the functions are still made, and nothing else.
+	store := Store{Active: -1, Environments: []Environment{e}}
+	if got := store.Expand("{{base64(a:b)}} {{user}}"); got != "YTpi {{user}}" {
+		t.Errorf("with no environment: %q", got)
+	}
+	if got := store.Expander()("{{iso_date()}}"); got != "2026-10-11" {
+		t.Errorf("the store's expander with no environment: %q", got)
+	}
+}
+
 // Load reads a store that is not encrypted.
 func Load(path string) (*Store, error) {
 	return LoadWith(path, nil)

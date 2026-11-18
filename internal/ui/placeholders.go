@@ -32,14 +32,22 @@ func placeholderRanges(text string, expand func(string) string) []placeholderRan
 		match := text[loc[0]:loc[1]]
 		length := utf16Len(match)
 
-		value := expand(match)
-		ranges = append(ranges, placeholderRange{start: units, length: length, known: value != match && value != ""})
+		_, known := placeholderValue(match, expand)
+		ranges = append(ranges, placeholderRange{start: units, length: length, known: known})
 
 		units += length
 		last = loc[1]
 	}
 
 	return ranges
+}
+
+// placeholderValue returns what a placeholder is replaced with by expand, and
+// whether that is a value: one defined as nothing is as much a gap as one
+// that is not defined.
+func placeholderValue(match string, expand func(string) string) (string, bool) {
+	value := expand(match)
+	return value, value != match && value != ""
 }
 
 func utf16Len(s string) int {

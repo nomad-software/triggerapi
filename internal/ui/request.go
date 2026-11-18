@@ -318,9 +318,7 @@ func (p *requestPanel) updatePreview() {
 		pieces = append(pieces, textPiece{text: url[last:loc[0]]})
 
 		match := url[loc[0]:loc[1]]
-		// A placeholder that is defined as nothing is as much a gap in
-		// the URL as one that is not defined.
-		if value := expand(match); value != match && value != "" {
+		if value, known := placeholderValue(match, expand); known {
 			pieces = append(pieces, textPiece{value, p.highlight.known})
 		} else {
 			pieces = append(pieces, textPiece{missingValue, p.highlight.unknown})

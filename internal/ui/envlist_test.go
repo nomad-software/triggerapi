@@ -468,3 +468,44 @@ func TestFunctionVariables(t *testing.T) {
 		}
 	})
 }
+
+// A call of a built-in function written in a request, not as the value of a
+// variable, is made in each place it is, with no environment active, and is
+// coloured as a placeholder that is found.
+func TestFunctionsInRequest(t *testing.T) {
+	var got atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		got.Store([]string{r.URL.Query().Get("id"), r.Header.Get("X-Id"), string(body)})
+		io.WriteString(w, `{}`)
+	}))
+	defer srv.Close()
+
+	var w *Window
+	qute.PostSync(func() {
+		w = NewWindow(testFiles(t).Files)
+		w.Show()
+		w.request.load(rest.Request{
+			Method:   "POST",
+			URL:      srv.URL + "/a",
+			Params:   []rest.KeyValue{{Key: "id", Value: "{{random_uuid()}}", Enabled: true}},
+			Headers:  []rest.KeyValue{{Key: "X-Id", Value: "{{ random_uuid() }}", Enabled: true}},
+			BodyType: rest.BodyText,
+			Body:     "{{random_uuid()}}",
+		})
+		if ranges := placeholderRanges("{{random_uuid()}} {{nope()}}", w.expand); len(ranges) != 2 || !ranges[0].known || ranges[1].known {
+			t.Errorf("ranges %+v", ranges)
+		}
+		w.request.send.Click()
+	})
+	waitFor(t, "the request", func() bool { return got.Load() != nil })
+	ids := got.Load().([]string)
+	for _, id := range ids {
+		if len(id) != 36 {
+			t.Errorf("sent %q", ids)
+		}
+	}
+	if ids[0] == ids[1] || ids[0] == ids[2] || ids[1] == ids[2] {
+		t.Errorf("the same value in more than one place: %q", ids)
+	}
+}
