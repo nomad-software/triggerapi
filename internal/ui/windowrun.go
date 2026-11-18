@@ -53,9 +53,13 @@ func withLimit(ctx context.Context, limit time.Duration) (context.Context, conte
 // outcome is what is done, on the main thread, with the result of the work
 // of a request that ended without an error.
 type outcome struct {
-	// capture sets variables of the active environment from the result.
-	// It is called once, even if the result is no longer wanted on show.
-	capture func()
+	// capture sets variables of the active environment from the result,
+	// and returns how each went. It is called once, even if the result is
+	// no longer wanted on show.
+	capture func() []captureResult
+	// failure says why the result is a failure, such as an HTTP status of
+	// 400 or more, or is "" if it is not.
+	failure string
 	// show shows the result. It is called again whenever the tab of the
 	// request is gone back to.
 	show func()
@@ -90,6 +94,7 @@ func (w *Window) run(button *qtwidgets.QPushButton, response *responsePanel, ent
 	seconds := w.config.Timeout
 	shown := w.shown
 	tab := w.tabs.current()
+	playing := w.playing
 
 	label := button.Text()
 	button.SetText("Cancel")
@@ -125,10 +130,24 @@ func (w *Window) run(button *qtwidgets.QPushButton, response *responsePanel, ent
 			// what it shows, so that is kept whatever is on show by now.
 			// The response is then checked, with what was captured.
 			var asserted []assert.Result
+			var captured []captureResult
 			if err == nil {
-				done.capture()
+				captured = done.capture()
 				if done.facts != nil {
 					asserted = w.runAssertions(done.checks, *done.facts)
+				}
+			}
+			// What is played goes on to the next request, unless this one
+			// did not go as it should.
+			if p := w.playing; p != nil {
+				switch {
+				case playing == p:
+					defer w.played(runProblem(err, seconds, done.failure, captured, asserted))
+				case p.waiting:
+					// The request in flight when the playing began has
+					// ended, so the playing can begin.
+					p.waiting = false
+					defer w.playNext()
 				}
 			}
 			// It is kept in the history likewise, unless it was given up.
@@ -236,12 +255,14 @@ func (w *Window) streamer(response *responsePanel) func(*rest.Response) {
 func (w *Window) restOutcome(res *rest.Response, captures []capture.Rule, checks []assert.Check, response *responsePanel, show func(*rest.Response)) outcome {
 	var captured []captureResult
 	return outcome{
-		checks: checks,
-		facts:  factsOf(res, httpFacts),
-		capture: func() {
+		checks:  checks,
+		facts:   factsOf(res, httpFacts),
+		failure: httpFailure(res),
+		capture: func() []captureResult {
 			if res.StatusCode >= 200 && res.StatusCode < 300 {
 				captured = w.capture(captures, res.Document())
 			}
+			return captured
 		},
 		show: func() {
 			show(res)
@@ -322,7 +343,8 @@ func (w *Window) invoke() {
 		// with OK, which is the only message of a unary method.
 		var captured []captureResult
 		return outcome{
-			capture: func() {
+			failure: rpcFailure(res),
+			capture: func() []captureResult {
 				switch {
 				case !res.OK():
 				case len(res.Messages) == 0:
@@ -330,6 +352,7 @@ func (w *Window) invoke() {
 				default:
 					captured = w.capture(request.Captures, res.Messages[len(res.Messages)-1])
 				}
+				return captured
 			},
 			show: func() {
 				w.grpcResponse.showRPC(res)

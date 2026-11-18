@@ -38,6 +38,10 @@ type requestTab struct {
 	// replay shows the response the request of the tab was last given
 	// again. It is nil if there has been none.
 	replay func()
+	// environment is the name of the environment a pinned tab was last
+	// shown with, which showing it switches to. It is "" until it has been
+	// shown, when it takes the one in use.
+	environment string
 }
 
 // requestTabs is the row of tabs above the request UI. There is a tab for
@@ -231,15 +235,33 @@ func (s *requestTabs) current() *requestTab {
 	return s.tabs[0]
 }
 
-// pinned returns the requests that are pinned, in the order of their tabs.
-func (s *requestTabs) pinned() []*collection.Request {
-	var requests []*collection.Request
+// pinned returns the requests that are pinned, in the order of their tabs,
+// with their environments, as a set with no name.
+func (s *requestTabs) pinned() *collection.Set {
+	set := &collection.Set{}
 	for _, tab := range s.tabs {
-		if tab.pinned {
-			requests = append(requests, tab.request)
+		if !tab.pinned {
+			continue
+		}
+		set.Requests = append(set.Requests, tab.request)
+		if tab.environment != "" {
+			if set.Environments == nil {
+				set.Environments = map[*collection.Request]string{}
+			}
+			set.Environments[tab.request] = tab.environment
 		}
 	}
-	return requests
+	return set
+}
+
+// renameEnvironment gives the tabs which were last shown with an
+// environment its new name.
+func (s *requestTabs) renameEnvironment(from, to string) {
+	for _, tab := range s.tabs {
+		if tab.environment == from {
+			tab.environment = to
+		}
+	}
 }
 
 // find returns the tab a request is pinned in, or nil if it is not pinned.
@@ -416,7 +438,7 @@ func (s *requestTabs) open(r *collection.Request) *requestTab {
 			s.add(tab)
 		}
 		if tab.request != r {
-			tab.request, tab.draft, tab.replay = r, nil, nil
+			tab.request, tab.draft, tab.replay, tab.environment = r, nil, nil, ""
 			s.refresh(tab)
 		}
 	}
@@ -489,15 +511,18 @@ func (s *requestTabs) settle() {
 	s.show(s.current())
 }
 
-// reset replaces the tabs with one for each of the pinned requests given,
-// or a single tab that is not pinned if there are none. The first is the
-// one shown. It does not call onSelect.
-func (s *requestTabs) reset(pinned []*collection.Request) {
+// reset replaces the tabs with one pinned for each of the requests of a set,
+// with its environment, or a single tab that is not pinned if there are
+// none or the set is nil. The first is the one shown. It does not call
+// onSelect.
+func (s *requestTabs) reset(set *collection.Set) {
 	for _, tab := range slices.Clone(s.tabs) {
 		s.take(tab)
 	}
-	for _, r := range pinned {
-		s.add(&requestTab{request: r, pinned: true})
+	if set != nil {
+		for _, r := range set.Requests {
+			s.add(&requestTab{request: r, pinned: true, environment: set.Environment(r)})
+		}
 	}
 	s.settle()
 	s.show(s.tabs[0])

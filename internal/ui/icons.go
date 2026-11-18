@@ -490,6 +490,28 @@ func whitePen() *qtgui.QPen {
 	return pen
 }
 
+// drawPlay draws the triangle of a play button, for playing the requests of
+// a set one after another.
+func drawPlay(painter *qtgui.QPainter) {
+	white := qtgui.NewQBrushWithColor(qcolour("#ffffff"))
+	defer white.Delete()
+	path := qtgui.NewQPainterPath()
+	path.MoveTo(qtcore.QPointF{X: 46, Y: 34})
+	path.LineTo(qtcore.QPointF{X: 96, Y: 64})
+	path.LineTo(qtcore.QPointF{X: 46, Y: 94})
+	path.CloseSubpath()
+	painter.FillPath(path, white)
+}
+
+// drawStop draws the square of a stop button, for stopping what is played.
+func drawStop(painter *qtgui.QPainter) {
+	white := qtgui.NewQBrushWithColor(qcolour("#ffffff"))
+	defer white.Delete()
+	path := qtgui.NewQPainterPath()
+	path.AddRoundedRect(qtcore.QRectF{X: 40, Y: 40, Width: 48, Height: 48}, 6, 6)
+	painter.FillPath(path, white)
+}
+
 // drawBraces draws a pair of braces, as around a JSON document.
 func drawBraces(painter *qtgui.QPainter) {
 	font := qtgui.NewQFont()

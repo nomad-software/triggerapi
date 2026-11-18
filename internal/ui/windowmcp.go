@@ -61,10 +61,12 @@ func (w *Window) callMCP() {
 		// Values are captured from the result of a call that succeeded.
 		var captured []captureResult
 		return outcome{
-			capture: func() {
+			failure: mcpFailure(res),
+			capture: func() []captureResult {
 				if res.OK() {
 					captured = w.capture(request.Captures, string(res.Result))
 				}
+				return captured
 			},
 			show: func() {
 				w.mcpResponse.showMCP(res)

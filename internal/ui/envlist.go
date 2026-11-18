@@ -46,6 +46,8 @@ type envList struct {
 	onSelect func()
 	// onChange is called after the environments or the selection change.
 	onChange func()
+	// onRename is called after an environment is renamed.
+	onRename func(from, to string)
 	onError  func(error)
 	// keys returns the keys the file is encrypted with, which are nil if
 	// it is not to be.
@@ -280,13 +282,41 @@ func (s *envList) update(name string, variables []env.Variable) {
 	if !ok {
 		return
 	}
-	renamed := e.Name != name
+	from := e.Name
 	e.Name = name
 	e.Variables = variables
-	if renamed {
+	if from != name {
+		// What remembers an environment by a name that another still
+		// has is left to that one.
+		shared := slices.ContainsFunc(s.store.Environments, func(e env.Environment) bool { return e.Name == from })
 		s.sort()
+		if s.onRename != nil && !shared {
+			s.onRename(from, name)
+		}
 	}
 	s.save()
+}
+
+// selectName makes the first environment with a name the active one, as
+// selecting it does, and reports whether there is one.
+func (s *envList) selectName(name string) bool {
+	row := slices.IndexFunc(s.store.Environments, func(e env.Environment) bool { return e.Name == name })
+	if row < 0 {
+		return false
+	}
+	if row != s.store.Active {
+		s.list.SetCurrentRow(row)
+	}
+	return true
+}
+
+// activeName returns the name of the active environment, or "" if there is
+// none.
+func (s *envList) activeName() string {
+	if e, ok := s.store.Current(); ok {
+		return e.Name
+	}
+	return ""
 }
 
 // setSort keeps how the variables of the environment being edited are shown

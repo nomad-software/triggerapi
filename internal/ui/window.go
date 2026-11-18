@@ -182,6 +182,8 @@ type Window struct {
 	// cancel aborts the request in flight. It is nil when idle and must only
 	// be accessed from the main thread.
 	cancel context.CancelFunc
+	// playing is the playing of the pinned tabs under way, or nil.
+	playing *setPlay
 }
 
 // NewWindow creates the main window, loading the saved data from files. It
@@ -317,7 +319,9 @@ func NewWindow(files Files) *Window {
 		if w.stack.CurrentIndex() == pageEditor {
 			w.openEditor()
 		}
+		w.rememberEnvironment()
 	}
+	w.environments.onRename = w.renamedEnvironment
 
 	w.editor.onChange = w.environments.update
 	w.editor.onSort = w.environments.setSort
@@ -356,7 +360,7 @@ func NewWindow(files Files) *Window {
 		w.showTab(to, true)
 	}
 	// The pinned tabs are those of the set chosen, which follows them.
-	w.tabs.onPins = func() { w.requests.sets.keep(w.tabs.pinned()) }
+	w.tabs.onPins = w.rememberEnvironment
 	w.requests.sets.pinned = w.tabs.pinned
 	w.tabs.onNew = w.newRequest
 	w.requests.sets.onChoose = w.chooseSet
@@ -506,6 +510,7 @@ func NewWindow(files Files) *Window {
 	w.environment.environmentTitle.OnClicked(func(_ bool) { w.editEnvironment() })
 	w.environment.setTitle.OnClicked(func(_ bool) { w.showSets() })
 	w.environment.onSet = w.requests.sets.chooseAt
+	w.environment.play.OnClicked(func(_ bool) { w.playSet() })
 	w.requests.sets.onChanged = w.updateSets
 	w.updateSets()
 

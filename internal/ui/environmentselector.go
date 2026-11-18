@@ -36,6 +36,10 @@ type environmentSelector struct {
 	workspaceTitle   *qtwidgets.QToolButton
 	environmentTitle *qtwidgets.QToolButton
 	setTitle         *qtwidgets.QToolButton
+	// play plays the pinned tabs, or stops them being played.
+	play *qtwidgets.QToolButton
+	// playing is set while the pinned tabs are being played.
+	playing bool
 
 	updating bool
 
@@ -70,6 +74,8 @@ func newEnvironmentSelector() *environmentSelector {
 	s.workspaceTitle = title(colourWorkspaces, drawMonitor, "Workspaces")
 	s.environmentTitle = title(colourEnvironments, drawGlobe, "Edit environment")
 	s.setTitle = title(colourSets, drawSets, "Request sets")
+	s.play = title(colourSets, s.playGlyph, "Execute set")
+	s.play.SetEnabled(false)
 
 	// Each is as wide as its longest name, which a combo box otherwise is
 	// only for the names it has when first shown, where the window has the
@@ -121,11 +127,32 @@ func newEnvironmentSelector() *environmentSelector {
 	layout.AddSpacing(12)
 	layout.AddWidget(s.setTitle.AsQWidget())
 	layout.AddWidget(s.set.AsQWidget())
+	layout.AddWidget(s.play.AsQWidget())
 
 	s.setEnvironments(nil, -1)
 	s.setSets(nil, -1)
 
 	return s
+}
+
+// playGlyph draws the play button: a triangle, or a square while the tabs
+// are being played.
+func (s *environmentSelector) playGlyph(painter *qtgui.QPainter) {
+	if s.playing {
+		drawStop(painter)
+	} else {
+		drawPlay(painter)
+	}
+}
+
+// setPlaying shows whether the pinned tabs are being played, and whether
+// there are any to play.
+func (s *environmentSelector) setPlaying(playing, playable bool) {
+	s.play.SetEnabled(playing || playable)
+	if s.playing != playing {
+		s.playing = playing
+		s.play.SetIcon(drawIcon(iconButtonSize*2, themeColour(colourSets), s.playGlyph))
+	}
 }
 
 // setWorkspaces lists the workspaces to choose from, with the one at the

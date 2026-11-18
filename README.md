@@ -311,6 +311,15 @@ bindings, for Linux.
   environments in the sidebar unless it is showing the requests, and not
   closing it while the environments are shown), and that of the set shows
   the sets.
+- Play the pinned tabs with the play button after the Request Set drop-down:
+  the request of each pinned tab is sent in turn, from left to right, with
+  its tab (and so its environment) shown while it is played. Playing stops at
+  the first request that fails: an error instead of a response, a failed
+  status (an HTTP status of 400 or more, a gRPC status other than OK, an MCP
+  error), a value that is not captured or an assertion that fails. Its tab is
+  left on show. WebSocket requests
+  are passed over, as their connections stay open. The button turns into a
+  stop button while playing, which cancels the request in flight.
 - Save requests in folders, nested to any depth, and move them between
   folders by dragging. Folders and requests are listed alphabetically, and
   requests can be searched by name, showing only the folders that hold a
@@ -330,6 +339,12 @@ bindings, for Linux.
   gRPC, MCP or WebSocket request without saving it; Save, shown beside Send,
   Invoke, Call or Connect only while the request is not saved, adds it to the
   sidebar, as does the add button of the sidebar.
+- A pinned tab remembers the environment it was last used with: going to the
+  tab makes that environment the active one again, and choosing another
+  environment while the tab is shown makes the tab remember that one. A tab
+  that remembers none yet, or whose environment has been removed, takes the
+  environment in use. The environments are kept in the set the tabs belong
+  to, and follow an environment that is renamed.
 - Save the pinned tabs as named sets, on the Sets tab beneath the search of
   the Requests tab. A set holds the pinned tabs, which can be requests from
   any folders; choosing another set replaces the tabs with its own, and

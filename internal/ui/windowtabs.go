@@ -56,6 +56,7 @@ func (w *Window) stash(tab *requestTab) {
 // it was last given. The request is selected in the sidebar too if sync is
 // set.
 func (w *Window) showTab(tab *requestTab, sync bool) {
+	w.followEnvironment(tab)
 	w.show(tab.request)
 	if tab.request == nil && tab.draft != nil {
 		w.showDraft(tab.draft)
@@ -65,6 +66,36 @@ func (w *Window) showTab(tab *requestTab, sync bool) {
 	}
 	if sync {
 		w.requests.selectRequest(tab.request)
+	}
+}
+
+// followEnvironment makes the environment a pinned tab was last shown with
+// the active one, as the tab is being shown. A tab with none, or whose
+// environment has gone, takes the one in use instead.
+func (w *Window) followEnvironment(tab *requestTab) {
+	if tab.pinned && tab.environment != "" && w.environments.selectName(tab.environment) {
+		return
+	}
+	w.rememberEnvironment()
+}
+
+// rememberEnvironment has the tab shown, if it is pinned, remember the
+// active environment, and keeps the pinned tabs, with their environments,
+// as those of the set chosen.
+func (w *Window) rememberEnvironment() {
+	if tab := w.tabs.current(); tab.pinned {
+		tab.environment = w.environments.activeName()
+	}
+	w.requests.sets.keep(w.tabs.pinned())
+	w.updatePlay()
+}
+
+// renamedEnvironment gives the tabs and the sets which remember an
+// environment its new name.
+func (w *Window) renamedEnvironment(from, to string) {
+	w.tabs.renameEnvironment(from, to)
+	if w.requests.store.RenameEnvironment(from, to) {
+		w.requests.save()
 	}
 }
 
@@ -84,11 +115,7 @@ func (w *Window) showDraft(draft *collection.Request) {
 func (w *Window) chooseSet(set *collection.Set) {
 	w.closeEditor()
 	w.stash(w.tabs.current())
-	var requests []*collection.Request
-	if set != nil {
-		requests = set.Requests
-	}
-	w.tabs.reset(requests)
+	w.tabs.reset(set)
 	w.showTab(w.tabs.current(), true)
 }
 
@@ -100,7 +127,7 @@ func (w *Window) restoreTabs() {
 	if name, ok := w.chosenSets[w.config.Workspace]; ok {
 		if set := w.requests.store.FindSet(name); set != nil {
 			w.requests.sets.load(set)
-			w.tabs.reset(set.Requests)
+			w.tabs.reset(set)
 			w.showTab(w.tabs.current(), true)
 			return
 		}

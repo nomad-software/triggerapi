@@ -5,6 +5,7 @@ package collection
 import (
 	"cmp"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -154,9 +155,9 @@ type Store struct {
 	// are not in folders.
 	Sets []*Set
 
-	// paths are the requests of each set as they were read, until they
-	// are found in the folders by LoadWith.
-	paths [][][]string
+	// read are the sets as they were read, with their requests as paths,
+	// until those are found in the folders by LoadWith.
+	read []setFile
 }
 
 // Set is a named set of requests, from any folders, which are opened in
@@ -165,6 +166,16 @@ type Store struct {
 type Set struct {
 	Name     string
 	Requests []*Request
+	// Environments are the names of the environments the requests were
+	// last used with, which their tabs switch to. A request with none
+	// takes the environment in use.
+	Environments map[*Request]string
+}
+
+// Environment returns the name of the environment a request of the set was
+// last used with, or "" if there is none.
+func (set *Set) Environment(r *Request) string {
+	return set.Environments[r]
 }
 
 // storeFile is how a store is written. Sets are left out of the file when
@@ -176,10 +187,13 @@ type storeFile struct {
 }
 
 // setFile is how a set is written: each request as the path Store.Path
-// gives it.
+// gives it, and the environment of each in the same place of Environments,
+// which is left out when none has one, so a file from before there were
+// environments in sets reads and writes as it did.
 type setFile struct {
-	Name     string     `json:"name"`
-	Requests [][]string `json:"requests,omitempty"`
+	Name         string     `json:"name"`
+	Requests     [][]string `json:"requests,omitempty"`
+	Environments []string   `json:"environments,omitempty"`
 }
 
 // MarshalJSON writes the store, with each request of a set as its path.
@@ -188,10 +202,16 @@ func (s *Store) MarshalJSON() ([]byte, error) {
 	file := storeFile{Folders: s.Folders}
 	for _, set := range s.Sets {
 		written := setFile{Name: set.Name}
+		named := false
 		for _, r := range set.Requests {
 			if path := s.Path(r); path != nil {
 				written.Requests = append(written.Requests, path)
+				written.Environments = append(written.Environments, set.Environment(r))
+				named = named || set.Environment(r) != ""
 			}
+		}
+		if !named {
+			written.Environments = nil
 		}
 		file.Sets = append(file.Sets, written)
 	}
@@ -205,10 +225,9 @@ func (s *Store) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &file); err != nil {
 		return err
 	}
-	s.Folders, s.Sets, s.paths = file.Folders, nil, nil
+	s.Folders, s.Sets, s.read = file.Folders, nil, file.Sets
 	for _, set := range file.Sets {
 		s.Sets = append(s.Sets, &Set{Name: set.Name})
-		s.paths = append(s.paths, set.Requests)
 	}
 	return nil
 }
@@ -218,6 +237,29 @@ func (s *Store) AddSet(name string, requests []*Request) *Set {
 	set := &Set{Name: name, Requests: slices.Clone(requests)}
 	s.Sets = append(s.Sets, set)
 	return set
+}
+
+// CopySet appends a set holding the requests of another, with their
+// environments.
+func (s *Store) CopySet(name string, from *Set) *Set {
+	set := s.AddSet(name, from.Requests)
+	set.Environments = maps.Clone(from.Environments)
+	return set
+}
+
+// RenameEnvironment gives the requests of the sets which were last used
+// with an environment its new name, and reports whether there were any.
+func (s *Store) RenameEnvironment(from, to string) bool {
+	renamed := false
+	for _, set := range s.Sets {
+		for r, name := range set.Environments {
+			if name == from {
+				set.Environments[r] = to
+				renamed = true
+			}
+		}
+	}
+	return renamed
 }
 
 // RemoveSet deletes a set. The requests it held are left as they are.
@@ -251,6 +293,7 @@ func (s *Store) PruneSets() {
 	}
 	for _, set := range s.Sets {
 		set.Requests = slices.DeleteFunc(set.Requests, func(r *Request) bool { return !held[r] })
+		maps.DeleteFunc(set.Environments, func(r *Request, _ string) bool { return !held[r] })
 	}
 }
 
@@ -545,13 +588,22 @@ func LoadWith(path string, keys *crypt.Keys) (*Store, error) {
 	// A request of a set that cannot be found, or is in it twice, is left
 	// out.
 	for i, set := range store.Sets {
-		for _, path := range store.paths[i] {
-			if r := store.Find(path); r != nil && !slices.Contains(set.Requests, r) {
-				set.Requests = append(set.Requests, r)
+		read := store.read[i]
+		for j, path := range read.Requests {
+			r := store.Find(path)
+			if r == nil || slices.Contains(set.Requests, r) {
+				continue
+			}
+			set.Requests = append(set.Requests, r)
+			if j < len(read.Environments) && read.Environments[j] != "" {
+				if set.Environments == nil {
+					set.Environments = map[*Request]string{}
+				}
+				set.Environments[r] = read.Environments[j]
 			}
 		}
 	}
-	store.paths = nil
+	store.read = nil
 	store.Sort()
 	store.SortSets()
 

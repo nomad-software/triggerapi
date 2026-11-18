@@ -493,6 +493,69 @@ func TestSets(t *testing.T) {
 	}
 }
 
+func TestSetEnvironments(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "requests.json")
+
+	// A set from before there were environments in sets has none, and is
+	// written without them.
+	old := `{"folders":[{"name":"A","requests":[{"name":"get"},{"name":"post"}]}],"sets":[{"name":"t","requests":[["A","get"],["A","post"]]}]}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Load(path)
+	if err != nil || len(s.Sets) != 1 || len(s.Sets[0].Requests) != 2 || len(s.Sets[0].Environments) != 0 {
+		t.Fatalf("loaded %+v, %v", s.Sets, err)
+	}
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); strings.Contains(string(data), "environments") {
+		t.Errorf("environments written: %s", data)
+	}
+
+	// Each request keeps its own, and one with none takes none.
+	set := s.Sets[0]
+	get, post := set.Requests[0], set.Requests[1]
+	set.Environments = map[*Request]string{post: "Staging"}
+	copied := s.CopySet("u", set)
+	copied.Environments[get] = "Live"
+	if set.Environment(get) != "" {
+		t.Error("the copy shares its environments with the set")
+	}
+	if !s.RenameEnvironment("Staging", "Stage") || s.RenameEnvironment("Gone", "Here") {
+		t.Error("renaming reports the wrong sets")
+	}
+	if err := s.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if s, err = Load(path); err != nil || len(s.Sets) != 2 {
+		t.Fatalf("read back %+v, %v", s.Sets, err)
+	}
+	for i, want := range [][]string{{"", "Stage"}, {"Live", "Stage"}} {
+		set := s.Sets[i]
+		for j, r := range set.Requests {
+			if got := set.Environment(r); got != want[j] {
+				t.Errorf("set %q, request %q: %q, want %q", set.Name, r.Name, got, want[j])
+			}
+		}
+	}
+
+	// The environment of a request that is not found goes with it, and a
+	// removed request's is forgotten.
+	broken := `{"folders":[{"name":"A","requests":[{"name":"get"}]}],"sets":[{"name":"t","requests":[["A","gone"],["A","get"]],"environments":["Lost","Kept"]}]}`
+	if err := os.WriteFile(path, []byte(broken), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if s, err = Load(path); err != nil || s.Sets[0].Environment(s.Sets[0].Requests[0]) != "Kept" {
+		t.Fatalf("broken paths: %+v, %v", s.Sets, err)
+	}
+	s.Folders[0].Remove(0)
+	s.PruneSets()
+	if len(s.Sets[0].Environments) != 0 {
+		t.Errorf("after removal: %+v", s.Sets[0].Environments)
+	}
+}
+
 func TestWebSocketRequest(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "requests.json")
 	s := &Store{}

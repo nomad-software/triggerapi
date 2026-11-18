@@ -7,6 +7,7 @@ import (
 	"github.com/nomad-software/qute/qtwidgets"
 
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -34,9 +35,9 @@ type setList struct {
 	// choose what it moves to.
 	browsing bool
 
-	// pinned returns the requests that are pinned in tabs, which a new set
-	// is given.
-	pinned func() []*collection.Request
+	// pinned returns the requests that are pinned in tabs, with their
+	// environments, which a new set is given.
+	pinned func() *collection.Set
 	// onChoose is called when the user chooses a set, or none.
 	onChoose func(*collection.Set)
 	// onChanged is called when the sets are listed, or the one chosen
@@ -223,13 +224,14 @@ func (l *setList) choose(set *collection.Set) {
 	l.changed()
 }
 
-// keep records the requests pinned in tabs as those of the active set, and
-// saves them.
-func (l *setList) keep(pinned []*collection.Request) {
-	if l.active == nil || slices.Equal(l.active.Requests, pinned) {
+// keep records the requests pinned in tabs, with their environments, as
+// those of the active set, and saves them.
+func (l *setList) keep(pinned *collection.Set) {
+	if l.active == nil || slices.Equal(l.active.Requests, pinned.Requests) && maps.Equal(l.active.Environments, pinned.Environments) {
 		return
 	}
-	l.active.Requests = slices.Clone(pinned)
+	l.active.Requests = slices.Clone(pinned.Requests)
+	l.active.Environments = maps.Clone(pinned.Environments)
 	l.owner.save()
 	l.draw(l.selected())
 }
@@ -250,11 +252,11 @@ func (l *setList) added(set *collection.Set) {
 
 // add makes a set of the requests that are pinned.
 func (l *setList) add() {
-	var pinned []*collection.Request
+	pinned := &collection.Set{}
 	if l.pinned != nil {
 		pinned = l.pinned()
 	}
-	l.added(l.owner.store.AddSet("New Set", pinned))
+	l.added(l.owner.store.CopySet("New Set", pinned))
 }
 
 // duplicate copies the selected set, which holds the same requests.
@@ -268,7 +270,7 @@ func (l *setList) duplicate() {
 		l.active = set
 		l.onChoose(set)
 	}
-	l.added(l.owner.store.AddSet(set.Name+" copy", set.Requests))
+	l.added(l.owner.store.CopySet(set.Name+" copy", set))
 }
 
 // rename opens the name of the selected set for editing.
