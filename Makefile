@@ -4,6 +4,12 @@ BINARY := triggerapi
 # halves the size of the binary.
 LDFLAGS := -s -w
 
+# The version the about box shows: the tag the commit is, or follows. Go
+# records none that would do, as it ignores tags from v2 on for a module
+# path without /v2.
+VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null)
+LDFLAGS += -X github.com/nomad-software/triggerapi/internal/ui.version=$(VERSION)
+
 .PHONY: build run test bench vet screenshot icons mcp-server rest-server grpc-server appimage clean
 
 build:

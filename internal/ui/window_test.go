@@ -104,19 +104,15 @@ func TestMenuBar(t *testing.T) {
 	}
 }
 
-func TestPlainVersion(t *testing.T) {
-	for version, want := range map[string]string{
-		"v1.15.0":                               "v1.15.0",
-		"v1.15.0+dirty":                         "v1.15.0",
-		"v1.15.1-0.20261027184954-00c19a9187bb": "v1.15.0",
-		"v1.15.1-0.20261027184954-00c19a9187bb+dirty": "v1.15.0",
-		"v2.0.0-rc.1": "v2.0.0",
-		"v1.2.3-rc.1.0.20261027184954-00c19a9187bb": "v1.2.3",
-		"v0.0.0-20261027184954-00c19a9187bb":        "v0.0.0",
-	} {
-		if got := plainVersion(version); got != want {
-			t.Errorf("plainVersion(%q) = %q, want %q", version, got, want)
-		}
+func TestAppVersion(t *testing.T) {
+	defer func(was string) { version = was }(version)
+	version = ""
+	if got := appVersion(); got != "dev" {
+		t.Errorf("a build given no version is %q, want dev", got)
+	}
+	version = "v2.0.5"
+	if got := appVersion(); got != "v2.0.5" {
+		t.Errorf("a build given v2.0.5 is %q", got)
 	}
 }
 

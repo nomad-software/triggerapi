@@ -648,11 +648,12 @@ make build
 This is the same as:
 
 ```sh
-go build -ldflags "-s -w" -o triggerapi .
+go build -ldflags "-s -w -X github.com/nomad-software/triggerapi/internal/ui.version=$(git describe --tags --abbrev=0)" -o triggerapi .
 ```
 
 The `-s -w` flags build without the symbol table and debug information, which
-roughly halves the size of the binary, to about 46 MB.
+roughly halves the size of the binary, to about 46 MB. The `-X` flag gives the
+about box the tag the commit is, or follows; a build without it says `dev`.
 
 The first build compiles the Qt bindings and takes a few minutes. Later builds
 use the Go build cache and take a few seconds.
