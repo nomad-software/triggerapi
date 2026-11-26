@@ -50,4 +50,21 @@ func TestAppIconPNG(t *testing.T) {
 	if _, _, _, a := img.At(appicon.Size/2, appicon.Size/2).RGBA(); a == 0 {
 		t.Error("the middle is clear")
 	}
+	// The drawing fills the square: it is all inside it, and reaches both
+	// sides, being wider than it is tall.
+	left, top, right, bottom := appicon.Size, appicon.Size, -1, -1
+	for y := range appicon.Size {
+		for x := range appicon.Size {
+			if _, _, _, a := img.At(x, y).RGBA(); a > 0x7fff {
+				left, top, right, bottom = min(left, x), min(top, y), max(right, x), max(bottom, y)
+			}
+		}
+	}
+	t.Logf("drawn from %d,%d to %d,%d", left, top, right, bottom)
+	if left > 2 || right < appicon.Size-3 {
+		t.Errorf("drawn from %d to %d across, leaving room at the sides", left, right)
+	}
+	if spare := top - (appicon.Size - 1 - bottom); spare < -3 || spare > 3 {
+		t.Errorf("drawn from %d to %d down, not in the middle", top, bottom)
+	}
 }

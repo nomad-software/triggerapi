@@ -624,68 +624,121 @@ func drawPlug(painter *qtgui.QPainter) {
 	painter.DrawPath(path)
 }
 
-// drawRevolver draws a revolver seen from the side, pointing right: the
-// program is named after its trigger.
-func drawRevolver(painter *qtgui.QPainter) {
-	white := qcolour("#ffffff")
-	painter.SetPenStyle(qtcore.NoPen)
-	painter.SetBrush(qtgui.NewQBrushWithColor(white))
+// The program's icon is drawn in units of its own, in the style of
+// the icons of Termite and Notepad: a thick dark outline (appIconEdge wide),
+// a body with a lighter band along its top, and a dark panel with the
+// content. These colours are its own, and are not among those of the
+// settings.
+const (
+	appIconEdge = 10
 
-	// The barrel, with the front sight on top and the rod beneath it.
-	painter.DrawRoundedRect(qtcore.QRect{X: 72, Y: 30, Width: 44, Height: 14}, 3, 3)
-	painter.DrawRect(qtcore.QRect{X: 107, Y: 23, Width: 5, Height: 9})
-	painter.DrawRoundedRect(qtcore.QRect{X: 78, Y: 47, Width: 24, Height: 5}, 2, 2)
+	// The bounds of what drawAppIcon draws, outline and all, which
+	// appIconPNG fits to the square.
+	appIconLeft   = 18
+	appIconTop    = 26
+	appIconRight  = 242
+	appIconBottom = 236
 
-	// The frame: a strap above the cylinder and one below it, joined
-	// behind it and in front of it.
-	painter.DrawRect(qtcore.QRect{X: 32, Y: 30, Width: 44, Height: 5})
-	painter.DrawRect(qtcore.QRect{X: 34, Y: 67, Width: 44, Height: 5})
-	painter.DrawRect(qtcore.QRect{X: 30, Y: 30, Width: 9, Height: 42})
-	painter.DrawRect(qtcore.QRect{X: 71, Y: 30, Width: 7, Height: 42})
+	appIconOutline = "#2e1808"
+	appIconBody    = "#e8590c"
+	appIconBand    = "#ff8f47"
+	appIconGrip    = "#b8430a"
+	appIconFlute   = "#ffc9a0"
+	appIconTrigger = "#ffd43b"
+)
 
-	// The cylinder, clear of the frame all round.
-	painter.DrawRoundedRect(qtcore.QRect{X: 42, Y: 38, Width: 26, Height: 26}, 5, 5)
+// drawAppIcon draws a revolver seen from the side, pointing right, as the
+// program is named after its trigger: the grip and the trigger guard behind
+// the barrel and the frame, whose cylinder is the dark panel.
+func drawAppIcon(painter *qtgui.QPainter) {
+	brush := func(colour string) {
+		b := qtgui.NewQBrushWithColor(qcolour(colour))
+		// The painter keeps a copy of the brush.
+		defer b.Delete()
+		painter.SetBrush(b)
+	}
+	pen := func(colour string, width int) {
+		p := qtgui.NewQPenWithColor(qcolour(colour))
+		// The painter keeps a copy of the pen.
+		defer p.Delete()
+		p.SetWidth(width)
+		p.SetCapStyle(qtcore.RoundCap)
+		p.SetJoinStyle(qtcore.RoundJoin)
+		painter.SetPen(p)
+	}
+	// outlined draws a part twice: in the colour of the outline with a pen
+	// which widens it by the edge, and then in its own colour.
+	outlined := func(colour string, part func()) {
+		pen(appIconOutline, 2*appIconEdge)
+		brush(appIconOutline)
+		part()
+		painter.SetPenStyle(qtcore.NoPen)
+		brush(colour)
+		part()
+	}
 
-	// The hammer, cocked back above the grip.
-	hammer := qtgui.NewQPainterPath()
-	hammer.MoveTo(qtcore.QPointF{X: 36, Y: 31})
-	hammer.LineTo(qtcore.QPointF{X: 27, Y: 19})
-	hammer.LineTo(qtcore.QPointF{X: 21, Y: 24})
-	hammer.LineTo(qtcore.QPointF{X: 28, Y: 33})
-	hammer.CloseSubpath()
-	painter.DrawPath(hammer)
+	// The trigger guard, a line with an outline of its own, and the trigger
+	// inside it.
+	guard := qtgui.NewQPainterPath()
+	defer guard.Delete()
+	guard.MoveTo(qtcore.QPointF{X: 84, Y: 210})
+	guard.LineTo(qtcore.QPointF{X: 128, Y: 210})
+	guard.QuadTo(qtcore.QPointF{X: 152, Y: 210}, qtcore.QPointF{X: 152, Y: 186})
+	guard.LineTo(qtcore.QPointF{X: 152, Y: 150})
+	painter.SetBrushStyle(qtcore.NoBrush)
+	pen(appIconOutline, 3*appIconEdge)
+	painter.DrawPath(guard)
+	pen(appIconBody, appIconEdge)
+	painter.DrawPath(guard)
+
+	trigger := qtgui.NewQPainterPath()
+	defer trigger.Delete()
+	trigger.MoveTo(qtcore.QPointF{X: 126, Y: 160})
+	trigger.QuadTo(qtcore.QPointF{X: 130, Y: 176}, qtcore.QPointF{X: 118, Y: 186})
+	pen(appIconTrigger, appIconEdge+2)
+	painter.DrawPath(trigger)
 
 	// The grip, curving down and back from the frame.
 	grip := qtgui.NewQPainterPath()
-	grip.MoveTo(qtcore.QPointF{X: 30, Y: 42})
-	grip.LineTo(qtcore.QPointF{X: 47, Y: 70})
-	grip.QuadTo(qtcore.QPointF{X: 40, Y: 86}, qtcore.QPointF{X: 42, Y: 100})
-	grip.QuadTo(qtcore.QPointF{X: 42, Y: 108}, qtcore.QPointF{X: 34, Y: 108})
-	grip.LineTo(qtcore.QPointF{X: 22, Y: 108})
-	grip.QuadTo(qtcore.QPointF{X: 14, Y: 108}, qtcore.QPointF{X: 15, Y: 100})
-	grip.QuadTo(qtcore.QPointF{X: 18, Y: 70}, qtcore.QPointF{X: 30, Y: 42})
+	defer grip.Delete()
+	grip.MoveTo(qtcore.QPointF{X: 56, Y: 100})
+	grip.LineTo(qtcore.QPointF{X: 100, Y: 150})
+	grip.QuadTo(qtcore.QPointF{X: 86, Y: 180}, qtcore.QPointF{X: 92, Y: 208})
+	grip.QuadTo(qtcore.QPointF{X: 92, Y: 226}, qtcore.QPointF{X: 74, Y: 226})
+	grip.LineTo(qtcore.QPointF{X: 44, Y: 226})
+	grip.QuadTo(qtcore.QPointF{X: 26, Y: 226}, qtcore.QPointF{X: 28, Y: 206})
+	grip.QuadTo(qtcore.QPointF{X: 34, Y: 140}, qtcore.QPointF{X: 56, Y: 100})
 	grip.CloseSubpath()
-	painter.DrawPath(grip)
+	outlined(appIconGrip, func() { painter.DrawPath(grip) })
 
-	// The trigger guard, and the trigger inside it.
-	pen := qtgui.NewQPenWithColor(white)
-	pen.SetWidth(6)
-	pen.SetCapStyle(qtcore.RoundCap)
-	pen.SetJoinStyle(qtcore.RoundJoin)
-	painter.SetPen(pen)
-	painter.SetBrushStyle(qtcore.NoBrush)
+	// The metal: the front sight, the hammer cocked back above the grip,
+	// the rod beneath the barrel, the barrel and the frame, as one shape.
+	barrel := qtcore.QRect{X: 140, Y: 62, Width: 92, Height: 40}
+	frame := qtcore.QRect{X: 56, Y: 62, Width: 100, Height: 92}
+	hammer := []qtcore.QPointF{{X: 70, Y: 64}, {X: 50, Y: 36}, {X: 34, Y: 48}, {X: 52, Y: 72}}
+	outlined(appIconBody, func() {
+		painter.DrawRoundedRect(qtcore.QRect{X: 210, Y: 46, Width: 14, Height: 20}, 3, 3)
+		painter.DrawPolygonF(hammer)
+		painter.DrawRoundedRect(qtcore.QRect{X: 148, Y: 96, Width: 52, Height: 18}, 6, 6)
+		painter.DrawRoundedRect(barrel, 8, 8)
+		painter.DrawRoundedRect(frame, 10, 10)
+	})
 
-	guard := qtgui.NewQPainterPath()
-	guard.MoveTo(qtcore.QPointF{X: 45, Y: 90})
-	guard.LineTo(qtcore.QPointF{X: 62, Y: 90})
-	guard.QuadTo(qtcore.QPointF{X: 75, Y: 90}, qtcore.QPointF{X: 75, Y: 73})
-	guard.MoveTo(qtcore.QPointF{X: 60, Y: 73})
-	guard.QuadTo(qtcore.QPointF{X: 63, Y: 79}, qtcore.QPointF{X: 59, Y: 83})
-	painter.DrawPath(guard)
+	// The lighter band along the top of the barrel and the frame.
+	brush(appIconBand)
+	painter.SetClipRect(qtcore.QRect{X: appIconLeft, Y: 62, Width: appIconRight - appIconLeft, Height: 18})
+	painter.DrawRoundedRect(barrel, 8, 8)
+	painter.DrawRoundedRect(frame, 10, 10)
+	painter.SetClipping(false)
+
+	// The cylinder, a dark panel with its flutes.
+	brush(appIconOutline)
+	painter.DrawRoundedRect(qtcore.QRect{X: 70, Y: 88, Width: 74, Height: 56}, 10, 10)
+	brush(appIconFlute)
+	for _, y := range []int{99, 112, 125} {
+		painter.DrawRoundedRect(qtcore.QRect{X: 82, Y: y, Width: 50, Height: 8}, 4, 4)
+	}
 }
-
-// appIconColour is the colour of the program's icon.
-const appIconColour = "#e8590c"
 
 var appIconCache *qtgui.QIcon
 
@@ -704,8 +757,22 @@ func appIcon() *qtgui.QIcon {
 // appIconPNG draws the program's icon as a PNG of a size, which make icons
 // writes into internal/appicon/appicon.png, or nil if it could not be made.
 func appIconPNG(size int) []byte {
-	icon := drawPixmap(size, appIconColour, drawRevolver)
+	icon := qtgui.NewQPixmapWithW(size, size)
 	defer icon.Delete()
+	icon.FillFull(qtgui.QColor{})
+
+	painter := qtgui.NewQPainterOn(icon.AsQPaintDevice())
+	painter.SetRenderHint(qtgui.QPainterAntialiasing)
+	// The drawing is made as large as the square has room for, about its
+	// middle.
+	scale := float64(size) / max(appIconRight-appIconLeft, appIconBottom-appIconTop)
+	painter.Translate(float64(size)/2, float64(size)/2)
+	painter.Scale(scale, scale)
+	painter.Translate(-float64(appIconLeft+appIconRight)/2, -float64(appIconTop+appIconBottom)/2)
+	drawAppIcon(painter)
+	// Painting must be finished before the pixmap is used.
+	painter.End()
+	painter.Delete()
 
 	buffer := qtcore.NewQBuffer(nil)
 	defer buffer.Delete()
